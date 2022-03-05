@@ -1,0 +1,396 @@
+/*-------------------------------------------------------------*/
+
+// The C source used defined constants. It would be much safer to use enums, which
+// makes it harder to use the wrong types in the wrong place. I will use
+// C style enums which have specified values, which will make the code safe
+// while hopefully providing the (int) value that the external caller needs.
+
+// Since these are used internally, I will shift to the normal Rust CamelCase style.
+// It will be important to keep these synced with the bzip.h definitions.
+
+/// Informs the inquiring user what the current state of the machine is
+#[repr(C)]
+enum BzAction {
+    Run = 0,
+    Flush = 1,
+    Finish = 2,
+}
+
+/// Return values for public API functions
+#[repr(C)]
+pub enum BzStatus {
+    BzOk = 0,
+    BzRunOk = 1,
+    BzFlushOk = 2,
+    BzFinishOk = 3,
+    BzStreamEnd = 4,
+    BzSequenceError = (-1),
+    BzParamError = (-2),
+    BzMemError = (-3),
+    BzDataError = (-4),
+    BzDataErrorMagic = (-5),
+    BzIoError = (-6),
+    BzUnexpectedEof = (-7),
+    BzOutbuffFull = (-8),
+    BzConfigError = (-9),
+}
+
+/* -------------------------------
+This section is untouched from bzip.h. I do not yet know what to do with it,
+if anything. ds. 28/Feb/2022
+
+ #ifndef BZ_IMPORT
+#define BZ_EXPORT
+#endif
+
+#ifndef BZ_NO_STDIO
+/* Need a definitition for FILE */
+#include <stdio.h>
+#endif
+
+#ifdef _WIN32
+#   include <windows.h>
+#   ifdef small
+      /* windows.h define small to char */
+#      undef small
+#   endif
+#   ifndef WINAPI
+#   define WINAPI
+#   endif
+#   ifdef BZ_EXPORT
+#   define BZ_API(func) WINAPI func
+#   define BZ_EXTERN extern
+#   else
+   /* import windows dll dynamically */
+#   define BZ_API(func) (WINAPI * func)
+#   define BZ_EXTERN
+#   endif
+#else
+#   define BZ_API(func) func
+#endif
+
+#ifndef BZ_EXTERN
+#define BZ_EXTERN extern
+#endif
+-------------------------------------------*/
+
+/// User accessible struct used for compression and decompression.
+#[repr(C)]
+pub struct bz_stream {
+    /// Was a C pointer to the next characters to read. Below is FFI unsafe.
+    /// ...but how to convert to C memory expectations? See avail_in.
+    next_in: Vec<u8>,
+    /// Amount of data available to be processed through next_in.
+    avail_in: c_uint,
+    /// Returns to the caller the total amount of data received by the library, 64 bit counts
+    total_in_lo32: c_uint,
+    total_in_hi32: c_uint,
+
+    /// Was a C pointer to the characters being returned. I think the best choice in Rust a Vec<u8>.
+    /// ...but how to convert to C memory expectations? See avail_out.
+    next_out: Vec<u8>,
+    /// Amount of space available to receive data from the library through next_out.
+    avail_out: c_uint,
+    /// inform the caller of the total amount of data passed out of the library. 64 bit counts
+    total_out_lo32: c_uint,
+    total_out_hi32: c_uint,
+
+    /// C version was a point to a memory which held private data used in the program.
+    /// Do we just ignore this value and instead have our private data separate, or perhaps
+    /// have the private data contain a reference to this struct?
+    state: State, // MOST LIKELY WRONG!!
+                  /* ----------------
+                  Next comes support for "Custom memory allocators". Hmmmm. Not sure what to do.
+                  Perhaps we could just have places for pointers that we throw it away?
+                  void *(*bzalloc)(void *,int,int);
+                  void (*bzfree)(void *,void *);
+                  void *opaque;
+                  -------------------*/
+}
+
+/// Private struct used to hold data used in the program.
+struct State {
+    // to do
+}
+
+/*-- Core (low-level) library functions --*/
+/// Initialize compression routine. Requires pointer to data and three C ints.
+/// Returns an Int, which is an error/success code/number.
+#[no_mangle]
+pub extern "C" fn BZ2_bzCompressInit(
+    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+    block_size100k: c_int, // Int of 0-9.
+    verbosity: c_int, // Int of 0-4. Rust would use an enum
+    work_factor: c_int, // Int of 0-250. Is not guarenteed to be meaningful in future versions
+) -> BzStatus {
+    todo!()
+}
+
+/// Do the compression. BZ2_bzCompressInit must be called first.
+/// Returns an Int, which is an error/success code/number.
+#[no_mangle]
+pub extern "C" fn BZ2_bzCompress(
+    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+    action: c_int,   // Rust would use an enum
+) -> BzStatus {
+    todo!()
+}
+
+/// Call to clean up and flush buffers.
+/// Returns an Int, which is an error/success code/number.
+#[no_mangle]
+pub extern "C" fn BZ2_bzCompressEnd(
+    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+) -> BzStatus {
+    todo!()
+}
+
+/// Initialize decompression routine. Requires bz_stream, verbosity setting, and switch
+/// to use small memory model.
+/// Returns an Int, which is an error/success code/number.
+#[no_mangle]
+pub extern "C" fn BZ2_bzDecompressInit(
+    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+    verbosity: c_int, // Int of 0-4. Rust would use an enum
+    small: c_int, // If nonzero,  use an alternative decompression algorithm which uses less memory
+) -> BzStatus {
+    todo!()
+}
+
+/// Do the decompression. BZ2_bzDecompressInit must be called first.
+/// Returns an Int, which is an error/success code/number.
+#[no_mangle]
+pub extern "C" fn BZ2_bzDecompress(
+    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+) -> BzStatus {
+    todo!()
+}
+
+/// Call to clean up and flush buffers.
+/// Returns an Int, which is an error/success code/number.
+#[no_mangle]
+pub extern "C" fn BZ2_bzDecompressEnd(
+    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+) -> BzStatus {
+    todo!()
+}
+
+/*-- High(er) level library functions --*/
+// Need to understand how to do conditional inclusion for C lib
+//#ifndef BZ_NO_STDIO
+
+const BZ_MAX_UNUSED: c_uint = 5000;
+
+/// Prepare to read file of compressed data. Is given a C style file handle of a file already
+/// opened for reading. (This sucks. Rust does all of this so well.) Errors are returned
+/// through bzerror. Returns file pointer "BZFILE" or null. We could do null, though it is bad Rust.
+#[no_mangle]
+pub extern "C" fn BZ2_bzReadOpen(
+    bzerror: &mut c_uint, // Returns error conditions here rather than from the function return
+    f: File,              // C file handle opened externally to this function
+    verbosity: c_int,
+    small: c_int, // If nonzero,  use an alternative decompression algorithm which uses less memory
+    unused: c_void,
+    n_unused: c_int,
+) -> File {
+    // Original returned the "asbstract pointer BZFILE" or null
+    todo!()
+}
+
+/// Closes the file, not really needed in Rust.
+#[no_mangle]
+pub extern "C" fn BZ2_bzReadClose(
+    bzerror: &mut c_int, // Returns error conditions here rather than from the function return
+    b: File,             // The "abstract pointer BZFILE" returned by BZ2_bzReadOpen
+) {
+    todo!()
+}
+
+///Returns data which was read from the compressed file but was not needed to get to the logical end-of-stream.
+/// unused is set to the address of the data, and nUnused to the number of bytes.
+/// n_unused will be set to a value between 0 and BZ_MAX_UNUSED inclusive.
+#[no_mangle]
+pub extern "C" fn BZ2_bzReadGetUnused(
+    bzerror: &mut c_int, // Returns error conditions here rather than from the function return
+    b: File,             // The "abstract pointer BZFILE" returned by BZ2_bzReadOpen
+    unused: c_void,
+    n_unused: c_int,
+) {
+    todo!()
+}
+
+///Reads up to len (uncompressed) bytes from the compressed file b into the buffer buf
+#[no_mangle]
+pub extern "C" fn BZ2_bzRead(
+    bzerror: &mut c_int, // Returns error conditions here rather than from the function return
+    b: File,             // The "abstract pointer BZFILE" returned by BZ2_bzReadOpen
+    buf: c_void,         // Location where data is put
+    len: c_int,          // Length of data requested
+) {
+    todo!()
+}
+/// Prepare to write file of compressed data. Is given a C style file handle of a file already
+/// opened for writing. (This sucks. Rust does all of this so well.) Errors are returned
+/// through bzerror. Returns file pointer "BZFILE" or null. We could do null, though it is bad Rust.
+#[no_mangle]
+pub extern "C" fn BZ2_bzWriteOpen(
+    bzerror: &mut c_uint, // Returns error conditions here rather than from the function return
+    f: File,              // C file handle opened externally to this function
+    block_size100k: c_int, // 1-9
+    verbosity: c_int,     //0-4
+    work_factor: c_int,   //0-250
+) -> File {
+    // Original returned the "asbstract pointer BZFILE" or null
+    todo!()
+}
+
+/// Writes len amount of data to the file buffer
+#[no_mangle]
+pub extern "C" fn BZ2_bzWrite(
+    bzerror: &mut c_int, // Returns error conditions here rather than from the function return
+    b: File,             // The "abstract pointer BZFILE" returned by BZ2_bzWriteOpen
+    buf: c_void,         // Location where data is put
+    len: c_int,          // Length of data requested
+) {
+    todo!()
+}
+
+/// Closes the file, not really needed in Rust except to report data amounts.
+#[no_mangle]
+pub extern "C" fn BZ2_bzWriteClose(
+    bzerror: &mut c_uint, // Returns error conditions here rather than from the function return
+    b: File,              // The "abstract pointer BZFILE" returned by BZ2_bzWriteOpen
+    abandon: c_int,       // Non-zero: Force no attempt to complete compression or fflush
+    nbytes_in: c_uint,    //total volume of uncompressed data handled
+    nbytes_out: c_uint,   //total volume of compressed data written
+) {
+    todo!()
+}
+
+/// Identical to BZ2_bzWriteClose, but with 64 bit values returned
+#[no_mangle]
+pub extern "C" fn BZ2_bzWriteClose64(
+    bzerror: &mut c_uint, // Returns error conditions here rather than from the function return
+    b: File,              // The "abstract pointer BZFILE" returned by BZ2_bzWriteOpen
+    abandon: c_int,       // Non-zero: Force no attempt to complete compression or fflush
+    nbytes_in_lo32: c_uint, //total volume of uncompressed data handled
+    nbytes_in_hi32: c_uint, //total volume of uncompressed data handled
+    nbytes_out_lo32: c_uint, //total volume of compressed data written
+    nbytes_out_hi32: c_uint, //total volume of compressed data written
+) {
+    todo!()
+}
+
+/*-- Utility functions for in memory compression and decompression --*/
+/// Compress data
+#[no_mangle]
+pub extern "C" fn BZ2_bzBuffToBuffCompress(
+    dest: POINTER,         // Destination buffer for the data
+    dest_len: c_uint,      // Length of data to write
+    source: POINTER,       // Source buffer of the data
+    source_len: c_uint,    // Length of data to read
+    block_size100k: c_int, // 1-9
+    verbosity: c_int,      //0-4
+    work_factor: c_int,    //0-250
+) {
+    todo!()
+}
+
+/// Decompress data
+#[no_mangle]
+pub unsafe extern "C" fn BZ2_bzBuffToBuffDecompress(
+    dest: POINTER,         // Destination buffer for the data
+    dest_len: *mut c_uint, // Length of data to write
+    source: POINTER,       // Source buffer of the data
+    source_len: c_uint,    // Length of data to read
+    small: u8, // If nonzero,  use an alternative decompression algorithm which uses less memory
+    verbosity: c_uint, //0-4
+) {
+    if let Some(a) = dest_len.as_mut() {
+        //put something into dest_len
+    }
+    todo!()
+}
+
+/*--
+   Code contributed by Yoshioka Tsuneo (tsuneo@rr.iij4u.or.jp)
+   to support better zlib compatibility.
+   This code is not _officially_ part of libbzip2 (yet);
+   I haven't tested it, documented it, or considered the
+   threading-safeness of it.
+   If this code breaks, please contact both Yoshioka and me.
+--*/
+
+/// Return the version number
+#[no_mangle]
+pub extern "C" fn BZ2_bzlibVersion() -> String {
+    todo!()
+}
+
+/// Analogous to fopen for compression function
+#[no_mangle]
+pub extern "C" fn BZ2_bzopen(
+    path: &str, // NOT SURE - see C language fopen()
+    mode: char, // NOT SURE - see C language fdopen()
+) -> File {
+    // Original returned the "asbstract pointer BZFILE" or null
+    todo!()
+}
+
+/// Analogous to fdopen for compression function
+#[no_mangle]
+pub extern "C" fn BZ2_bzdopen(
+    fd: i32,    // NOT SURE - see C language fdopen()
+    mode: char, // NOT SURE - see C language fdopen()
+) -> File {
+    // Original returned the "asbstract pointer BZFILE" or null
+    todo!()
+}
+
+#[no_mangle]
+pub extern "C" fn BZ2_bzread(
+    b: File,      // File handle
+    buf: Vec<u8>, // Location where data is put
+    len: c_uint,  // Length of data to read
+) {
+    todo!()
+}
+
+#[no_mangle]
+pub extern "C" fn BZ2_bzwrite(
+    b: File,      // File handle
+    buf: Vec<u8>, // Location where data is put
+    len: c_uint,  // Length of data written
+) -> c_uint {
+    todo!()
+}
+
+#[no_mangle]
+pub extern "C" fn BZ2_bzflush(b: File, // File handle
+) -> c_uint {
+    todo!()
+}
+
+#[no_mangle]
+pub extern "C" fn BZ2_bzclose(b: File, // File handle
+) {
+    todo!()
+}
+
+#[no_mangle]
+pub extern "C" fn BZ2_bzerror(
+    b: File,     // File handle
+    errnum: i32, // Error returned. Should be C style enum.
+) -> char {
+    todo!();
+}
+
+/*-------------------------------------------------------------*/
+/*--- end                                           bzlib.h ---*/
+/*-------------------------------------------------------------*/
+
+use std::{
+    ffi::c_void,
+    fs::File,
+    os::raw::{c_char, c_int, c_uint},
+};

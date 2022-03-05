@@ -7,7 +7,6 @@ use super::options::Status;
     THE FINAL FLUSH NEEDS TO RETURN THE STREAM CRC AND FOOTER
 */
 
-
 /// These are the steps necessary to compress. Input file defined in options.
 pub(crate) fn compress(opts: &BzOpts ){
 

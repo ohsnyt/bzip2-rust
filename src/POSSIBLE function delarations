@@ -8,13 +8,6 @@
 // Since these are used internally, I will shift to the normal Rust CamelCase style.
 // It will be important to keep these synced with the bzip.h definitions.
 
-/// Informs the inquiring user what the current state of the machine is
-#[repr(C)]
-enum BzAction {
-    Run = 0,
-    Flush = 1,
-    Finish = 2,
-}
 
 /// Return values for public API functions
 #[repr(C)]
@@ -35,48 +28,9 @@ pub enum BzStatus {
     BzConfigError = (-9),
 }
 
-/* -------------------------------
-This section is untouched from bzip.h. I do not yet know what to do with it,
-if anything. ds. 28/Feb/2022
-
- #ifndef BZ_IMPORT
-#define BZ_EXPORT
-#endif
-
-#ifndef BZ_NO_STDIO
-/* Need a definitition for FILE */
-#include <stdio.h>
-#endif
-
-#ifdef _WIN32
-#   include <windows.h>
-#   ifdef small
-      /* windows.h define small to char */
-#      undef small
-#   endif
-#   ifndef WINAPI
-#   define WINAPI
-#   endif
-#   ifdef BZ_EXPORT
-#   define BZ_API(func) WINAPI func
-#   define BZ_EXTERN extern
-#   else
-   /* import windows dll dynamically */
-#   define BZ_API(func) (WINAPI * func)
-#   define BZ_EXTERN
-#   endif
-#else
-#   define BZ_API(func) func
-#endif
-
-#ifndef BZ_EXTERN
-#define BZ_EXTERN extern
-#endif
--------------------------------------------*/
-
-/// User accessible struct used for compression and decompression.
+/// Caller accessible struct used for compression and decompression.
 #[repr(C)]
-pub struct bz_stream {
+pub struct Bz_Stream {
     /// Was a C pointer to the next characters to read. Below is FFI unsafe.
     /// ...but how to convert to C memory expectations? See avail_in.
     next_in: Vec<u8>,
@@ -98,7 +52,7 @@ pub struct bz_stream {
     /// C version was a point to a memory which held private data used in the program.
     /// Do we just ignore this value and instead have our private data separate, or perhaps
     /// have the private data contain a reference to this struct?
-    state: State, // MOST LIKELY WRONG!!
+    state: *mut c_void, // Not yet sure about this.
                   /* ----------------
                   Next comes support for "Custom memory allocators". Hmmmm. Not sure what to do.
                   Perhaps we could just have places for pointers that we throw it away?
@@ -110,58 +64,101 @@ pub struct bz_stream {
 
 /// Private struct used to hold data used in the program.
 struct State {
-    // to do
+    options: BzOpts,
+    action: u32,
 }
+impl State {
+    fn new() -> Self {
+        Self {
+            options: BzOpts::new(),
+            action: Action::IDLE,
+        }
+    }
+}
+
+/// Current state of the machine. Rust implementation of caller constants.
+#[repr(C)]
+enum Action {
+    IDLE = 1,
+    RUN = 2,
+    FLUSH = 3,
+    FINISH = 4,
+}
+/// C constants passed in through FFI
+const BZ_M_IDLE: c_int = 1;
+const BZ_M_RUNNING: c_int = 2;
+const BZ_M_FLUSHING: c_int = 3;
+const BZ_M_FINISHING: c_int = 4;
+
 
 /*-- Core (low-level) library functions --*/
 /// Initialize compression routine. Requires pointer to data and three C ints.
 /// Returns an Int, which is an error/success code/number.
 #[no_mangle]
 pub extern "C" fn BZ2_bzCompressInit(
-    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
-    block_size100k: c_int, // Int of 0-9.
-    verbosity: c_int, // Int of 0-4. Rust would use an enum
-    work_factor: c_int, // Int of 0-250. Is not guarenteed to be meaningful in future versions
+    strm: *mut c_void, 
+    block_size100k: c_int,  // Int of 0-9
+    verbosity: c_int,       // Int of 0-4
+    work_factor: c_int,     // Int of 0-250
 ) -> BzStatus {
+    let strm: &mut Bz_Stream = unsafe { &mut *(strm as *mut Bz_Stream) };
+    strm.state.options.block_size = block_size100k as u8;
+    strm.state.options.verbosity = match verbosity {
+        0 => Verbosity::Quiet,
+        1 => Verbosity::Errors,
+        4 => Verbosity::Chatty,
+        _ => Verbosity::Normal,
+    };
+    strm.state.options.work_factor = match work_factor {
+        0..10 => WorkFactor::Fallback,
+        _   => WorkFactor::Normal,
+    };
     todo!()
 }
 
 /// Do the compression. BZ2_bzCompressInit must be called first.
 /// Returns an Int, which is an error/success code/number.
 #[no_mangle]
-pub extern "C" fn BZ2_bzCompress(
-    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
-    action: c_int,   // Rust would use an enum
-) -> BzStatus {
-    todo!()
+pub extern "C" fn BZ2_bzCompress(strm: *mut c_void, action: c_int) -> BzStatus {
+    let strm: &mut Bz_Stream = unsafe { &mut *(strm as *mut Bz_Stream) };
+    strm.state.action = match action {
+        2 => Action::RUN,
+        3 => Action::FLUSH,
+        4 => Action::FINISH,
+        _ => Action::IDLE,
+    };
+    todo!();
 }
 
 /// Call to clean up and flush buffers.
 /// Returns an Int, which is an error/success code/number.
 #[no_mangle]
 pub extern "C" fn BZ2_bzCompressEnd(
-    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+    strm: Bz_Stream, // NOTE: This is NOT FFI Safe. Reference to Bz_Stream struct, which contains Vec<u8>.
 ) -> BzStatus {
     todo!()
 }
 
-/// Initialize decompression routine. Requires bz_stream, verbosity setting, and switch
-/// to use small memory model.
-/// Returns an Int, which is an error/success code/number.
+/// Initialize decompression routine. Requires a pointer where we can reference the
+/// private compression settings/data, a verbosity setting, and switch
+/// to use small memory model. Returns an error/success code/number as a c_int.
 #[no_mangle]
 pub extern "C" fn BZ2_bzDecompressInit(
-    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+    strm: *mut c_void,
     verbosity: c_int, // Int of 0-4. Rust would use an enum
     small: c_int, // If nonzero,  use an alternative decompression algorithm which uses less memory
 ) -> BzStatus {
-    todo!()
+    let strm: &mut Bz_Stream = unsafe { &mut *(strm as *mut Bz_Stream) };
+    let x = BzStream::new();
+    strm.state.options.verbosity = verbosity;
+    strm.state.options.small = small;
 }
 
 /// Do the decompression. BZ2_bzDecompressInit must be called first.
 /// Returns an Int, which is an error/success code/number.
 #[no_mangle]
 pub extern "C" fn BZ2_bzDecompress(
-    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+    strm: Bz_Stream, // NOTE: This is NOT FFI Safe. Reference to Bz_Stream struct, which contains Vec<u8>.
 ) -> BzStatus {
     todo!()
 }
@@ -170,7 +167,7 @@ pub extern "C" fn BZ2_bzDecompress(
 /// Returns an Int, which is an error/success code/number.
 #[no_mangle]
 pub extern "C" fn BZ2_bzDecompressEnd(
-    strm: bz_stream, // NOTE: This is NOT FFI Safe. Reference to bz_stream struct, which contains Vec<u8>.
+    strm: Bz_Stream, // NOTE: This is NOT FFI Safe. Reference to Bz_Stream struct, which contains Vec<u8>.
 ) -> BzStatus {
     todo!()
 }

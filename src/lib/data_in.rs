@@ -31,8 +31,9 @@ impl<'a> Data<'a> {
 }
 
 impl Data<'_> {
-    /// Read exactly one block of data (or less, if eof) for processing
-    pub fn read(&mut self) -> Option<&Vec<u8>> {
+    /// Read exactly one block of data (or less, if eof) for processing.
+    /// Return data and bool where false == more data to go, true == all done.
+    pub fn read(&mut self) -> (Option<&Vec<u8>>, bool) {
         if self.data_left == 0 {return None}
         if self.data_left < self.size {
             self.size = self.data_left;
@@ -41,10 +42,10 @@ impl Data<'_> {
         };
         self.data_left -= self.size;
         match self.f_in.read_exact(&mut self.buf) {
-            Ok(_) => return Some(self.buf.as_ref()),
+            Ok(_) => return (Some(self.buf.as_ref()), self.data_left == 0),
             Err(_) => {
                 report(self.bz_opts, Errors, "Error reading input file.");
-                return None;
+                return (None, True);
             }
         }
     }

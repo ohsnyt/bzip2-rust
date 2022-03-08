@@ -37,7 +37,7 @@ pub struct Bz_Stream {
     total_in_lo32: c_uint,
     total_in_hi32: c_uint,
 
-    /// C pointer to location to write the bytes being returned. 
+    /// C pointer to location to write the bytes being returned.
     next_out: *mut c_char,
     /// Amount of space available to write data through next_out.
     avail_out: c_uint,
@@ -47,25 +47,87 @@ pub struct Bz_Stream {
     total_out_hi32: c_uint,
 
     /// Pointer to retain ownership of private data carried between function calls.
-    state: *mut c_void, 
+    state: *mut c_void,
 
     /// Pointers to  "Custom memory allocators". We just ignore this and let
     /// Rust manage allocation/drops.
     bzalloc: (*const c_void, c_int, c_int),
-    bzfree: (*const  c_void, *const c_void),
+    bzfree: (*const c_void, *const c_void),
     opaque: *const c_void,
 }
 
 /// Private struct used to hold data used in the program.
+///  EState* s;
+
+//        blockSize100k < 1 || blockSize100k > 9 ||
+//        workFactor < 0 || workFactor > 250)
+//      return BZ_PARAM_ERROR;
+
+//    if (workFactor == 0) workFactor = 30;
+//    if (strm->bzalloc == NULL) strm->bzalloc = default_bzalloc;
+//    if (strm->bzfree == NULL) strm->bzfree = default_bzfree;
+
+//    s = BZALLOC( sizeof(EState) );
+//    if (s == NULL) return BZ_MEM_ERROR;
+//    s->strm = strm;
+
+//    s->arr1 = NULL;
+//    s->arr2 = NULL;
+//    s->ftab = NULL;
+
+//    n       = 100000 * blockSize100k;
+//    s->arr1 = BZALLOC( n                  * sizeof(UInt32) );
+//    s->arr2 = BZALLOC( (n+BZ_N_OVERSHOOT) * sizeof(UInt32) );
+//    s->ftab = BZALLOC( 65537              * sizeof(UInt32) );
+
+//    if (s->arr1 == NULL || s->arr2 == NULL || s->ftab == NULL) {
+//       if (s->arr1 != NULL) BZFREE(s->arr1);
+//       if (s->arr2 != NULL) BZFREE(s->arr2);
+//       if (s->ftab != NULL) BZFREE(s->ftab);
+//       if (s       != NULL) BZFREE(s);
+//       return BZ_MEM_ERROR;
+//    }
+
+//    s->blockNo           = 0;
+//    s->state             = BZ_S_INPUT;
+//    s->mode              = BZ_M_RUNNING;
+//    s->combinedCRC       = 0;
+//    s->blockSize100k     = blockSize100k;
+//    s->nblockMAX         = 100000 * blockSize100k - 19;
+
 struct State {
     options: BzOpts,
     action: u32,
+    block_num: u32,
+    state: State,
+    mode: Mode,
+    combined_crc: u32,
+    block_size_100k: u8,
+    nblock_max: u32,
+    verbosity: Verbosity,
+    work_factor: WorkFactor,
+    block: Vec<u8>,
+    mtfv: Vec<u16>,
+    zbits: u32, // ??
+    ptr: usize, //pointer to arr1??
 }
 impl State {
     fn new() -> Self {
         Self {
             options: BzOpts::new(),
             action: Action::IDLE,
+            block_num: 0,
+            state: State::IDLE,
+            mode: Mode::Test ,
+            combined_crc: 0,
+            block_size_100k: 9,
+            nblock_max: 900000 - 19,
+            verbosity: Verbosity,
+            work_factor: WorkFactor,
+            block: Vec::new(),
+            mtfv: Vec::new(),
+            zbits: BitWriter::new(), 
+            ptr: 0, //pointer to arr1??
         }
     }
 }
@@ -85,16 +147,15 @@ const BZ_M_RUNNING: c_int = 2;
 const BZ_M_FLUSHING: c_int = 3;
 const BZ_M_FINISHING: c_int = 4;
 
-
 /*-- Core (low-level) library functions --*/
 /// Initialize compression routine. Requires pointer to data and three C ints.
 /// Returns an Int, which is an error/success code/number.
 #[no_mangle]
 pub extern "C" fn BZ2_bzCompressInit(
-    strm: *mut c_void, 
-    block_size100k: c_int,  // Int of 0-9
-    verbosity: c_int,       // Int of 0-4
-    work_factor: c_int,     // Int of 0-250
+    strm: *mut c_void,
+    block_size100k: c_int, // Int of 0-9
+    verbosity: c_int,      // Int of 0-4
+    work_factor: c_int,    // Int of 0-250
 ) -> BzStatus {
     let strm: &mut Bz_Stream = unsafe { &mut *(strm as *mut Bz_Stream) };
     strm.state = State::new();
@@ -107,9 +168,20 @@ pub extern "C" fn BZ2_bzCompressInit(
     };
     strm.state.options.work_factor = match work_factor {
         0..10 => WorkFactor::Fallback,
-        _   => WorkFactor::Normal,
+        _ => WorkFactor::Normal,
     };
     todo!()
+      Int32   n;
+  
+
+   strm->state          = s;
+   strm->total_in_lo32  = 0;
+   strm->total_in_hi32  = 0;
+   strm->total_out_lo32 = 0;
+   strm->total_out_hi32 = 0;
+   init_RL ( s );
+   prepare_new_block ( s );
+   return BZ_OK;
 }
 
 /// Do the compression. BZ2_bzCompressInit must be called first.
@@ -129,9 +201,8 @@ pub extern "C" fn BZ2_bzCompress(strm: *mut c_void, action: c_int) -> BzStatus {
 /// Call to clean up and flush buffers.
 /// Returns an Int, which is an error/success code/number.
 #[no_mangle]
-pub extern "C" fn BZ2_bzCompressEnd(
-    strm: Bz_Stream, // NOTE: This is NOT FFI Safe. Reference to Bz_Stream struct, which contains Vec<u8>.
-) -> BzStatus {
+pub extern "C" fn BZ2_bzCompressEnd(strm: *mut c_void) -> BzStatus {
+    let strm: &mut Bz_Stream = unsafe { &mut *(strm as *mut Bz_Stream) };
     todo!()
 }
 
@@ -175,11 +246,11 @@ pub extern "C" fn BZ2_bzDecompressEnd(
 const BZ_MAX_UNUSED: c_uint = 5000;
 
 /// Prepare to read file of compressed data. Is given a C style file handle of a file already
-/// opened for reading. (This sucks. Rust does all of this so well.) Errors are returned
-/// through bzerror. Returns file pointer "BZFILE" or null. We could do null, though it is bad Rust.
+/// opened for reading. Oddly this doesn't pass in the strm pointer, so we need to find
+/// a way to interact with our options.
 #[no_mangle]
 pub extern "C" fn BZ2_bzReadOpen(
-    bzerror: &mut c_uint, // Returns error conditions here rather than from the function return
+    bzerror: *mut c_uint, // Returns error conditions here
     f: File,              // C file handle opened externally to this function
     verbosity: c_int,
     small: c_int, // If nonzero,  use an alternative decompression algorithm which uses less memory

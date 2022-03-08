@@ -27,54 +27,41 @@ impl Node {
 
 /// Encode MTF data using the Huffman algorithm, We need the bwt key & crc also
 pub fn huf_encode(input: &[MTF], bw: &mut BitWriter, symbol_map: Vec<u16>) -> Result<(), Error> {
-    // for el in input {
-    //     match el {
-    //         MTF::Sym(8) => println!("Got symbol 8"),
-    //         MTF::EOB => println!("Got EO8"),
-    //         _ => {},
-    // }}
-
     // First calculate frequencies of u8s for the Huffman tree
-    // Use a hashmap to simplify things
+    // Use a hashmap to simplify things since the input is an MTF. Don't want to convert to usize.
     let mut map: HashMap<MTF, u32> = HashMap::new();
     for byte in input {
-        let e = map.entry(*byte).or_insert(1);
+        let e = map.entry(*byte).or_insert(0);
         *e += 1;
     }
 
     //Now create the huffman tree - using a vec (probably not best, but binary heap didn't work)
+    // Start by transfering the hashmap into a vec of all the symbols and frequencies
     let mut vec = Vec::new();
+    let mut symbols = vec![]; // We need to track for "missing" symbols elided by MTF
     for (m, f) in map.iter() {
-        vec.push(Node::new(*f, NodeData::Leaf(*m)))
+        vec.push(Node::new(*f, NodeData::Leaf(*m)));
+        symbols.push(m);
     }
 
-    // Oh, (NEW): Fill in "empty" symbols removed by the MTF. Give them a frequency of 0
-    // Find every Sym leaf, and create a vec of the numbers
-    let mut sym_vec = Vec::new();
-    for node in &vec {
-        let Node {
-            frequency: _,
-            node_data,
-        } = node;
-        match node_data {
-            NodeData::Leaf(m) => match m {
-                MTF::Sym(n) => sym_vec.push(n),
-                _ => {}
-            },
-            _ => {}
+    // We need to have every MTF symbol from RUNA - the largest Sym(n), with no holes!
+    // Check for RUNA and RUNB,
+    if !symbols.contains(&&MTF::RUNA) {
+        vec.push(Node::new(0, NodeData::Leaf(MTF::RUNA)))
+    };
+    if !symbols.contains(&&MTF::RUNB) {
+        vec.push(Node::new(0, NodeData::Leaf(MTF::RUNB)))
+    };
+    // Then get the last (largest) symbol found before EOB
+    let MTF::Sym(last) = symbols[symbols.len() - 2];
+    //    ...and push any missing symbols onto the node vec.
+    for i in 0..*last {
+        if !symbols.contains(&&MTF::Sym(i)) {
+            vec.push(Node::new(0, NodeData::Leaf(MTF::Sym(i))))
         }
     }
-    // Make a new vec of the missing symbols.
-    let mut extras: Vec<Node> = Vec::new();
-    sym_vec.sort();
-    for n in 2..**sym_vec.last().unwrap() {
-        if !sym_vec.contains(&&n) {
-            extras.push(Node::new(0, NodeData::Leaf(MTF::Sym(n))))
-        }
-    }
-    vec.extend(extras); //what a pain the butt... but it worked.
 
-    // Sort the vec descending.
+    // Sort the vec by descending frequency.
     vec.sort_by(|a, b| b.frequency.cmp(&a.frequency));
 
     // ...then pare it down to one single node with child nodes - keep it sorted.
@@ -87,7 +74,6 @@ pub fn huf_encode(input: &[MTF], bw: &mut BitWriter, symbol_map: Vec<u16>) -> Re
         ));
         vec.sort_by(|a, b| b.frequency.cmp(&a.frequency));
     }
-    //println!("Tree\n{:?}", vec);
 
     // Starting with the most frequent character, walk down tree and generate bit codes
     // This is recursive. It returns the u8, the bit length of the code, the code as a u32.
@@ -95,14 +81,16 @@ pub fn huf_encode(input: &[MTF], bw: &mut BitWriter, symbol_map: Vec<u16>) -> Re
     // SEEMS LIKE THIS DOESN'T LIKE 8, 16 AND SIMILAR NUMBERS.
     let mut codes = BTreeMap::new();
     gen_codes(vec.first().unwrap(), vec![0u8; 0], &mut codes);
-
     for code in &codes {
         println!("{:?}", code)
     }
+    //NOTE: Julian does this in different way to ensure that bit lengths are less than 17.
+    // He computes a "weight" based on frequencies. If the bit length is too great, he
+    // recomputes the weighs to make a "flatter" node tree.
 
     // Start generating this block's compressed data stream. (The file header is written elsewhere.)
     //NOTE-- The crc_list must be held by whatever calls this.
-    //       This lisht grows with each block written.
+    //       This list grows with each block written.
     //       It is created here as a placeholder during development where I test small data sets.
     // let mut crc_list = vec![]; // used to keep track of compressed block crcs
 

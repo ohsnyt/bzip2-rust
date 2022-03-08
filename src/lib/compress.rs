@@ -1,18 +1,66 @@
-use super::{options::BzOpts, data_in};
+use std::fs::File;
+use std::io::Write;
+
+//use super::bitreader::BitReader;
+use super::bitwriter::BitWriter;
+use super::compress_block::compress_block;
+use super::crc::do_crc;
 use super::options::Status;
+use super::options::Verbosity::Chatty;
+//use super::options::Verbosity::Errors;
+//use super::options::Verbosity::Normal;
+use super::report::report;
+use super::{data_in, options::BzOpts};
 
 /*
-    CHANGE THIS SO INPUT IS PASSED HERE IN BLOCK SIZE PEICES
-    THIS NEED TO "RETURN" BLOCK SIZED COMPRESSED PIECES WITH CRCS, OF COURSE.
-    THE FINAL FLUSH NEEDS TO RETURN THE STREAM CRC AND FOOTER
+    NOTE: I AM IN THE PROGRESS OF CHANGING THIS SO IT WORKS WITH A C FFI.
+
+    This is repsonsible for creating the bitstream writer, a struct that
+    contains the block data passes to the block compression routine,
+    and an indictor of whether we are done processing all the data.
+
+    Each block will be passed to compress_block.rs for RLE1, BWTransform,
+    MTF, RLE2, and huffman compression.
+
+    Again, this will iterate multiple times to get through the input file.
+
 */
-
+pub struct Block {
+    pub bw: BitWriter,
+    pub data: Vec<u8>,
+    pub seq: u32,
+    pub block_crc: u32,
+    pub stream_crc: u32,
+    pub bytes: u64,
+    pub is_last: bool,
+    pub block_size: u8,
+}
+impl Block {
+    fn new(block_size: u8) -> Self {
+        Self {
+            bw: BitWriter::new(),
+            data: Vec::with_capacity((block_size * 100000) as usize),
+            seq: 0,
+            block_crc: 0,
+            stream_crc: 0,
+            bytes: 0,
+            is_last: false,
+            block_size,
+        }
+    }
+}
 /// These are the steps necessary to compress. Input file defined in options.
-pub(crate) fn compress(opts: &BzOpts ){
+pub fn compress(opts: &BzOpts) {
+    // Create the struct to pass data to compress_block.rs
+    // Initialize the size of the data vec to the block size to avoid resizing
+    let mut next_block = Block::new(opts.block_size);
 
-     // Initialize stuff to read the file
+    // Initialize stuff to read the file
     let mut reader = match data_in::init(&opts) {
-        Err(_) => {opts.status = Status::NoData; return},
+        Err(_) => {
+            opts.status = Status::NoData;
+            return;
+        }
         Ok(reader) => reader,
     };
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
@@ -21,71 +69,46 @@ pub(crate) fn compress(opts: &BzOpts ){
     let mut f_out =
         File::create(&fname).expect(&format!("Unable to create compressed file {}", &fname));
 
-    // Create the BitWriter to write the compressed bit stream output
-    let mut bw = BitWriter::new();
-
-    // Put the header onto the bit stream
-    bw.out8('B' as u8);
-    bw.out8('Z' as u8);
-    bw.out8('h' as u8);
-    bw.out8(opts.block_size + 0x30);
-
     //----- Loop through blocks of data and process it.
-    'block: loop {
-        report(&opts, opts::Verbosity::Chatty, "Starting loop");
-        // Try to get a block of data
-        let mut crc = 0;
-        let next_block = match reader.read() {
-            Some(data) => {
-                crc = do_crc(&data);
+    // Try to get a block of data
+    loop {
+        let (data, last) = reader.read();
+        match data {
+            // Got some. Set up next block, do CRC, etc.
+            Some(d) => {
+                next_block.data = *d;
+                report(&opts, Chatty, format!("Starting block {}", next_block.seq));
+                next_block.block_crc = do_crc(d);
                 report(
                     &opts,
-                    opts::Verbosity::Chatty,
-                    format!("Block length is {} bytes. CRC is {:08x}", data.len(), crc),
+                    Chatty,
+                    format!(
+                        "Block length is {} bytes. CRC is {:08x}",
+                        d.len(),
+                        next_block.block_crc
+                    ),
                 );
-                data
+                next_block.stream_crc =
+                    (next_block.stream_crc << 1) | (next_block.stream_crc >> 31);
+                next_block.stream_crc ^= next_block.block_crc;
+                next_block.seq += 1;
             }
-            None => break 'block,
+            // Oops, no data.
+            None => next_block.data = vec![],
         };
-
-        // Now that we have the data, do the first RLE and the BTW.
-        let data = rle1_encode(&next_block);
-        let (key, mut data) = bwt_encode(&data);
-        for b in &data {
-            print!("{}", *b as char);
+        // Let the compress_block know if this is the last block
+        next_block.is_last = last;
+        // Do the compression
+        compress_block(&next_block);
+        // Exit if we are all done.
+        if next_block.is_last {
+            break;
         }
-        //println!("");
-        //println!("Key is {}", key);
-
-        // Now that we have the key, we can write the block header: Six bytes of magic,
-        //   4 bytes of crc data, 1 bit for Randomized flag, and 3 bytes for the 24bit BWT key
-        bw.out24(0x18_314159); // magic bits  1-24
-        bw.out24(0x18_265359); // magic bits 25-48
-        bw.out32(crc); // crc
-        bw.out24(0x01_000000); // One zero bit
-        bw.out24(0x18_000000 | key); // and 24 bit key
-
-        // And send the BTW data off for the MTF transform...
-        //  MTF also returns the symbol map that we need for decompression.
-        let (mdata, symbol_map) = mtf_encode(&data);
-        // ...followed by the RLE2 transform. These two may later be combined.
-        let buf = rle2_encode(&mdata);
-
-        // Now for the compression - the Huffman encoding
-        let result = huf_encode(&buf, &mut bw, symbol_map);
-        //println!("Result of Huffman encoding is: {:?}", result);
-
-        bw.out32(crc);
-        bw.flush();
-
-        // write out the data
-        f_out
-            .write_all(&bw.output)
-            .expect(&format!("Unable to write compressed file {}", &fname));
-        report(&opts, opts::Verbosity::Chatty, "BOGUS:Wrote a block");
     }
-    //all done. Rust closes the file.
-    //println!("Wrote out {}.", fname);
-    
+    // Actually write out the data. This perhaps should be
+    //  part of the loop so we don't have to hold it all.
+    f_out
+        .write_all(&next_block.bw.output)
+        .expect(&format!("Unable to write compressed file {}", &fname));
+    report(&opts, Chatty, "Finished writing the compressed file.");
 }
-

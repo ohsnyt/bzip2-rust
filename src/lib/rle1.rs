@@ -11,7 +11,7 @@ pub fn rle1_encode(v: &[u8]) -> Vec<u8> {
     let mut skip_start: usize = 0;
     let mut idx = 0;
     let mut out = Vec::with_capacity(v.len());
-    let end = v.len() - 3;
+    let end = v.len().saturating_sub(3);
     while idx < end {
         if v[idx] == v[idx + 1] && v[idx] == v[idx + 2] && v[idx] == v[idx + 3] {
             out.extend_from_slice(&v[skip_start..idx]);

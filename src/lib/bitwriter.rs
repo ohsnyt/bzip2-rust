@@ -20,7 +20,7 @@ impl BitWriter {
     /// (Leaves the queue dirty, but that should be okay)
     fn write_stream(&mut self) {
         while self.q_bits > 7 {
-            let byte = (self.queue >> self.q_bits - 8) as u8;
+            let byte = (self.queue >> (self.q_bits - 8)) as u8;
             self.output.push(byte); //push the packed byte out
             self.q_bits -= 8; //adjust the count of bits left in the queue
         }

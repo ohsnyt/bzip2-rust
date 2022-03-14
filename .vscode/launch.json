@@ -1,0 +1,54 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'bzip2'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=bzip2",
+                    "--package=bzip2"
+                ],
+                "filter": {
+                    "name": "bzip2",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                //"/Users/david/Downloads/timeseries_export.csv",
+                //"-z",
+                //"-k",
+                //"/Users/david/Downloads/Attorney.pdf",
+                //"-z",
+                "src/Peter.bz2",
+                "-d",
+                "1",
+                "-v4",],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'bzip2'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=bzip2",
+                    "--package=bzip2"
+                ],
+                "filter": {
+                    "name": "bzip2",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

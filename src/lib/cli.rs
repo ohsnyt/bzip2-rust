@@ -136,43 +136,43 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
         bz_opts.block_size = args.block_size.unwrap()
     };
     if args.license {
-        report(&bz_opts, V::Quiet, license())
+        report(bz_opts, V::Quiet, license())
     };
 
     // Below we report initialization status to the user
     report(
-        &bz_opts,
+        bz_opts,
         V::Normal,
         "\n---- Bzip2 Initialization Start ----",
     );
     report(
-        &bz_opts,
+        bz_opts,
         V::Normal,
         format!("Verbosity set to {}", bz_opts.verbosity),
     );
     report(
-        &bz_opts,
+        bz_opts,
         V::Normal,
         format!("Operational mode set to {}", bz_opts.op_mode),
     );
     match &bz_opts.file {
         Some(s) => report(
-            &bz_opts,
+            bz_opts,
             V::Normal,
             format!("Sending output to the file {}", s),
         ),
-        None => report(&bz_opts, V::Normal, format!("Sending output to stdout")),
+        None => report(bz_opts, V::Normal, "Sending output to stdout"),
     }
     report(
-        &bz_opts,
+        bz_opts,
         V::Normal,
         format!("Block size set to {}", bz_opts.block_size),
     );
     if bz_opts.force_overwrite {
-        report(&bz_opts, V::Normal, "Forcing file overwriting")
+        report(bz_opts, V::Normal, "Forcing file overwriting")
     };
     if bz_opts.keep_input_files {
-        report(&bz_opts, V::Normal, "Keeping input files")
+        report(bz_opts, V::Normal, "Keeping input files")
     };
-    report(&bz_opts, V::Normal, "---- Bzip2 Initialization End ----\n");
+    report(bz_opts, V::Normal, "---- Bzip2 Initialization End ----\n");
 }

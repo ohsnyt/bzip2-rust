@@ -6,21 +6,23 @@
 
 mod lib;
 
-fn main() {
-    let options = BzOpts::new(); 
+fn main() -> io::Result<()> {
+    let mut options = BzOpts::new();
     lib::cli::init_bz_opts(&mut options);
 
-//----- Figure how what we need to do
+    //----- Figure how what we need to do
     match options.op_mode {
-        lib::options::Mode::Zip => compress(&options),
+        lib::options::Mode::Zip => compress(&mut options),
         lib::options::Mode::Unzip => decompress(&options),
-        lib::options::Mode::Test => {}
-    }}
+        lib::options::Mode::Test => Ok(()),
+    }
+}
 
 /*-------------------------------------------------------------*/
 /*--- public structs, enums and functions for the library   ---*/
 
+use std::io;
+
+use crate::lib::options::BzOpts;
 use lib::compress::compress;
 use lib::decompress::decompress;
-use crate::lib::options::BzOpts;
-

@@ -92,6 +92,5 @@ impl BzOpts {
 #[derive(Debug)]
 pub enum Status {
     Init,
-    Ok,
     NoData,
 }

@@ -14,3 +14,4 @@ pub mod report;
 pub mod rle1;
 pub mod rle2;
 pub mod symbol_map;
+mod huffman_code_from_weights;

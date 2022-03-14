@@ -1,98 +1,218 @@
-use super::bitwriter::BitWriter;
-use super::rle2::MTF;
-use std::{
-    collections::{BTreeMap, HashMap},
-    io::Error,
-};
-
+use super::huffman_code_from_weights::improve_code_len_from_freqs;
+use super::report::report;
+use super::{bitwriter::BitWriter, options::BzOpts};
+use crate::lib::options::Verbosity::Chatty;
+use std::cmp::Ordering;
+use std::io::Error;
+#[allow(clippy::unusual_byte_groupings)]
 #[derive(Eq, PartialEq, Debug)]
-enum NodeData {
+pub enum NodeData {
     Kids(Box<Node>, Box<Node>),
-    Leaf(MTF),
+    Leaf(u16),
 }
 
 #[derive(Eq, PartialEq, Debug)]
-struct Node {
-    frequency: u32,
-    node_data: NodeData,
+pub struct Node {
+    pub frequency: u32,
+    pub depth: u8,
+    pub node_data: NodeData,
 }
 impl Node {
-    fn new(frequency: u32, node_data: NodeData) -> Node {
+    pub fn new(frequency: u32, depth: u8, node_data: NodeData) -> Node {
         Node {
             frequency,
+            depth,
             node_data,
         }
     }
 }
 
-/// Encode MTF data using the Huffman algorithm, We need the bwt key & crc also
-pub fn huf_encode(input: &[MTF], bw: &mut BitWriter, symbol_map: Vec<u16>) -> Result<(), Error> {
-    // First calculate frequencies of u8s for the Huffman tree
-    // Use a hashmap to simplify things since the input is an MTF. Don't want to convert to usize.
-    let mut map: HashMap<MTF, u32> = HashMap::new();
-    for byte in input {
-        let e = map.entry(*byte).or_insert(0);
-        *e += 1;
+#[allow(clippy::unusual_byte_groupings)]
+/// Encode MTF data using Julian's multi-table system.
+/// In addition to the options and BitWriter, we need frequency counts,
+/// the bwt key, crc, and the symbol map.
+pub fn huf_encode(
+    opts: &mut BzOpts,
+    bw: &mut BitWriter,
+    input: &[u16],
+    freq_out: &[u32; 258],
+    symbol_map: Vec<u16>,
+    eob: u16,
+) -> Result<(), Error> {
+    // We can have 2-6 coding tables depending on how much data we have coming in.
+    let table_count = match input.len() {
+        0..=199 => 2,
+        200..=599 => 3,
+        600..=1199 => 4,
+        1200..=2399 => 5,
+        _ => 6,
+    };
+
+    // Initialize the tables to weights of 15. Since Rust requires compile time array
+    // sizing, lets just make 6 even though we might need less.
+    let mut tables = [[15_u32; 258]; 6];
+
+    // Then set the soft limits to divide the data out to the tables.
+    let portion_limit: u32 = input.len() as u32 / table_count;
+    /* This is a bit weird, how it works. We initially make multiple tables based on the
+    frequency of the symbols. For example if we have enough data for six tables, starting
+    with the most frequently occuring symbols we add as many symbols to that table that we
+    need to have that table have 1/6th of the frequency of the input data. We assign a
+    weight of zero if the symbol is in the table, and a weight of 15 for any symbol that
+    doesn't get into this table.  The next table gets as many symbols as needed to get
+    to the next 1/6th of the frequency, with weights similarly apportioned.
+
+    After making these initial tables, we run through the data 50 bytes at a time and see
+    which table results in the lowest "cost". We adjust costs/weights and repeat three
+    more times. Somehow it must work better than just doing a straight up tree.
+    */
+
+    // Update our coding tables. Note: Tables 3 and 5 are unique in that they get
+    // just shy of the limit rather than just over the limit.
+    let mut table_index = 0;
+    let mut portion = 0;
+    for (i, freq) in freq_out.iter().enumerate().take(eob as usize){
+        let f = freq;
+        if portion + f > portion_limit && (table_index == 3 || table_index == 5) {
+            tables[table_index][i] = 0;
+            table_index += 1; 
+            portion = 0;
+        } else {
+            portion += f;
+            tables[table_index][i] = 0;
+            if portion > portion_limit {
+                table_index += 1;
+                portion = 0;
+            }
+        };
     }
 
-    //Now create the huffman tree - using a vec (probably not best, but binary heap didn't work)
-    // Start by transfering the hashmap into a vec of all the symbols and frequencies
-    let mut vec = Vec::new();
-    let mut symbols = vec![]; // We need to track for "missing" symbols elided by MTF
-    for (m, f) in map.iter() {
-        vec.push(Node::new(*f, NodeData::Leaf(*m)));
-        symbols.push(m);
-    }
+    /*
+     So now we have our length tables.
 
-    // We need to have every MTF symbol from RUNA - the largest Sym(n), with no holes!
-    // Check for RUNA and RUNB,
-    if !symbols.contains(&&MTF::RUNA) {
-        vec.push(Node::new(0, NodeData::Leaf(MTF::RUNA)))
-    };
-    if !symbols.contains(&&MTF::RUNB) {
-        vec.push(Node::new(0, NodeData::Leaf(MTF::RUNB)))
-    };
-    // Then get the last (largest) symbol found before EOB
-    let MTF::Sym(last) = symbols[symbols.len() - 2];
-    //    ...and push any missing symbols onto the node vec.
-    for i in 0..*last {
-        if !symbols.contains(&&MTF::Sym(i)) {
-            vec.push(Node::new(0, NodeData::Leaf(MTF::Sym(i))))
+     We enter this next loop with each value holding a 0 or 15. At the end of this next
+     loop, those will be adjusted as we test against real data. These adjusted numbers
+     are used to build a huffman tree, and thereby the huffman codes.
+
+     We will iterate four times to improve the tables. Each time we will try to make codes
+     of 17 bits or less. If we can't, we will cut the weights down and try again.
+    */
+
+    // Remember for later how many selectors we will have, and where we store them
+    let mut selector_count = 0;
+    let mut selectors = vec![];
+
+    for iter in 0..4 {
+        // initialize fave[] to 0 for each table/group
+        let mut favorites = [0; 6];
+
+        // initialize "recalculated" frequency array for each table/group
+        let mut rfreq = [[0u32; 258]; 6];
+
+        // Initialized counters for how many selectors we will have, a vec to store them,
+        selector_count = 0;
+        selectors = vec![];
+
+        // Initilalize the total cost for this iteration (used only in reporting)
+        let mut total_cost = 0;
+
+        /*
+        Time to move through the input 50 bytes at a time. For each group of 50, we
+        compute the best table to use based on the one that has the lowest "weight" cost.
+        NOTE: Julian did a trick with rolling all six 16 bit arrays into 3 32 bit arrays.
+        I'm not doing that here. Could we instead use 1 128 bit array for the same purpose?
+        */
+
+        // initialize chunk counters
+        let mut start: usize = 0;
+        let mut cost = [0; 6];
+
+        println! {"Starting iteration {}", iter}
+
+        /*
+        Walk through the whole input data block in chunks of 50 bytes (or eob)
+        adding the weighted "cost" of each symbol to the total cost for the table.
+        Our goal is to find the coding table which has the lowest cost for this chunk
+        of data, and record that in the selector table.
+        */
+        let the_end = input.len();
+        while start <= the_end {
+            let end = (start + 49).min(the_end);
+
+            // println! {"Working on byte {} to {}. Total cost is {}", start, end, total_cost }
+            // if end/50 >= 233 {
+            //     println! {"   Start {}, end {}, the end {}.", start, end, the_end}
+            // }
+
+            // Read through a chunk of 50 bytes of data, updating the tables
+            for &byte in input.iter().take(end as usize).skip(start) {
+                let mtfv = byte;
+                for t in 0..table_count as usize {
+                    cost[t] += tables[t][mtfv as usize];
+                }
+            }
+
+            // check each of the 2-6 groups to get the table with the lowest (best) icost
+            // Set best cost (bc) to a very large cost initially
+            let mut bc = 999999999;
+            // and best table to table 0 for starters
+            let mut bt = 0;
+            // then find the table with the lowest (best) cost
+            for (t, &item) in cost.iter().enumerate().take(table_count as usize) {
+                if item < bc {
+                    bc = item;
+                    bt = t;
+                }
+            }
+
+            // So now we have the table with the lowest icost. Add that cost to total_cost
+            // for the entire input data set
+            total_cost += bc;
+
+            // increment the appropriate fave array with the index to this table
+            // this lets us know how many times this table was chosen as "best"
+            favorites[bt] += 1;
+
+            // record the table index into the selector list
+            selectors.push(bt);
+
+            // increment the selector count
+            selector_count += 1;
+
+            // Now that we know the best table, go get the frequency counts for
+            // the symbols in this group of 50 bytes and store the freq counts into rfreq.
+            // as we go through the input file, this become cumulative for each "best" table.
+            for &symbol in input.iter().take(end as usize).skip(start) {
+                rfreq[bt as usize][symbol as usize] += 1;
+            }
+            // prepare to get the next group of 50 bytes from the input
+            start = end + 1;
+        } // End of the while loop, we've gone through the entire input one (more) time.
+        report(
+            opts,
+            Chatty,
+            format!(
+                " pass {}: size is {}, grp uses are {:?}",
+                iter + 1,
+                total_cost / 8,
+                favorites
+            ),
+        );
+
+        // We will next do improve_code_len_from_freqs on each of the tables we made.
+        // This makes actual node trees based off an exaggerated frequency weighting. It
+        // will repeatedly flatten that exaggerated weighting until we have all codes
+        // 17 or less bits long. This stores the working code lengths into the weight
+        // arrays. This makes the next iteration through this better.
+        for t in 0..table_count as usize {
+            improve_code_len_from_freqs(&mut tables[t], &rfreq[t], eob);
         }
     }
-
-    // Sort the vec by descending frequency.
-    vec.sort_by(|a, b| b.frequency.cmp(&a.frequency));
-
-    // ...then pare it down to one single node with child nodes - keep it sorted.
-    while vec.len() > 1 {
-        let left_child = vec.pop().unwrap();
-        let right_child = vec.pop().unwrap();
-        vec.push(Node::new(
-            left_child.frequency + right_child.frequency,
-            NodeData::Kids(Box::new(left_child), Box::new(right_child)),
-        ));
-        vec.sort_by(|a, b| b.frequency.cmp(&a.frequency));
-    }
-
-    // Starting with the most frequent character, walk down tree and generate bit codes
-    // This is recursive. It returns the u8, the bit length of the code, the code as a u32.
-    // NOTE: to get the actual count of codes, you need to ask for codes.len()+3 (enum thing)
-    // SEEMS LIKE THIS DOESN'T LIKE 8, 16 AND SIMILAR NUMBERS.
-    let mut codes = BTreeMap::new();
-    gen_codes(vec.first().unwrap(), vec![0u8; 0], &mut codes);
-    for code in &codes {
-        println!("{:?}", code)
-    }
-    //NOTE: Julian does this in different way to ensure that bit lengths are less than 17.
-    // He computes a "weight" based on frequencies. If the bit length is too great, he
-    // recomputes the weighs to make a "flatter" node tree.
-
-    // Start generating this block's compressed data stream. (The file header is written elsewhere.)
-    //NOTE-- The crc_list must be held by whatever calls this.
-    //       This list grows with each block written.
-    //       It is created here as a placeholder during development where I test small data sets.
-    // let mut crc_list = vec![]; // used to keep track of compressed block crcs
+    /*
+      4 iterations are now done, and we have good tables and selectors.
+      Time to make actual binary codes for reach table. Since we have good lengths,
+      we can use the code_from_length function to quickly generate codes.
+    */
 
     // Next are the symbol maps , 16 bit L1 + 0-16 words of 16 bit L2 maps.
     for word in symbol_map {
@@ -100,224 +220,104 @@ pub fn huf_encode(input: &[MTF], bw: &mut BitWriter, symbol_map: Vec<u16>) -> Re
     }
 
     // Symbol maps are followed by a 3 bit number of Huffman trees that exist
-    // For development, I'm creating one map only. Specification say we must use 2-6.
-    let trees = vec![&codes, &codes];
-    bw.out24((3 as u32) << 24 | (trees.len() as u32)); // ensure h_trees is a u32
+    bw.out24((3) << 24 | table_count);
 
-    // Then a 15 bit number indicating the array depicting which symbols are decoded by
-    // which tables. Given a list such as [0,2,0,2,1,0], it indicates that symbols 1-50
-    // are decoded by table 0, 51-100 are decoded by table 2, etc.
-    // For development, everthing uses table 0 as defined in the next line. BUT SOMEHOW
-    // IT COMES OUT TO A BINARY 2.
-    // MY CODE IS SCREWED UP. IF IT IS 15 BITS, IT SHOULD END IN 010. AS IT IS, I HAVE THAT
-    //010 COMING FROM THE NEXT BIT OF BOGUS INFO.
-    //let num_sels: Vec<u8> = vec![0, 0, 0, 0, 0];
-    bw.out24((15 as u32) << 24 | 2); //(num_sels_encode(num_sels)));
+    // Then a 15 bit number indicating the how many selectors are used
+    // (how many 50 byte groups are in this block of data)
+    bw.out24((15) << 24 | selector_count);
 
-    // I am semi-clueless. THE BOOK HAS ANOTHER THREE BIT 2 HERE. I'LL ADD IT.
-    // I THINK it means that there are two trees specified next
-    bw.out24(0x03_000002);
-
-    //-------gotta push out the trees, then the data here
-    for tree in trees {
-        let mut first_l = 0;
-        if let Some((s, (l, m))) = tree.iter().next() {
-            first_l = *l;
-            println!("\n{:?}, length {}, code {:08b}", s, l, m);
+    // Write data depicting which chunks of 50 bytes are decoded by which tables.
+    // Given a list of selectors such as [0,2,0,2,1,0], it indicates that bytes
+    // 1-50 are decoded by table 0, 51-100 are decoded by table 2, etc.
+    for selector in selectors {
+        match selector {
+            0 => bw.out24((1) << 24),
+            1 => bw.out24((2) << 24 | 0x10),
+            2 => bw.out24((3) << 24 | 0x110),
+            3 => bw.out24((4) << 24 | 0x1110),
+            4 => bw.out24((5) << 24 | 0x11110),
+            _ => bw.out24((6) << 24 | 0x111110),
         };
-        let mut origin = first_l as i32;
+    }
+
+    // Now push out the trees. We need to convert length data to code data first.
+    // (And later we will want to use the BitWriter with those codes also.)
+    let mut bw_codes = vec![];
+
+    for table in tables {
+        // Create a vec of lengths so we can sort it by length
+        let mut sym_len: Vec<(u32, u16)> = vec![];
+        for (i, &t) in table.iter().enumerate().take(eob as usize) {
+            sym_len.push((t, i as u16));
+        }
+        sym_len.sort_unstable(); // IF FAILS, use regular sort
+
+        // Get the minimum length in use so we can create the "last code" used
+        // Lastcode contains the 32bit length and a 32 bit code.
+        let mut last_code: (u32, u32) = (sym_len[0].0, 0);
+
+        // Create a vec that we can push to so we can store the codes.
+        let mut codes = vec![];
+
+        // For each code (sorted by length), increment the code by one.
+        // When the length changes, do a shift left for each increment and continue.
+        for (len, sym) in &sym_len {
+            if *len != last_code.0 {
+                last_code.1 <<= len - last_code.0;
+                last_code.0 = *len;
+            }
+            // Take a moment to store a version for the bw.out24 format
+            bw_codes.push((*sym, len << 24 | last_code.1));
+            // And push the code for encoding below.
+            codes.push((*sym, last_code.1));
+
+            last_code.1 += 1;
+        }
+        // codes now contains all the bit codes and symbols for the used symbols in this table
+
+        // Time to send out lengths (not codes) for decoding
+        // These now need to be sorted by symbol, not length
+        sym_len.sort_by(|a, b| a.1.cmp(&b.1));
+        let mut origin = sym_len[0].0;
         //put out the origin as a five bit int
-        bw.out24((5 as u32) << 24 | origin as u32); //(num_sels_encode(num_sels)));
-                                                    // all subsequent lengths are computed from the origin
-        for entry in tree.iter().skip(1) {
-            let (s, (l, m)) = entry;
-            let mut delta = *l as i32 - origin;
-            println!("{:?}, length {}, code {:08b}", s, l, m);
-            origin = *l as i32;
+        bw.out24((5) << 24 | origin as u32);
+        // all subsequent lengths are computed from the origin
+        for entry in sym_len.iter() {
+            let (l, _) = entry;
+            let mut delta = *l as i32 - origin as i32;
+            origin = *l;
             loop {
-                if delta > 0 {
-                    bw.out24(0x02_000002);
-                    delta -= 1;
-                } else if delta < 0 {
-                    bw.out24(0x02_000003);
-                    delta += 1;
-                } else if delta == 0 {
-                    //bw.out24(0x01_000000);  // do nothing because we will push a zero below.
+                match delta.cmp(&0) {
+                    Ordering::Greater => {
+                        bw.out24(0x02_000002);
+                        delta -= 1;
+                    }
+                    Ordering::Less => {
+                        bw.out24(0x02_000003);
+                        delta += 1;
+                    }
+                    Ordering::Equal => {
+                        break;
+                    }
                 }
-                if delta == 0 {
-                    break;
-                };
             }
             bw.out24(0x01_000000);
         }
     }
     //view this tree data
-    stream_viewer(bw, 286, 385);
-    stream_viewer(bw, 386, 485);
+    //stream_viewer(bw, 286, 385);
+    //stream_viewer(bw, 386, 485);
 
     // Now the data
     for symbol in input {
-        match symbol {
-            MTF::RUNA => {
-                let (l, c) = codes.get(&MTF::RUNA).unwrap();
-                bw.out24((*l as u32) << 24 | c);
-            }
-            MTF::RUNB => {
-                //let x =
-                let (l, c) = codes.get(&MTF::RUNB).unwrap();
-                bw.out24((*l as u32) << 24 | c);
-            }
-            MTF::Sym(n) => {
-                let (l, c) = codes.get(&MTF::Sym(*n)).unwrap();
-                bw.out24((*l as u32) << 24 | c);
-            }
-            MTF::EOB => {
-                let (l, c) = codes.get(&MTF::EOB).unwrap();
-                bw.out24((*l as u32) << 24 | c);
-            }
-        }
+        bw.out24(bw_codes[*symbol as usize].1);
     }
-    //view this tree data
     //stream_viewer(bw, 408, 823);
-
-    // Calculate and store this compressed block CRC
-    //crc_list.push(bz_stream_crc(&crc_list)); // SOMETHING NOT RIGHT HERE
-
-    // The block stream footer starts with a 48 bit magic number (sqrt pi)
-    //bw.flush(); //just for testing
-    bw.out24(0x18_177245); // magic bits  1-24
-    bw.out24(0x18_385090); // magic bits 25-48
-                           //bw.out32(*crc_list.last().unwrap()); // output this CRC
-                           //bw.flush(); // make data byte aligned and we are done
-                           //view this tree data
-    stream_viewer(bw, 823, 1500);
 
     Ok(())
 }
 
-// Walk down every branch of tree to get codes for every final leaf ------
-// If the node has two child nodes, it then pushes a 0 to every left node and goes to look
-// for more left nodes. If the node is a terminal leaf in the tree, it inserts the bit_data
-// it has built. This then recurses up. When recursing up, it goes on to push a 1 onto the
-// right node bit_data and recurses again
-/// Generate bit codes for a Huffman tree
-fn gen_codes(node: &Node, bit_data: Vec<u8>, codes: &mut BTreeMap<MTF, (u8, u32)>) {
-    //println!("gen_code for {:?}", &node);
-    match &node.node_data {
-        NodeData::Kids(ref left_child, ref right_child) => {
-            let mut left_prefix = bit_data.clone();
-            left_prefix.push(0);
-            gen_codes(left_child, left_prefix, codes);
-
-            let mut right_prefix = bit_data;
-            right_prefix.push(1);
-            gen_codes(right_child, right_prefix, codes);
-        }
-        NodeData::Leaf(mtf) => {
-            let depth = bit_data.len() as u8 + 1;
-            let mut code: u32 = 0;
-            for bit in bit_data {
-                code |= bit as u32;
-                code <<= 1;
-            }
-            codes.insert(*mtf, (depth, code));
-            //println!("Generated {} bit code {:08b} for {:?}", depth, code, mtf);
-        }
-    }
-}
-
-/// For decoding, store codes and bitdepth in a hashmap. This should allow for fast decoding.
-pub fn huf_decode(data: &[u8]) -> Vec<u8> {
-    let code_count =
-        u32::from_le_bytes(data[0..4].try_into().expect("Error reading huffman codes")) as usize;
-
-    let mut codes: HashMap<u32, u8> = HashMap::new();
-    let mut pos = 4;
-    for i in 1..code_count + 1 {
-        let symbol = data[pos];
-        let code = u32::from_le_bytes(
-            data[pos + 1..pos + 5]
-                .try_into()
-                .expect("Error reading huffman codes"),
-        );
-        //println!("Iteration {}. Got code for {} of {:#32b}", i, symbol, code);
-        pos = i * 5 + 4;
-        codes.insert(code, symbol);
-    }
-
-    let mut curr_code: u32 = 0; // used to match our bit demarked u32 index system
-    let mut data_out: Vec<u8> = Vec::new();
-    //    let code_list: Vec<(u8, u32)> = codes.iter().map(|(&c, &s)| (s, c)).collect();
-    let mut depth = 0;
-    //pos = code_count * 5 + 4;
-    //reading through each byte of compressed data...
-    for i in pos..data.len() {
-        let mut byte = data[i];
-        //unpack the byte, bit by bit, checking for a match with each bit added
-        for _ in 0..8 {
-            depth += 1;
-            curr_code <<= 1;
-            curr_code |= (byte >> 7) as u32;
-            byte <<= 1;
-            // println!(
-            //     "DC: Depth is {}, code is {:b}, combined is {:#032b}",
-            //     depth,
-            //     curr_code,
-            //     curr_code | (depth << 26)
-            // );
-            if codes.contains_key(&(curr_code | (depth << 26))) {
-                let c = *codes.get(&(curr_code | (depth << 26))).unwrap();
-                //println! {"{}", *codes.get(&(curr_code | (depth << 26))).unwrap()};
-                data_out.push(c);
-                curr_code = 0;
-                depth = 0;
-            }
-        }
-        pos += 1;
-    }
-    //println! {"{:?}",data_out};
-    data_out
-}
-
-/// Converts the number of trees into a u8 with bits set for the maps used.
-fn map_h_tree_use(h_trees: u8) -> u8 {
-    let mut treecode: u8 = 0;
-    for _ in 1..h_trees {
-        treecode |= 0x01;
-        treecode <<= 1;
-    }
-    treecode <<= 1;
-    treecode
-}
-
-/// Encode NumSels (num_sels) vec into BZIP 15 bit codes, returned as u32
-/// (Seems like this returns bad info if more than 3 tables are used.) Currently not developed
-fn num_sels_encode(v: Vec<u8>) -> u32 {
-    let mut num_sels_encoded: u32 = 0;
-    let mut total = 0; //used for print statement below
-    for i in v {
-        let code = match i {
-            0 => 0x0,
-            1 => 0x10,
-            2 => 0x110,
-            3 => 0x1110,
-            4 => 0x11110,
-            _ => 0x111110,
-        };
-        num_sels_encoded <<= i + 1;
-        num_sels_encoded |= code;
-        total += i + 1; // remove this after testing
-        {
-            print!(
-                "NumSel code is {:015b}, using {} of 15 bits for the NumSels field.\r",
-                code, total
-            )
-        };
-    }
-    println!("\n");
-    num_sels_encoded
-}
-
+/// Debugging stream viewer
 fn stream_viewer(bw: &BitWriter, start: u32, mut end: u32) {
     let stream_end: u32 = (bw.output.len() * 8).try_into().unwrap();
     if start >= stream_end {
@@ -347,7 +347,7 @@ fn stream_viewer(bw: &BitWriter, start: u32, mut end: u32) {
                 if i == 8 {
                     print!("{:b}", byte & 0x1)
                 } else {
-                    print!("{:b}", byte >> 7 - i & 0x1)
+                    print!("{:b}", byte >> (7 - i) & 0x1)
                 }
                 nibble += 1;
                 if nibble % 4 == 0 {
@@ -365,6 +365,6 @@ fn stream_viewer(bw: &BitWriter, start: u32, mut end: u32) {
 
 #[test]
 fn huf_encode_decode_simple() {
-    let input = "Goofy test".as_bytes();
-    //    assert_eq!(huf_decode(&huf_encode(input).unwrap()), input)
+    //let input = "Goofy test".as_bytes();
+    //assert_eq!(huf_decode(&huf_encode(input).unwrap()), input)
 }

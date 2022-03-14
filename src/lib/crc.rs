@@ -23,19 +23,19 @@ pub fn do_crc(data: &[u8]) -> u32 {
 }
 
 /// Calculate CRC over encoded blocks
-pub fn bz_stream_crc(slice_crc: &[u32]) -> u32 {
-    slice_crc.iter().fold(0, |strm_crc, &blk_crc| {
-        blk_crc ^ strm_crc << 1 | strm_crc >> 31
-    })
+pub fn do_stream_crc(stream_crc: u32, block_crc: u32) -> u32 {
+    let mut new_crc = (stream_crc << 1) | (stream_crc >> 31);
+    new_crc ^= block_crc;
+    new_crc
 }
 
 #[test]
-fn bz_stream_crc_test() {
-    assert_eq!(bz_stream_crc(&[0x12345678, 0xdeadcafe]), 0xfac5660e as u32)
+fn one_block_crc_test() {
+    assert_eq!(do_stream_crc(0x5a55c41e, 0x5a55c41e), 0x5a55c41e as u32)
 }
 #[test]
-fn bz_stream_crc_peter_test() {
-    assert_eq!(bz_stream_crc(&[0x5a55c41e]), 0x5a55c41e as u32)
+fn to_block_crc_peter_test() {
+    assert_eq!(do_stream_crc(0x5a55c41e, 0x5a55c41e), 0x5a55c41e as u32)
 }
 
 #[test]

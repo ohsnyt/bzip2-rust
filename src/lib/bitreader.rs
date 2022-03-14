@@ -14,7 +14,6 @@ pub struct BitReader {
     position: usize,
 }
 
-
 impl BitReader {
     /// Called to create a new bitReader
     pub fn new(file: File) -> Self {
@@ -30,7 +29,7 @@ impl BitReader {
     fn clean_stream(&mut self) {
         if self.used >= 8 {
             let bytes = self.used / 8;
-            self.position += bytes*8;
+            self.position += bytes * 8;
             self.used %= 8;
             self.queue.drain(..bytes);
         }
@@ -42,10 +41,21 @@ impl BitReader {
         }
     }
 
-    /// Debugging function. Report current position in the file. Message can be &str or String
-    pub fn ptr<S: AsRef<str> + std::fmt::Display>(&self, msg: S) -> usize {
-        println!("Now at bit {}, 0x{0:x} ({})", self.position + self.used, msg);
-      self.position + self.used
+    /// Debugging function. Report current position and next two bytes of bits
+    /// in the file. Message can be &str or String
+    pub fn ptr<S: AsRef<str> + std::fmt::Display>(&mut self, msg: S) -> usize {
+        self.clean_stream();
+        let mut temp: u32 =
+            (self.queue[0] as u32) << 16 | (self.queue[1] as u32) << 8 | self.queue[2] as u32;
+        temp <<= 8 + self.used;
+        temp >>= 16 ;
+        println!(
+            "Now at bit {}, {:016b} ({})",
+            self.position + self.used,
+            temp,
+            msg
+        );
+        self.position + self.used
     }
 
     /// Read 8 or less bits and return it in a u8 with leading zeros
@@ -57,21 +67,21 @@ impl BitReader {
         // Aways start with a clean slate
         self.clean_stream();
         // Get the beginning of the queue and remove the "used" bits
-        let mut out = self.queue[0] <<  (self.used % 8);
+        let mut out = self.queue[0] << (self.used % 8);
         // See if we need more bits
         if length > 8 - self.used as u32 {
             // Get a new byte, shift it right so we don't clobber the good bits
             //  and OR this new shifted byte onto the good bits we have
-            out |= self.queue[1] >>  8 - self.used;
+            out |= self.queue[1] >> (8 - self.used);
         }
         // Update how many bits we have used
         self.used += length as usize;
         // shift any excess bits
-        out >>= (8 - length) %8;
+        out >>= (8 - length) % 8;
         Ok(out)
     }
 
-    /// Read more than bits and return it in a u8 with trailing padding (0s)
+    /// Read more than 8 bits and return it in a u8 with trailing padding (0s)
     /// Not yet checking or EOF problems
     pub fn read8plus(&mut self, length: u32) -> Result<Vec<u8>, ReadError> {
         let mut out: Vec<u8> = Vec::new();
@@ -90,9 +100,9 @@ impl BitReader {
         Ok(out)
     }
 
-    // BitReader flush() flushes the remaining bits (1-7) from the buffer, padding with 0s
+    /* // BitReader flush() flushes the remaining bits (1-7) from the buffer, padding with 0s
     pub fn flush(&mut self) {
         self.used = 0;
         self.queue.clear();
-    }
+    } */
 }

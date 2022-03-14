@@ -1,6 +1,4 @@
-use std::{
-    cmp::{min, Ordering},
-};
+use std::cmp::{min, Ordering};
 
 ///Burrows-Wheeler-Transform | NEEDS WORK. Probably could be drastically sped up.
 /// receives reference to incoming block of data and
@@ -56,9 +54,9 @@ pub fn bwt_decode(key: u32, bwt_in: Vec<u8>) -> Vec<u8> {
     }
     //then build a cumulative count of frequency counts
     let mut sum = 0;
-    let mut cumulative_offsets = [0; 256];
+    let mut sum_freqs = [0; 256];
     for i in 0..256 {
-        cumulative_offsets[i] = sum;
+        sum_freqs[i] = sum;
         sum += freq[i];
     }
     //Build the transformation vector to find the next character in the original data.
@@ -66,59 +64,26 @@ pub fn bwt_decode(key: u32, bwt_in: Vec<u8>) -> Vec<u8> {
     // far down that column we need to go by getting the cumulative counts of all u8s that
     // came before this one and adding the number of identical u8s to this one that we may
     // have previously seen.
-    // Iterate through each element of the input vector and create an index based on the
-    // cumulative count of that element. Update the cumulative count so next time we go one more
+
+    // Re-use the freq count to recount frequencies in the transformation vector
+    let mut freq = [0; 256];
+    //Build the transformation vector to find the next character in the original data
     let mut t_vec = vec![0; bwt_in.len()];
     for (i, &s) in bwt_in.iter().enumerate() {
-        t_vec[cumulative_offsets[s as usize]] = i;
-        cumulative_offsets[s as usize] += 1;
+        t_vec[sum_freqs[s as usize] + freq[s as usize]] = i;
+        freq[s as usize] += 1;
     }
     // Transform the data
-    let mut orig = vec![];
+    let mut original = vec![];
     let mut key = key as usize;
     for _ in 0..bwt_in.len() {
         key = t_vec[key];
-        orig.push(bwt_in[key]);
+        original.push(bwt_in[key]);
     }
-    println!("\n\n{}", String::from_utf8(bwt_in.clone()).unwrap());
-    println!("{}", String::from_utf8(orig.clone()).unwrap());
-    orig
+    //println!("\n\n{}", String::from_utf8(bwt_in.clone()).unwrap());
+    //println!("{}", String::from_utf8(orig.clone()).unwrap());
+    original
 }
-
-/*
-// I'm going to do this by creating a hashmap to lookup the base u8 offset.
-// If you use this together with keeping track of how many similar u8s you
-// already found, you can calculate the next index number. Watch below.
-
-// first we need a freq count of symbols. We'll do this as an array.
-let mut freq = [0; 256];
-for i in 0..input.len() {
-    freq[input[i] as usize] += 1;
-}
-
-//then build my hashmap
-let mut sum = 0;
-let offset = symbols.iter().fold(HashMap::new(), |mut hm, &sym| {
-    sum += freq[sym as usize];
-    hm.insert(sym, sum);
-    hm
-}); */
-
-/*  // Reset the freq array. "Convert" the key to usize.
-freq = [0; 256];
-let mut key = key as usize;
-let end = input.len();
-let mut original = vec![0; end];
-let mut counter = 0;
-while counter < end {
-    let sym = input[key];
-    original[key as usize] = sym;
-    freq[sym as usize] += 1;
-    key = (offset.get(&sym).unwrap() + freq[sym as usize]) % end;
-    counter += 1;
-}
-println!("{}", String::from_utf8(original.clone()).unwrap());
-original */
 
 #[test]
 fn bwt_simple_encode() {
@@ -159,21 +124,21 @@ fn bwt_encode_decode() {
     //let output = bwt_decode(key, &vec);
     //assert_eq!(output, input);
 }
-
+#[test]
 fn bwt_encode_classic() {
     let input = "If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????".as_bytes();
     let output = "?fsrrdkkeaddrrffs,es???d\x01 eeiiiieeeehrppkllkp pttpphppPPIootwppppPPcccccckk iipp eeeeeeeeer'ree "
         .to_string()
         .as_bytes()
         .to_vec();
-    assert_eq!(bwt_encode(input), (24 as u32, output));
+    assert_eq!(bwt_encode(input), (24, output));
 }
-
+#[test]
 fn bwt_decode_classic() {
     let input = "?fsrrdkkeaddrrffs,es???d\x01 eeiiiieeeehrppkllkp pttpphppPPIootwppppPPcccccckk iipp eeeeeeeeer'ree ".as_bytes();
     let output = "If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????"
         .to_string()
         .as_bytes()
         .to_vec();
-    assert_eq!(bwt_encode(input), (24 as u32, output));
+    assert_eq!(bwt_encode(input), (24, output));
 }

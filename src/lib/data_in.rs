@@ -1,52 +1,33 @@
+use super::options::Verbosity::Normal;
+use super::options::{BzOpts, Verbosity::Errors};
+use super::report::report;
 use std::{
     fs::{File, Metadata},
-    io::Read,
 };
-use super::options::{Verbosity::Errors, BzOpts};
-use super::options::Verbosity::Normal;
-use super::report::report;
 
 #[derive(Debug)]
 /// Struct used for reading data. Necessary for block processing.
-pub struct Data<'a> {
-    f_in: File,
-    meta: Metadata,
-    size: usize,
-    buf: Vec<u8>,
-    data_left: usize,
-    bz_opts: &'a BzOpts,
+pub struct Data {
+    pub f_in: File,
+    pub meta: Metadata,
+    pub size: usize,
+    pub data_left: usize,
+    //pub is_last: bool,
 }
 /// Instantiate new data input instance, setting up output buffer.
-impl<'a> Data<'a> {
-    pub fn new(f_in: File, meta: Metadata, size: usize, data_left: usize, bz_opts: &'a BzOpts) -> Self {
+impl Data {
+    pub fn new(
+        f_in: File,
+        meta: Metadata,
+        size: usize,
+        data_left: usize,
+    ) -> Self {
         Self {
             f_in,
             meta,
             size,
-            buf: vec![0; size],
             data_left,
-            bz_opts,
-        }
-    }
-}
-
-impl Data<'_> {
-    /// Read exactly one block of data (or less, if eof) for processing.
-    /// Return data and bool where false == more data to go, true == all done.
-    pub fn read(&mut self) -> (Option<&Vec<u8>>, bool) {
-        if self.data_left == 0 {return None}
-        if self.data_left < self.size {
-            self.size = self.data_left;
-            self.buf.clear();
-            self.buf = vec![0; self.size]
-        };
-        self.data_left -= self.size;
-        match self.f_in.read_exact(&mut self.buf) {
-            Ok(_) => return (Some(self.buf.as_ref()), self.data_left == 0),
-            Err(_) => {
-                report(self.bz_opts, Errors, "Error reading input file.");
-                return (None, True);
-            }
+            //is_last: false,
         }
     }
 }
@@ -54,12 +35,11 @@ impl Data<'_> {
 /// Initialize file reading - get result as a a Data object, which supports reading
 /// (by iteration) data by block size defined in bz_opts. Standard IO errors are reported
 /// and returned.
-pub fn init(bz_opts: &BzOpts) -> Result<Data<'_>, std::io::Error> {
+pub fn init(bz_opts: &BzOpts) -> Result<Data, std::io::Error> {
     //first, get the file name from the options
-    let mut f = String::new();
+    let mut f = "test.txt".to_string();
     if bz_opts.file.is_none() {
-        report(&bz_opts, Normal, "Using >test.txt< as the input file.");
-        f = "test.txt".to_string()
+        report(bz_opts, Normal, "Using >test.txt< as the input file.");
     } else {
         f = bz_opts.file.as_ref().unwrap().to_string()
     }
@@ -68,7 +48,7 @@ pub fn init(bz_opts: &BzOpts) -> Result<Data<'_>, std::io::Error> {
         Ok(file) => file,
         Err(e) => {
             report(
-                &bz_opts,
+                bz_opts,
                 Errors,
                 &format!("Cannot read from the file {}", f),
             );
@@ -80,7 +60,7 @@ pub fn init(bz_opts: &BzOpts) -> Result<Data<'_>, std::io::Error> {
         Ok(m) => m,
         Err(e) => {
             report(
-                &bz_opts,
+                bz_opts,
                 Errors,
                 &format!("Cannot obtain metadata on {}", f),
             );
@@ -92,6 +72,7 @@ pub fn init(bz_opts: &BzOpts) -> Result<Data<'_>, std::io::Error> {
         .min((bz_opts.block_size as u32 * 100_000).into())
         .try_into()
         .unwrap();
-        let data_left = meta.len().try_into().unwrap();
-    Ok(Data::new(f_in, meta, size, data_left, bz_opts))
+    let data_left:usize = meta.len() as usize - size;
+    
+    Ok(Data::new(f_in, meta, size, data_left))
 }

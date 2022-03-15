@@ -20,14 +20,16 @@
                 }
             },
             "args": [
-                //"/Users/david/Downloads/timeseries_export.csv",
+                "/Users/david/Downloads/timeseries_export.bz2",
+                //"-d",
+                //"/Users/david/Downloads/timeseries_export2.csv",
                 //"-z",
-                //"-k",
-                //"/Users/david/Downloads/Attorney.pdf",
-                //"-z",
-                "src/Peter.bz2",
+                //"src/she_sells.txt.bz2",
                 "-d",
-                "1",
+                "-k",
+                //"src/Peter.bz2",
+                //"-d",
+                //"1",
                 "-v4",],
             "cwd": "${workspaceFolder}"
         },

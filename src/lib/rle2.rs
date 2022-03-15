@@ -42,6 +42,9 @@ pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
             zeros += 1;
         } else {
             if zeros > 0 {
+                if zeros > 20 {
+                    println! {"{}",zeros};
+                };
                 out.append(&mut rle2_encode_runs(zeros, &mut freq_out));
                 zeros = 0;
             }
@@ -80,8 +83,8 @@ fn rle2_encode_runs(r: u32, counts: &mut [u32]) -> Vec<u16> {
     out
 }
 
-pub fn rle2_decode(v: &[&u16]) -> Vec<u8> {
-    let mut zeros = 0;
+pub fn rle2_decode(v: &[u16]) -> Vec<u8> {
+    let mut zeros: i32 = 0;
     let mut bit_multiplier = 1;
     let mut out: Vec<u8> = Vec::with_capacity(v.len() * 3 / 2); // assume about 50% expansion space
                                                                 // let mut i = 0; //t  testing
@@ -89,7 +92,7 @@ pub fn rle2_decode(v: &[&u16]) -> Vec<u8> {
         if zeros > 2 * 1024 * 1024 {
             std::process::exit(100)
         } // Got a problem, pinkie.
-        match **mtf {
+        match *mtf {
             RUNA => {
                 zeros += bit_multiplier;
                 bit_multiplier *= 2;
@@ -104,31 +107,54 @@ pub fn rle2_decode(v: &[&u16]) -> Vec<u8> {
                         out.extend(vec![0; 1000]);
                         zeros -= 1000;
                     }
-                    out.extend(vec![0; zeros]);
-                    // // testing
-                    // print!("{:?} ", vec![0; zeros]);
-                    // if i >= 53 {
-                    //     println!("MTF: {}", mtf);
-                    // }
-                    // i += zeros;
-                    // // end testing
+                    out.extend(vec![0; zeros as usize]);
                     bit_multiplier = 1;
                     zeros = 0;
                 }
                 out.push(n as u8 - 1);
-                // // testing
-                // print!("{:?} ", n as u8 - 1);
-                // if i >= 53 {
-                //     println!("MTF: {}", mtf);
-                // }
-                // i += 1;
-                // // end testing
             }
         }
     }
-    // out.pop(); // pop the EOB from the end
     if zeros > 0 {
         out.extend(vec![0; zeros as usize]);
     };
     out
+}
+
+#[test]
+fn rle2_run_encode_55() {
+    let mut counts = vec![0, 0];
+    assert_eq!(rle2_encode_runs(55, &mut counts), [0, 0, 0, 1, 1])
+}
+
+#[test]
+fn rle2_run_encode_8() {
+    let mut counts = vec![0, 0];
+    assert_eq!(rle2_encode_runs(8, &mut counts), [1, 0, 0])
+}
+
+#[test]
+fn rle2_run_encode_5() {
+    let mut counts = vec![0, 0];
+    assert_eq!(rle2_encode_runs(5, &mut counts), [0, 1])
+}
+
+#[test]
+fn rle2_zero_run_roundtrip_a() {
+    let n = 473;
+    let mut counts = vec![0, 0];
+    assert_eq!(
+        rle2_decode(&rle2_encode_runs(n, &mut counts)),
+        vec![0; n as usize]
+    )
+}
+
+#[test]
+fn rle2_zero_run_roundtrip_b() {
+    let n = 472;
+    let mut counts = vec![0, 0];
+    assert_eq!(
+        rle2_decode(&rle2_encode_runs(n, &mut counts)),
+        vec![0; n as usize]
+    )
 }

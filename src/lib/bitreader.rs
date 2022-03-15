@@ -43,17 +43,25 @@ impl BitReader {
 
     /// Debugging function. Report current position and next two bytes of bits
     /// in the file. Message can be &str or String
-    pub fn ptr<S: AsRef<str> + std::fmt::Display>(&mut self, msg: S) -> usize {
+    pub fn ptr<S: AsRef<str> + std::fmt::Display>(
+        &mut self,
+        name: S,
+        width: usize,
+        msg: S,
+    ) -> usize {
+        let width = width.min(16);
         self.clean_stream();
         let mut temp: u32 =
             (self.queue[0] as u32) << 16 | (self.queue[1] as u32) << 8 | self.queue[2] as u32;
         temp <<= 8 + self.used;
-        temp >>= 16 ;
+        temp >>= 16 + (16 - width);
         println!(
-            "Now at bit {}, {:016b} ({})",
-            self.position + self.used,
+            "\n[{}.{}] {}, {:0width$b} ({})",
+            self.position / 8,
+            self.position % 8 + self.used,
+            name,
             temp,
-            msg
+            msg,
         );
         self.position + self.used
     }

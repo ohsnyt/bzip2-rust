@@ -12,7 +12,7 @@ use super::{
 };
 use std::{
     collections::HashMap,
-    fs::File,
+    fs::{File, OpenOptions},
     io::{self, Write},
 };
 
@@ -36,20 +36,22 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         }
     };
 
-    //br.ptr("Looking for signature");
     // Look for a valid signature.
     if br.read8plus(24).unwrap() != "BZh".as_bytes() {
         report(opts, Errors, &format!("{} is not a Bzip2 file.", f));
         return Ok(()); // Probably should be an error!!
     }
-    // We don't care about the block size byte. Skip data this byte.
-    let _ = br.read8(8);
+    report(opts, Chatty, "Found a valid bzip2 signature.");
+
+    // Use the block size to validate the max number of selectors.
+    let block_size = br.read8(8).unwrap() - 0x30;
+    println!("Block size is {}", block_size);
 
     let mut block_counter = 0;
     'block: loop {
         block_counter += 1;
-        //br.ptr("Looking for block header");
-        // Block header or footer should come next.
+
+        // Block header (or footer) should come next.
         let header_footer = br.read8plus(48).unwrap();
         //check for footer first
         if header_footer == vec![0x17, 0x72, 0x45, 0x38, 0x50, 0x90] {
@@ -59,16 +61,27 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             report(opts, Errors, "Cannot find the start of the first block.");
             return Ok(()); // Probably should be an error!!
         }
+        report(
+            opts,
+            Chatty,
+            format!("Found a valid header for block {}.", block_counter),
+        );
 
-        //br.ptr("Looking for crc");
+        // Get crc
         let block_crc = u32::from_be_bytes(br.read8plus(32).unwrap().try_into().unwrap());
-        let _randomized = br.read8(1).unwrap(); // Get the randomized flag
+        report(opts, Chatty, format!("CRC is {}.", block_crc));
+
+        // Get randomize bit - should almost always be zero
+        let rand = br.read8(1).unwrap(); // Get the randomized flag
+        report(opts, Chatty, format!("Randomized is set to {}.", rand));
+
+        // Get key (origin pointer)
         let key_vec: Vec<u8> = br.read8plus(24).unwrap();
-        let key = (key_vec[0] as u32) << 24 | (key_vec[1] as u32) << 16 | key_vec[2] as u32;
+        let key = (key_vec[0] as u32) << 16 | (key_vec[1] as u32) << 8 | key_vec[2] as u32;
+        report(opts, Chatty, format!("Key is {}.", key));
         drop(key_vec);
 
         // Read the Symbol Map
-        //br.ptr("Symbol Map");
         let sym_map1: u16 = u16::from_be_bytes(br.read8plus(16).unwrap().try_into().unwrap());
         let mut sym_map: Vec<u16> = vec![sym_map1];
         for _ in 0..sym_map1.count_ones() {
@@ -81,32 +94,52 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let symbol_set = decode_sym_map(&sym_map);
         //  and count how many symbols are in the symbol map
         let symbols = symbol_set.len() + 2; // I'm not sure +2 is needed. Watch.
+        report(
+            opts,
+            Chatty,
+            format!("Found {} symbols for block {}.", symbols, block_counter),
+        );
 
         // Read NumTrees
-        let n_groups = br.read8(3).unwrap();
+        br.ptr("num_tables", 3, "2-6");
+        let num_tables = br.read8(3).unwrap();
+        report(opts, Chatty, format!("Found {} tables in use.", num_tables));
 
         // Read NumSels
+        br.ptr("num_sels", 15, "0-2000");
         let tmp = br.read8plus(15).unwrap();
-        let num_sels: u32 = (tmp[0] as u32) << 8 | tmp[1] as u32;
+        let num_sels: u32 = (tmp[0] as u32) << 7 | tmp[1] as u32;
+        report(
+            opts,
+            Chatty,
+            format!(
+                "Found {} selectors for block {}. ({} max.)",
+                num_sels,
+                block_counter,
+                block_size as u32 * 100000 / 50
+            ),
+        );
 
-        //br.ptr("Read Selectors");
         // Read Selectors
-        let mut selector_map = vec![];
+        br.ptr("table_map", 50, "Variable size");
+        let mut table_map = vec![];
+        let mut group: u8 = 0;
         for _ in 0..num_sels {
-            let mut group: u8 = 0;
             while br.read8(1).unwrap() == 1 {
                 group += 1;
             }
-            selector_map.push(group);
+            table_map.push(group);
+            group = 0;
         }
+        debug_msg(format!("Table map is {:?}", table_map));
 
         // Get the MTF values for the selectors
         let mut pos = vec![];
-        for v in 0..n_groups {
+        for v in 0..num_tables {
             pos.push(v);
         }
-        for selector in selector_map.iter_mut() {
-        //for i in 0..num_sels as usize {
+        for selector in table_map.iter_mut() {
+            //for i in 0..num_sels as usize {
             let mut v = *selector as usize;
             let tmp = pos[v];
             while v > 0 {
@@ -115,15 +148,20 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             }
             pos[0] = tmp;
             *selector = tmp;
+            //debug_msg(format!("Pushing selector value of {} (should be 0-{})",selector, num_sels));
         }
+        report(
+            opts,
+            Chatty,
+            format!("Decoded the selectors for the {} tables.", num_tables),
+        );
 
         // Read the Huffman symbol length maps
-        //br.ptr("Should be 286"); // Should be 286, origin of first tree. Next 5 bits should be 01000
         let mut maps: Vec<Vec<(u16, u32)>> = Vec::new();
         let mut diff: i32 = 0;
-        for _ in 0..n_groups {
+        for _ in 0..num_tables {
             let mut map: Vec<(u16, u32)> = Vec::new();
-            //br.ptr("Tree started"); //
+            br.ptr("origin", 5, "Base for next huffman tree"); //
             let mut l: i32 = br.read8(5).unwrap() as i32;
             // THIS IS SO STUPID. THIS DOES NOT SET THE FIRST CODE, BUT MERELY SETS THE OFFSET.
             // IT REQUIRES THE NEXT BIT TO BE 0 SO THAT IT CAN BE PUSHED AS A CODE.
@@ -134,6 +172,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                     if bit == 0 {
                         //br.ptr(format!("Added index {}, length {}", symbol, (l + diff))); // debugging
                         map.push((symbol, (l + diff) as u32));
+                        debug_msg(format!("Pushing {} with width of {}", symbol, (l + diff) as u32));
                         l += diff;
                         diff = 0;
                         break;
@@ -178,15 +217,20 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let mut fname = opts.file.as_ref().unwrap().clone();
         fname = fname.split(".bz2").map(|s| s.to_string()).collect(); // strip off the .bz2
         fname.push_str(".txt"); // for my testing purposes.
-        let mut f_out = File::create(&fname)?;
+        let mut f_out = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .append(true)
+            .open(&fname)?;
 
         // Now read chunks of 50 symbols with the huffman tree selected by the selector vec
         // read the min_len of bits, then a bit at a time more until we get a symbol
         //let mut tmp = br.read8(min_len).unwrap() as u32;
 
-        for &symbol in selector_map.iter().take(num_sels as usize) {
+        for &selector in table_map.iter().take(num_sels as usize) {
+            debug_msg(format!("Read symbols for block {}", selector +1));
             let mut block_byte_count = 0;
-            let idx = symbol as usize;
+            let idx = selector as usize;
             let mut bit_count: u32 = 0;
             let mut bits = 0;
             let eob = (maps[idx].len() - 1) as u16; // last symbol in the symbol map is eob
@@ -200,7 +244,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         // found end of block
                         break;
                     }
-                    out.push(sym);
+                    out.push(*sym);
                     bits = 0;
                     bit_count = 0;
                     block_byte_count += 1;
@@ -240,8 +284,18 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         stream_crc = do_stream_crc(stream_crc, this_crc);
 
         // Done!! Write the data
-        f_out.write_all(&rle1_v)?;
-        report(opts, Chatty, "Wrote a block of data.");
+        let result = f_out.write(&rle1_v);
+        report(
+            opts,
+            Chatty,
+            format!("Wrote a block of data with {:?}.", result),
+        );
+        let result = f_out.flush();
+        report(
+            opts,
+            Chatty,
+            format!("Wrote a block of data with {:?}.", result),
+        );
     }
 
     // Now get the block crc and evaluate it later
@@ -256,4 +310,11 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     report(opts, Chatty, "Wrote the decompressed file.\n");
 
     Ok(())
+}
+
+fn debug_view<T: Into<u64> + Copy>(name: &str, value: T, width: usize) {
+    println!("\n---{}: {:0width$b}\n", name, value.into())
+}
+fn debug_msg<S: AsRef<str> + std::fmt::Display>(msg: S) {
+    println!("\n---{}", msg)
 }

@@ -24,25 +24,26 @@ pub fn compress_block(opts: &mut BzOpts, data: &[u8], bw: &mut BitWriter, block:
     bw.out24(0x01_000000); // One zero bit
 
     // Before we can write the key, we need to do the BWT
-    let data = rle1_encode(data);
-    let (key, data) = bwt_encode(&data);
+    let rle_data = rle1_encode(data);
+
+    // Remember the data length for reporting later
+    let block_length = data.len();
+    // We don't need data any more.
+    drop(data);
+
+    let (key, bwt_data) = bwt_encode(&rle_data);
 
     // Now that we have the key, we can write the 24bit BWT key
     bw.out24(0x18_000000 | key); // and 24 bit key
 
     // Now send the BTW data off for the MTF transform...
     //  MTF also returns the symbol map that we need for decompression.
-    let (mdata, symbol_map) = mtf_encode(&data);
-
-    // Remember the data length for reporting later
-    let block_length = 0;
-
-    // We don't need data any more.
-    drop(data);
+    let (mdata, symbol_map) = mtf_encode(&bwt_data);
+    // We don't need bwt_data any more.
+    drop(bwt_data);
 
     // ...followed by the RLE2 transform. These two may later be combined.
     let (rle2_data, freq_out, eob) = rle2_encode(&mdata);
-
     // We don't need mdata any more.
     drop(mdata);
 

@@ -71,11 +71,11 @@ pub fn huf_encode(
     // just shy of the limit rather than just over the limit.
     let mut table_index = 0;
     let mut portion = 0;
-    for (i, freq) in freq_out.iter().enumerate().take(eob as usize){
+    for (i, freq) in freq_out.iter().enumerate().take(eob as usize) {
         let f = freq;
         if portion + f > portion_limit && (table_index == 3 || table_index == 5) {
             tables[table_index][i] = 0;
-            table_index += 1; 
+            table_index += 1;
             portion = 0;
         } else {
             portion += f;
@@ -240,49 +240,58 @@ pub fn huf_encode(
         };
     }
 
-    // Now push out the trees. We need to convert length data to code data first.
+    // Now create the huffman codes. We need to convert lengths to code data.
     // (And later we will want to use the BitWriter with those codes also.)
     let mut bw_codes = vec![];
 
     for table in tables {
         // Create a vec of lengths so we can sort it by length
-        let mut sym_len: Vec<(u32, u16)> = vec![];
+        let mut len_sym: Vec<(u32, u16)> = vec![];
         for (i, &t) in table.iter().enumerate().take(eob as usize) {
-            sym_len.push((t, i as u16));
+            len_sym.push((t, i as u16));
         }
-        sym_len.sort_unstable(); // IF FAILS, use regular sort
+        len_sym.sort_unstable(); // IF FAILS, use regular sort
 
-        // Get the minimum length in use so we can create the "last code" used
-        // Lastcode contains the 32bit length and a 32 bit code.
-        let mut last_code: (u32, u32) = (sym_len[0].0, 0);
+        // Get the minimum length in use so we can create the "next code"
+        // Next_code contains the 32bit length from len_sym and a 32 bit code.
+        // The code is the bitcode (1-17 bits long) used by the huffman coding
+        // bitstream.
+        let mut next_code: (u32, u32) = (len_sym[0].0, 0);
 
         // Create a vec that we can push to so we can store the codes.
-        let mut codes = vec![];
+        let mut sym_codes = vec![];
 
-        // For each code (sorted by length), increment the code by one.
+        // For each len_sym tuple (now sorted by length), increment the next_code by one.
         // When the length changes, do a shift left for each increment and continue.
-        for (len, sym) in &sym_len {
-            if *len != last_code.0 {
-                last_code.1 <<= len - last_code.0;
-                last_code.0 = *len;
+        for (len, sym) in &len_sym {
+            if *len != next_code.0 {
+                next_code.1 <<= len - next_code.0;
+                next_code.0 = *len;
             }
             // Take a moment to store a version for the bw.out24 format
-            bw_codes.push((*sym, len << 24 | last_code.1));
-            // And push the code for encoding below.
-            codes.push((*sym, last_code.1));
+            // We store the length in the most significant 8 bits.
+            // bits: 01234567_XXXXXX_0123456780123456
+            // store:length.._blank._17-bit-code.....
+            bw_codes.push((*sym, len << 24 | next_code.1));
 
-            last_code.1 += 1;
+            // And then push the code for encoding below.
+            sym_codes.push((*sym, next_code.1));
+
+            // Increment the next_code.1 counter to generate the next code
+            next_code.1 += 1;
         }
-        // codes now contains all the bit codes and symbols for the used symbols in this table
-
-        // Time to send out lengths (not codes) for decoding
+        
+        // Sym_codes now contains all the bit symbols and codes in this table
         // These now need to be sorted by symbol, not length
-        sym_len.sort_by(|a, b| a.1.cmp(&b.1));
-        let mut origin = sym_len[0].0;
+        len_sym.sort_by(|a, b| a.1.cmp(&b.1));
+
+        // We first write out the origin code length for this table
+        let mut origin = len_sym[0].0;
         //put out the origin as a five bit int
         bw.out24((5) << 24 | origin as u32);
-        // all subsequent lengths are computed from the origin
-        for entry in sym_len.iter() {
+
+        // All lengths are relative from the last, starting from the origin
+        for entry in len_sym.iter() {
             let (l, _) = entry;
             let mut delta = *l as i32 - origin as i32;
             origin = *l;
@@ -305,15 +314,16 @@ pub fn huf_encode(
         }
     }
     //view this tree data
-    //stream_viewer(bw, 286, 385);
+    //stream_viewer(bw, 288, 408);
     //stream_viewer(bw, 386, 485);
 
-    // Now the data
+    // Now send the data. Symbol is basically an index to the codes.
     for symbol in input {
         bw.out24(bw_codes[*symbol as usize].1);
     }
-    //stream_viewer(bw, 408, 823);
+    stream_viewer(bw, 560, 1823);
 
+    // All done
     Ok(())
 }
 

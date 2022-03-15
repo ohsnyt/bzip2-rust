@@ -1,4 +1,4 @@
-use std::fs::{File, self};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 
 use super::bitwriter::BitWriter;
@@ -67,16 +67,27 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.file.as_ref().unwrap().clone();
     fname.push_str(".bz2");
-    let mut f_out = File::create(&fname)?;
+    let mut f_out = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .append(true)
+        .open(&fname)?;
 
     //----- Loop through blocks of data and process it.
     loop {
+        // set an appropriate sized buffer for the block size
         let mut buffer = vec![0_u8; (opts.block_size as usize) * 100000.min(fin_end as usize)];
-        fin.read_exact(&mut buffer)?;
-        fin_end -= buffer.len();
-        if buffer.len() < (opts.block_size as usize) * 100000 {
+        // read data, which may read much less than the buffer length
+        let bytes_read = fin.read(&mut buffer)?;
+        // adjust the buffer length down to what we read.
+        buffer.truncate(bytes_read);
+        // check if we are at the end of the input file (fin). If so, is_last = true.
+        fin_end -= bytes_read;
+        if fin_end == 0 {
             next_block.is_last = true
         }
+
+        // update the block sequence counter
         next_block.seq += 1;
         report(opts, Chatty, format!("Starting block {}", &next_block.seq));
         next_block.block_crc = do_crc(&buffer);
@@ -91,17 +102,20 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
             opts,
             Chatty,
             format!(
-                "Wrote block. Length is {} bytes. CRC is {:08x}",
+                "Wrote block. Bitstream length is {} bytes. CRC is {:08x}",
                 &bw.output.len(),
                 &next_block.block_crc
             ),
         );
+        // clear the output buffer
         bw.output.clear();
 
-        // Exit if we are all done.
+        // Exit if we are at the end of the file, else loop again.
         if next_block.is_last {
             break;
         }
+
+        // clear the buffer just to be sure and go read again.
         buffer.clear();
     }
 

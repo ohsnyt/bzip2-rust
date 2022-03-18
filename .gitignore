@@ -1,2 +1,4 @@
-target/*
-
+# Ignore everything in the target directory
+target/
+*.txt
+*.bz2

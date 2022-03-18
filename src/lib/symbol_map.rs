@@ -46,12 +46,12 @@ fn encode_symbol_map_test() {
     let mut x = "Making a silly test.".as_bytes().to_vec();
     x.sort_unstable();
     x.dedup();
-    let idx = vec![22016, 32770, 4, 17754, 6208];
+    let idx = vec![11008, 32770, 4, 17754, 6208];
     assert_eq!(idx, encode_sym_map(&x))
 }
 #[test]
 fn decode_symbol_map_test() {
-    let idx = vec![22016, 32770, 4, 17754, 6208];
+    let idx = vec![11008, 32770, 4, 17754, 6208];
     let mut compare = "Making a silly test.".as_bytes().to_vec();
     compare.sort_unstable();
     compare.dedup();

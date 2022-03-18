@@ -1,7 +1,7 @@
 /// bzip2 options - structs and impls and read & parse command line args
 use std::{cmp::PartialOrd, fmt::Display, fmt::Formatter};
 
-/// Used for logs and reporting
+/// Used for logs and reporting. CHANGING to log crate. 17 March 2022
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Verbosity {
     Quiet,
@@ -10,8 +10,7 @@ pub enum Verbosity {
     Chatty,
 }
 /// Verbosity: Used for logs and reporting
-pub type V = Verbosity;
-impl Display for V {
+impl Display for Verbosity {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -68,7 +67,7 @@ pub struct BzOpts {
     pub force_overwrite: bool,
     /// Location where output is sent
     pub output: Output,
-    /// Current status of progress
+    /// Current status of progress - not yet used
     pub status: Status,
 }
 
@@ -78,7 +77,7 @@ impl BzOpts {
         Self {
             file: None,
             block_size: 9,
-            verbosity: V::Normal,
+            verbosity: Verbosity::Normal,
             op_mode: Mode::Test,
             keep_input_files: false,
             work_factor: WorkFactor::Normal,

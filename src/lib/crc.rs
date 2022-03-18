@@ -8,43 +8,25 @@ crc be the crc shifted left 8 then XORed wiht a lookup from the CRC constant tab
 is based on the crc value shifted right 24 bits and XORed with the byte. Then return the
 inverse of the resulting number.
 
-a version using for loop is below. It runs in the same time.
+a version using a for loop is below. It runs in the same time, but may be more readable
     let mut crc = 0xffffffff;
     for b in &input {
         crc = (crc << 8) ^ BZ2_CRC32_TABLE[((crc >> 24) ^ (*b as u32)) as usize];
     }
     !crc*/
 
-/// Calculate CRC in BZIP style on entire raw input file
+/// Calculate CRC in BZIP style on entire each block
 pub fn do_crc(data: &[u8]) -> u32 {
     !data.iter().fold(0xffffffff, |crc, b| {
         (crc << 8) ^ BZ2_CRC32_TABLE[((crc >> 24) ^ (*b as u32)) as usize]
     })
 }
 
-/// Calculate CRC over encoded blocks
+/// Join Block CRC to Stream CRC after each block
 pub fn do_stream_crc(stream_crc: u32, block_crc: u32) -> u32 {
     let mut new_crc = (stream_crc << 1) | (stream_crc >> 31);
     new_crc ^= block_crc;
     new_crc
-}
-
-#[test]
-fn one_block_crc_test() {
-    assert_eq!(do_stream_crc(0x5a55c41e, 0x5a55c41e), 0x5a55c41e as u32)
-}
-#[test]
-fn to_block_crc_peter_test() {
-    assert_eq!(do_stream_crc(0x5a55c41e, 0x5a55c41e), 0x5a55c41e as u32)
-}
-
-#[test]
-fn crc_test() {
-    assert_eq!(0x8e9a7706, do_crc("Hello, world!".as_bytes()))
-}
-#[test]
-fn crc_peter_test() {
-    assert_eq!(0x5a55c41e, do_crc("If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????".as_bytes()))
 }
 
 const BZ2_CRC32_TABLE: [u32; 256] = [
@@ -305,3 +287,22 @@ const BZ2_CRC32_TABLE: [u32; 256] = [
     0xb5365d03u32,
     0xb1f740b4u32,
 ];
+
+#[test]
+fn one_block_crc_test() {
+    assert_eq!(do_stream_crc(0, 0x5a55c41e), 0x5a55c41e)
+}
+
+#[test]
+fn double_block_crc_test() {
+    assert_eq!(do_stream_crc(0x5a55c41e, 0x5a55c41e), 0xeefe4c22)
+}
+
+#[test]
+fn crc_test() {
+    assert_eq!(0x8e9a7706, do_crc("Hello, world!".as_bytes()))
+}
+#[test]
+fn crc_peter_test() {
+    assert_eq!(0x5a55c41e, do_crc("If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????".as_bytes()))
+}

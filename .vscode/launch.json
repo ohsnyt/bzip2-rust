@@ -20,17 +20,20 @@
                 }
             },
             "args": [
-                "/Users/david/Downloads/timeseries_export.bz2",
+                //"/Users/david/Downloads/timeseries_export.bz2",
                 //"-d",
                 //"/Users/david/Downloads/timeseries_export2.csv",
                 //"-z",
-                //"src/she_sells.txt.bz2",
-                "-d",
+                "src/she_sells.txt",
+                //"src/she_sells_real.txt",
+                //"src/she_sells_good_me_d.bz2",
+                "-z",
                 "-k",
                 //"src/Peter.bz2",
-                //"-d",
+                //"-z",
                 //"1",
-                "-v4",],
+                "-v4",
+            ],
             "cwd": "${workspaceFolder}"
         },
         {

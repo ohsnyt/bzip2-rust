@@ -1,4 +1,6 @@
-/// Creates a bitstream for output. Although output is accessible at any time, it 
+use log::trace;
+
+/// Creates a bitstream for output. Although output is accessible at any time, it
 /// is best to call Flush before reading the "final" output.
 pub struct BitWriter {
     pub output: Vec<u8>,
@@ -25,15 +27,23 @@ impl BitWriter {
             self.q_bits -= 8; //adjust the count of bits left in the queue
         }
     }
-    /// Takes a 32 bit word in the format of a u8 as bit count in the most
-    /// significant bits of the word plus 0-24 bits of right aligned
-    /// binary encoded data and puts it on the stream.
-    /// Primarily used to handle odd size data.
-    /// eg 0000100_00000000_00000000_00000010, which writes out 0010.
+
+    /*
+    out24 takes a u32.  The 8 most significant bits of the word indicate how
+    many of the least significant bits will be written. Those bits must be aligned to
+    the least signficant bit. (The middle bits are masked out.)
+    binary encoded data and puts it on the stream.
+
+    It is primarily used to write odd size data.
+    Eg 0000100_00000000_00000000_00000010 writes out 0010.
+    */
+    /// Writes 0-24 bits encoded with the number of bits to write in the most 
+    /// significant byte of a 32 bit word.
     pub fn out24(&mut self, data: u32) {
         let depth = (data >> 24) as u8; //get bit length
         self.queue <<= depth; //shift queue by bit length
-        self.queue |= (data & 0x00ffffff) as u64; //add data portion to queue
+        self.queue |= (data & (0xffffffff >> (32 - depth))) as u64; //add data portion to queue
+        trace!("Writing {} bits: {:0width$b}", depth, data & (0xffffffff >> (32 - depth)), width = depth as usize );
         self.q_bits += depth; //update depth of queue bits
         self.write_stream();
     }
@@ -62,7 +72,7 @@ impl BitWriter {
         self.write_stream();
     }
 
-    /// Flushes the remaining bits (1-7) from the buffer, padding with 0s in the least 
+    /// Flushes the remaining bits (1-7) from the buffer, padding with 0s in the least
     /// signficant bits
     pub fn flush(&mut self) {
         if self.q_bits > 0 {
@@ -71,5 +81,10 @@ impl BitWriter {
             self.queue = 0; //clear the queue
             self.q_bits = 0; //clear the queue bit counter
         }
+    }
+
+    /// Debugging function to return the number of bytes.bits output so far
+    pub fn loc(&self) -> String {
+        format! {"[{}.{}]",(self.output.len() * 8 + self.q_bits as usize)/8, (self.output.len() * 8 + self.q_bits as usize)%8}
     }
 }

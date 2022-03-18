@@ -26,6 +26,7 @@ impl BitReader {
     }
 
     /// Internal bitstream read function that tries to keep the read buffer in good shape
+    /// NOTE: Reading is not done in buffered chunks properly
     fn clean_stream(&mut self) {
         if self.used >= 8 {
             let bytes = self.used / 8;
@@ -35,35 +36,15 @@ impl BitReader {
         }
         if self.queue.len() < 500 {
             let mut buf = Vec::new();
-            //buf.reserve(50000);
+            //buf.reserve(50000); // I need to find a better way to read chunks
             self.file.read_to_end(&mut buf).expect("oops"); // needs better error msg!
             self.queue.append(&mut buf);
         }
     }
 
-    /// Debugging function. Report current position and next two bytes of bits
-    /// in the file. Message can be &str or String
-    pub fn ptr<S: AsRef<str> + std::fmt::Display>(
-        &mut self,
-        name: S,
-        width: usize,
-        msg: S,
-    ) -> usize {
-        let width = width.min(16);
-        self.clean_stream();
-        let mut temp: u32 =
-            (self.queue[0] as u32) << 16 | (self.queue[1] as u32) << 8 | self.queue[2] as u32;
-        temp <<= 8 + self.used;
-        temp >>= 16 + (16 - width);
-        println!(
-            "\n[{}.{}] {}, {:0width$b} ({})",
-            self.position / 8,
-            self.position % 8 + self.used,
-            name,
-            temp,
-            msg,
-        );
-        self.position + self.used
+    /// Debugging function. Report current position.
+    pub fn loc(&mut self) -> String {
+        format!("[{}.{}]", (self.position + self.used) / 8, (self.position  + self.used)% 8,)
     }
 
     /// Read 8 or less bits and return it in a u8 with leading zeros
@@ -107,10 +88,4 @@ impl BitReader {
         }
         Ok(out)
     }
-
-    /* // BitReader flush() flushes the remaining bits (1-7) from the buffer, padding with 0s
-    pub fn flush(&mut self) {
-        self.used = 0;
-        self.queue.clear();
-    } */
 }

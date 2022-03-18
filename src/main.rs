@@ -3,10 +3,27 @@
 //#![warn(missing_docs)]
 //#![warn(missing_debug_implementations)]
 //#![allow(unused_variables)]
+use std::io;
 
 mod lib;
+use lib::options::BzOpts;
+use lib::compress::compress;
+use lib::decompress::decompress;
+
+use log::{LevelFilter, warn};
+use simplelog::{TermLogger, TerminalMode, Config };
+
 
 fn main() -> io::Result<()> {
+    // Available log levels are Error, Warn, Info, Debug, Trace
+    TermLogger::init(
+        LevelFilter::Trace,
+        Config::default(),
+        TerminalMode::Stdout,
+        simplelog::ColorChoice::AlwaysAnsi,
+    )
+    .unwrap();
+
     let mut options = BzOpts::new();
     lib::cli::init_bz_opts(&mut options);
 
@@ -21,8 +38,3 @@ fn main() -> io::Result<()> {
 /*-------------------------------------------------------------*/
 /*--- public structs, enums and functions for the library   ---*/
 
-use std::io;
-
-use crate::lib::options::BzOpts;
-use lib::compress::compress;
-use lib::decompress::decompress;

@@ -20,11 +20,12 @@ However it proved to require lots of lookups through BtreeMaps. I have moved bac
 hopes of signficant speed advantages of direct indexing instead of searches.)
 */
 
-//use super::report::report;
+use log::{error, trace};
+
 pub(crate) const RUNA: u16 = 0;
 pub(crate) const RUNB: u16 = 1;
 
-/// Does RLE only on character 0 u8. Data is encoded in a unique Bzip2 way.
+/// Does run-length-encoding only on byte 0_u8. Output is encoded in a unique Bzip2 way.
 pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
     let mut zeros: u32 = 0;
     // Rarely will rle2 expand the mtf data, so assume the same output size.
@@ -38,25 +39,41 @@ pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
     // shift all other indexes up one
     // count frequencies
     for &el in v.iter() {
+        // if we find a zero
         if el == 0 {
+            // increment the counter, even if we only find one of them
             zeros += 1;
+            // and go look for more. Otherwise...
         } else {
+            // We didn't find a zero. So If we have any pending zeros to put out
             if zeros > 0 {
+                // for debugging purposes, report more than 20 in a row
                 if zeros > 20 {
-                    println! {"{}",zeros};
+                    trace! {"{}",zeros};
                 };
+                // write out the pending zeros using the special bzip2 coding
                 out.append(&mut rle2_encode_runs(zeros, &mut freq_out));
+                // and reset the zeros counter
                 zeros = 0;
             }
-            let val = el as u16 + 1;
-            out.push(val);
-            freq_out[val as usize] += 1;
-            eob = eob.max(val);
+            // All non-zeros are incremented by 1 to get past the RUNA/RUNB sequences
+            // This requires us to move from u8 to u16 (at least)
+            let tmp = el as u16 + 1;
+            //Write out the pending character with the value incremented by 1
+            out.push(tmp);
+            // Increment the frequency counts
+            freq_out[tmp as usize] += 1;
+            // Alway look for the largest value so we can mark the eob as +1
+            eob = eob.max(tmp);
         }
     }
     out.append(&mut rle2_encode_runs(zeros, &mut freq_out));
-    out.push(eob + 1);
-    (out, freq_out, eob + 1)
+    // Increment the eob symbol to be one more than the largest symbol we found.
+    eob += 1;
+    // Write out the EOB to the stream.
+    out.push(eob);
+    // return the bits we need
+    (out, freq_out, eob)
 }
 
 /// Unique encoding for any run of 0_u8
@@ -79,28 +96,37 @@ fn rle2_encode_runs(r: u32, counts: &mut [u32]) -> Vec<u16> {
         }
         run = (run - 2) / 2;
     }
-
+    // and return the unique bzip2 run of RUNA/RUNB (bit 0, bit 1)
     out
 }
 
+/// Does run-length-decoding from rle2_encode.
 pub fn rle2_decode(v: &[u16]) -> Vec<u8> {
+    // Initialize counters
     let mut zeros: i32 = 0;
     let mut bit_multiplier = 1;
-    let mut out: Vec<u8> = Vec::with_capacity(v.len() * 3 / 2); // assume about 50% expansion space
-                                                                // let mut i = 0; //t  testing
+    // create a vec with 50% more capacity than the input. This is a guestimate.
+    let mut out: Vec<u8> = Vec::with_capacity(v.len() * 3 / 2);
+
+    // iterate through the input, doing the conversion as we find RUNA/RUNB sequences
     for mtf in v {
+        // Blow up if the run is too big - this should be more elegant in the future
         if zeros > 2 * 1024 * 1024 {
+            error!("Run of zeros exceeded a million - probably input bomb.");
             std::process::exit(100)
-        } // Got a problem, pinkie.
+        }
         match *mtf {
+            // If we found RUNA, do magic to calculate how many zeros we need
             RUNA => {
                 zeros += bit_multiplier;
                 bit_multiplier *= 2;
             }
+            // If we found RUNB, do magic to calculate how many zeros we need
             RUNB => {
                 zeros += 2 * bit_multiplier;
                 bit_multiplier *= 2;
             }
+            // Anything else, output any pending run of zeros
             n => {
                 if zeros > 0 {
                     while zeros / 1000 > 0 {
@@ -111,13 +137,16 @@ pub fn rle2_decode(v: &[u16]) -> Vec<u8> {
                     bit_multiplier = 1;
                     zeros = 0;
                 }
+                // and then output the symbol, decremented down by one (since RUNA/RUNB is gone)
                 out.push(n as u8 - 1);
             }
         }
     }
+    // If we didn't find a non-zero before the end of the data, write any pending zeros
     if zeros > 0 {
         out.extend(vec![0; zeros as usize]);
     };
+    // return the expanded input
     out
 }
 

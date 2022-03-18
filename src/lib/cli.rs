@@ -1,12 +1,11 @@
-use super::options::BzOpts;
-use super::options::Mode;
-use super::options::Output;
-use super::options::WorkFactor;
-use super::options::V;
-use super::report::report;
+use super::options::{BzOpts, Mode, Output, WorkFactor};
 use clap::Parser;
+use log::info;
+use log::warn;
 
-/// Command Line Interpretation - uses external CLAP crate. (Define author, version and about here.)
+/// Command Line Interpretation - uses external CLAP crate. 
+/// (Define author, version and about here.)
+/// Needs to be reworked. This is barely working.
 #[derive(Parser, Debug)]
 #[clap(
     author = "Micah D. Snyder <zzz@gmail.com>",
@@ -93,7 +92,7 @@ LICENSE file for more details.
 }
 
 /// Copy command line stuff from that module's style into our internal structure
-/// refactoring may find a way to avoid this step (then report status to user)
+/// refactoring may find a way to avoid this step (then lot status to user)
 pub fn init_bz_opts(bz_opts: &mut BzOpts) {
     let args = Args::parse();
 
@@ -122,57 +121,40 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
     };
     if args.fast {
         bz_opts.block_size = 2
-    }; //May also need to set something for decompression algorithm
+    }; 
+    //May also need to set something for decompression algorithm
     if args.best {
         bz_opts.block_size = 9
     };
+    // Verbosity broke when I switched from internal log functions to the log crate
     match args.v {
-        1 => bz_opts.verbosity = V::Quiet,
-        2 => bz_opts.verbosity = V::Errors,
-        3 => bz_opts.verbosity = V::Normal,
-        _ => bz_opts.verbosity = V::Chatty,
+        1 => bz_opts.verbosity = crate::lib::options::Verbosity::Quiet,
+        2 => bz_opts.verbosity = crate::lib::options::Verbosity::Errors,
+        3 => bz_opts.verbosity = crate::lib::options::Verbosity::Normal,
+        _ => bz_opts.verbosity = crate::lib::options::Verbosity::Chatty,
     };
     if args.block_size.is_some() {
         bz_opts.block_size = args.block_size.unwrap()
     };
     if args.license {
-        report(bz_opts, V::Quiet, license())
+        info!("{}",license())
     };
 
-    // Below we report initialization status to the user
-    report(
-        bz_opts,
-        V::Normal,
-        "\n---- Bzip2 Initialization Start ----",
+    // Below we lot initialization status to the user
+    info!("\n---- Bzip2 Initialization Start ----",
     );
-    report(
-        bz_opts,
-        V::Normal,
-        format!("Verbosity set to {}", bz_opts.verbosity),
-    );
-    report(
-        bz_opts,
-        V::Normal,
-        format!("Operational mode set to {}", bz_opts.op_mode),
-    );
+    info!("Verbosity set to {}", bz_opts.verbosity    );
+    info!("Operational mode set to {}", bz_opts.op_mode);
     match &bz_opts.file {
-        Some(s) => report(
-            bz_opts,
-            V::Normal,
-            format!("Sending output to the file {}", s),
-        ),
-        None => report(bz_opts, V::Normal, "Sending output to stdout"),
+        Some(s) => info!("Sending output to the file {}", s),
+        None => warn!("Sending output to stdout"),
     }
-    report(
-        bz_opts,
-        V::Normal,
-        format!("Block size set to {}", bz_opts.block_size),
-    );
+    info!("Block size set to {}", bz_opts.block_size);
     if bz_opts.force_overwrite {
-        report(bz_opts, V::Normal, "Forcing file overwriting")
+        info!("Forcing file overwriting")
     };
     if bz_opts.keep_input_files {
-        report(bz_opts, V::Normal, "Keeping input files")
+        info!("Keeping input files")
     };
-    report(bz_opts, V::Normal, "---- Bzip2 Initialization End ----\n");
+    info!("---- Bzip2 Initialization End ----\n");
 }

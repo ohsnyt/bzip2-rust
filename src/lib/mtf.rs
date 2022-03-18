@@ -1,8 +1,7 @@
 use super::symbol_map::encode_sym_map;
 
 /// Encode data using Move To Front transform. Could bring RLE2 into here.
-/// Receives raw BWT u8 byte data. Returns u8 of index numbers, plus
-/// symbol map (vec of 2-17 u16s)
+/// Believe major improvements could happen here.
 pub fn mtf_encode(raw: &[u8]) -> (Vec<u8>, Vec<u16>) {
     // Create a custom index of the input.
     let mut index = raw.to_owned();
@@ -28,10 +27,7 @@ pub fn mtf_encode(raw: &[u8]) -> (Vec<u8>, Vec<u16>) {
 
 /// Decode data using Move To Front transform. Could bring RLE2 into here.
 /// Decoding requires a sorted symbol map index.
-pub fn mtf_decode(raw: &[u8], index: Vec<u8>) -> Vec<u8> {
-    //let working_with = raw.len();
-    //println!("The hopefully sorted index is {:?}", index);
-    
+pub fn mtf_decode(raw: &[u8], index: Vec<u8>) -> Vec<u8> {    
     raw.iter()
         .fold((Vec::new(), index), |(mut mtf_v, mut s), x| {
             mtf_v.push(s[*x as usize]);

@@ -1,12 +1,12 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 
+use log::{debug, info};
+
 use super::bitwriter::BitWriter;
 use super::compress_block::compress_block;
 use super::crc::{do_crc, do_stream_crc};
 use super::options::Status;
-use super::options::Verbosity::Chatty;
-use super::report::report;
 use super::{data_in, options::BzOpts};
 
 /*
@@ -20,36 +20,37 @@ use super::{data_in, options::BzOpts};
     MTF, RLE2, and huffman compression.
 
     Again, this will iterate multiple times to get through the input file.
-
 */
+
 pub struct Block {
     //pub data: &'a [u8],
+    pub bytes_to_go: usize,
+    pub block_size: usize,
     pub seq: u32,
     pub block_crc: u32,
     pub stream_crc: u32,
-    pub bytes: u64,
     pub is_last: bool,
-    pub block_size: u8,
 }
 
-/// These are the steps necessary to compress. Input file defined in options.
+/// Compress the input file defined in the command line.
 pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
+    debug!("Initializing BitWriter and next_block struct");
     // Create the struct to pass data to compress_block.rs
     // Initialize the size of the data vec to the block size to avoid resizing
     let mut bw = BitWriter::new();
 
     //let data = &vec![];
     let mut next_block = Block {
-        //data,
+        bytes_to_go: 0,
+        block_size: opts.block_size as usize * 100000,
         seq: 0,
         block_crc: 0,
         stream_crc: 0,
-        bytes: 0,
         is_last: false,
-        block_size: opts.block_size,
     };
 
     // Initialize stuff to read the file
+    debug!("Getting command line parameters");
     let _input = match data_in::init(opts) {
         Err(e) => {
             opts.status = Status::NoData;
@@ -60,13 +61,15 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
 
     // Prepare to read the data.
     let fname = opts.file.as_ref().unwrap().clone();
+    debug!("Preparing to get input file for reading ({})", fname);
     let mut fin = File::open(&fname)?;
     let fin_metadata = fs::metadata(&fname)?;
-    let mut fin_end = fin_metadata.len() as usize;
+    next_block.bytes_to_go = fin_metadata.len() as usize;
 
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.file.as_ref().unwrap().clone();
     fname.push_str(".bz2");
+    debug!("Opening output file for writing ({})", fname);
     let mut f_out = OpenOptions::new()
         .write(true)
         .create(true)
@@ -76,36 +79,42 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     //----- Loop through blocks of data and process it.
     loop {
         // set an appropriate sized buffer for the block size
-        let mut buffer = vec![0_u8; (opts.block_size as usize) * 100000.min(fin_end as usize)];
+        let mut buffer = vec![0_u8; next_block.block_size.min(next_block.bytes_to_go)];
         // read data, which may read much less than the buffer length
         let bytes_read = fin.read(&mut buffer)?;
         // adjust the buffer length down to what we read.
         buffer.truncate(bytes_read);
         // check if we are at the end of the input file (fin). If so, is_last = true.
-        fin_end -= bytes_read;
-        if fin_end == 0 {
+        next_block.bytes_to_go -= bytes_read;
+        if next_block.bytes_to_go == 0 {
             next_block.is_last = true
         }
+        debug!(
+            "Block {} holds {} bytes{}.",
+            next_block.seq,
+            bytes_read,
+            if next_block.is_last {
+                " and is the last block"
+            } else {
+                ""
+            }
+        );
 
         // update the block sequence counter
         next_block.seq += 1;
-        report(opts, Chatty, format!("Starting block {}", &next_block.seq));
+        info!("Starting block {}", &next_block.seq);
         next_block.block_crc = do_crc(&buffer);
         next_block.stream_crc = do_stream_crc(next_block.stream_crc, next_block.block_crc);
 
         // Do the compression
-        compress_block(opts, &buffer, &mut bw, &next_block);
+        compress_block( &buffer, &mut bw, &next_block);
 
         // Write out what we have so we don't have to hold it all.
         f_out.write_all(&bw.output)?;
-        report(
-            opts,
-            Chatty,
-            format!(
-                "Wrote block. Bitstream length is {} bytes. CRC is {:08x}",
-                &bw.output.len(),
-                &next_block.block_crc
-            ),
+        info!(
+            "Wrote block. Bitstream length is {} bytes. CRC is {}",
+            &bw.output.len(),
+            &next_block.block_crc
         );
         // clear the output buffer
         bw.output.clear();
@@ -122,6 +131,6 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     bw.flush();
     // Write the last of the data.
     f_out.write_all(&bw.output)?;
-    report(opts, Chatty, "Finished writing the compressed file.");
+    info!("Finished writing the compressed file.");
     Ok(())
 }

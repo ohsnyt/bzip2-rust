@@ -412,7 +412,7 @@ pub fn huf_encode(
             // write a single 0 bit to indicate we are done with this symbol's length code
             bw.out24(0x01_000000);
         }
-        out_codes.sort();
+        out_codes.sort_unstable();
         out_code_tables.push(out_codes);
     }
     trace!("tables are {:?}", out_code_tables);
@@ -428,7 +428,7 @@ pub fn huf_encode(
     let mut progress = 0;
     let mut table_idx = 0;
 
-    for symbol in input {
+    for (progress, symbol) in input.into_iter().enumerate() {
         // Switch the tables based on how many groups of 50 symbols we have done
         if progress % 50 == 0 {
             table_idx = mtf_selectors[table_idx / 50];
@@ -446,14 +446,12 @@ pub fn huf_encode(
             out_code_tables[table_idx][*symbol as usize].1
         );
         bw.out24(out_code_tables[table_idx][*symbol as usize].1);
-        progress += 1;
     }
     debug!("Done at {}", bw.loc());
 
     // All done
     Ok(())
 }
-
 
 #[test]
 fn huf_encode_decode_simple() {

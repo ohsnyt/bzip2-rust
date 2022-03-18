@@ -30,8 +30,6 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
 
     // Remember the data length for reporting later
     let block_length = data.len();
-    // We don't need data any more.
-    drop(data);
 
     let (key, bwt_data) = bwt_encode(&rle_data);
 

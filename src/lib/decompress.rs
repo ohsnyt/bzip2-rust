@@ -273,7 +273,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         let rle2_v = rle2_decode(&out);
 
                         // Undo the MTF.
-                        let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
+                        let mtf_v = mtf_decode(&rle2_v, symbol_set);
 
                         // Undo the BWTransform
                         let btw_v = bwt_decode(key, &mtf_v); //, &symbol_set);

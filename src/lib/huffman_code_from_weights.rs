@@ -89,5 +89,5 @@ fn return_leaves(node: &Node, depth: u8, leaves: &mut Vec<(u16, u8)>) {
 
 /// Julian's version of weight adding for parent nodes
 fn add_weights(a: u32, b: u32) -> u32 {
-    a + b | (1 + a.max(b))
+    (a + b) | (1 + a.max(b))
 }

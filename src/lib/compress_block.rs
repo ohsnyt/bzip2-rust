@@ -52,7 +52,7 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
 
     debug!("Going to do huffman encoding at {}", bw.loc());
     // Now for the compression - the Huffman encoding (which also writes out data)
-    let result = huf_encode(bw, &rle2_data, &freq_out, symbol_map, eob);
+    let _result = huf_encode(bw, &rle2_data, &freq_out, symbol_map, eob);
     // SHOULD HANDLE RESULT ERROR
 
     // write the block crc

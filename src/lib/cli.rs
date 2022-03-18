@@ -3,7 +3,7 @@ use clap::Parser;
 use log::info;
 use log::warn;
 
-/// Command Line Interpretation - uses external CLAP crate. 
+/// Command Line Interpretation - uses external CLAP crate.
 /// (Define author, version and about here.)
 /// Needs to be reworked. This is barely working.
 #[derive(Parser, Debug)]
@@ -121,29 +121,28 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
     };
     if args.fast {
         bz_opts.block_size = 2
-    }; 
-    //May also need to set something for decompression algorithm
+    };
+    // May also need to set something for decompression algorithm
     if args.best {
         bz_opts.block_size = 9
     };
-    // Verbosity broke when I switched from internal log functions to the log crate
+    // Set the log level
     match args.v {
-        1 => bz_opts.verbosity = crate::lib::options::Verbosity::Quiet,
-        2 => bz_opts.verbosity = crate::lib::options::Verbosity::Errors,
-        3 => bz_opts.verbosity = crate::lib::options::Verbosity::Normal,
-        _ => bz_opts.verbosity = crate::lib::options::Verbosity::Chatty,
+        1 => log::set_max_level(log::LevelFilter::Off),
+        2 => log::set_max_level(log::LevelFilter::Error),
+        3 => log::set_max_level(log::LevelFilter::Info),
+        _ => log::set_max_level(log::LevelFilter::Debug),
     };
     if args.block_size.is_some() {
         bz_opts.block_size = args.block_size.unwrap()
     };
     if args.license {
-        info!("{}",license())
+        info!("{}", license())
     };
 
     // Below we lot initialization status to the user
-    info!("\n---- Bzip2 Initialization Start ----",
-    );
-    info!("Verbosity set to {}", bz_opts.verbosity    );
+    info!("\n---- Bzip2 Initialization Start ----",);
+    info!("Verbosity set to {}", log::max_level());
     info!("Operational mode set to {}", bz_opts.op_mode);
     match &bz_opts.file {
         Some(s) => info!("Sending output to the file {}", s),

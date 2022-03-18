@@ -77,10 +77,13 @@ pub fn bwt_decode(key: u32, bwt_in: &[u8]) -> Vec<u8> {
         t_vec[sum_freqs[s as usize] + freq[s as usize]] = i;
         freq[s as usize] += 1;
     }
-    // Transform the data
+    // Transform the data using the the transformation index
+    // Initialize vec to place transformed data
     let mut original = vec![0; bwt_in.len()];
+    // Initialize the transformation key to the first element
     let mut key = key as usize;
-    for i in 0..bwt_in.len() {
+    // walk through the input putting the input date into the key location and getting the next key
+    for i in 0..original.len() {
         original[i] = bwt_in[key];
         key = t_vec[key];
     }
@@ -118,7 +121,6 @@ fn bwt_decode_abracadabra() {
     let output = "abracadabra abracadabra abracadabra".as_bytes();
     assert_eq!(output, bwt_decode(20, &input));
 }
-
 
 #[test]
 fn bwt_encode_decode() {

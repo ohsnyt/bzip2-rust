@@ -145,7 +145,7 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
     info!("Verbosity set to {}", log::max_level());
     info!("Operational mode set to {}", bz_opts.op_mode);
     match &bz_opts.file {
-        Some(s) => info!("Sending output to the file {}", s),
+        Some(s) => info!("Getting input from the file {}", s),
         None => warn!("Sending output to stdout"),
     }
     info!("Block size set to {}", bz_opts.block_size);

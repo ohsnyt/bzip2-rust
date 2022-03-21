@@ -39,8 +39,8 @@ pub fn rle1_encode(v: &[u8]) -> Vec<u8> {
             // ...followed by a number that says how many more should be there
             out.push(((dups) % 256) as u8);
             // move the index past the sequence we found
-            idx += dups + 4;
-            // and reset the skip_start to the same point
+            idx += dups + 4 ;
+            // and reset the zeros counter
             skip_start = idx;
             // dups gets reset above, so we can leave it for now
         }

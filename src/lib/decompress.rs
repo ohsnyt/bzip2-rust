@@ -272,11 +272,14 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         // Undo the RLE2
                         let rle2_v = rle2_decode(&out);
 
+                        info!("MTF input is {:?}", std::str::from_utf8(&rle2_v).unwrap());
                         // Undo the MTF.
                         let mtf_v = mtf_decode(&rle2_v, symbol_set);
+                        info!("Entering BWT with key of {} and data of \n{:?}", key, std::str::from_utf8(&mtf_v));
 
                         // Undo the BWTransform
                         let btw_v = bwt_decode(key, &mtf_v); //, &symbol_set);
+                        debug!("{:?}", std::str::from_utf8(&btw_v));
 
                         // Undo the initial RLE1
                         let rle1_v = rle1_decode(&btw_v);

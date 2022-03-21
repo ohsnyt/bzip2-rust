@@ -1,11 +1,11 @@
 use log::{debug, error, info, trace};
 
 use super::bitwriter::BitWriter;
-use super::huffman_code_from_weights::improve_code_len_from_freqs;
+use super::huffman_code_from_weights::improve_code_len_from_weights;
 use std::cmp::Ordering;
 use std::io::Error;
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, PartialOrd, Debug)]
 pub enum NodeData {
     Kids(Box<Node>, Box<Node>),
     Leaf(u16),
@@ -13,17 +13,22 @@ pub enum NodeData {
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct Node {
-    pub frequency: u32,
+    pub weight: u32,
     pub depth: u8,
     pub node_data: NodeData,
 }
 impl Node {
-    pub fn new(frequency: u32, depth: u8, node_data: NodeData) -> Node {
+    pub fn new(weight: u32, depth: u8, node_data: NodeData) -> Node {
         Node {
-            frequency,
+            weight,
             depth,
             node_data,
         }
+    }
+}
+impl PartialOrd for Node {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.weight.partial_cmp(&other.weight)
     }
 }
 
@@ -31,6 +36,7 @@ impl Node {
 /// Encode MTF data using Julian's multi-table system.
 /// In addition to the options and BitWriter, we need frequency counts,
 /// the bwt key, crc, the symbol map, and eob symbol (last symbol).
+//TODO: RENAME INPUT TO BLOCK_INPUT
 pub fn huf_encode(
     bw: &mut BitWriter,
     input: &[u16],
@@ -46,7 +52,7 @@ pub fn huf_encode(
         1200..=2399 => 5,
         _ => 6,
     };
-    debug!("We need {} huffman code tables", table_count);
+    trace!("We need {} huffman code tables", table_count);
 
     // Initialize the tables to weights of 15. Since Rust requires compile time array
     // sizing, let's just make 6 even though we might need less.
@@ -79,7 +85,7 @@ pub fn huf_encode(
     // we may not get enough symbols in the last tables.
 
     // First set our table index to table 0, and the portion sum to 0.
-    let mut table_index = 0;
+    let mut table_index = table_count as usize - 1;
     let mut portion = 0;
     // For each symbol add the frequency to portion and set the weight value for this
     // symbol in this table to 0. If the current portion meets the portion limit
@@ -96,12 +102,12 @@ pub fn huf_encode(
             portion += f;
             tables[table_index][i] = 0;
             if portion > portion_limit {
-                table_index += 1;
+                table_index -= 1;
                 portion = 0;
             }
         };
     }
-    debug!("Created {} tables based on frequency ratios.", table_count);
+    trace!("Created {} tables based on frequency ratios.", table_count);
 
     /*
      So now we have our tables divided out by frequency ratios. Each symbol in each table
@@ -119,7 +125,7 @@ pub fn huf_encode(
     let mut selectors = vec![];
 
     for iter in 0..4 {
-        debug!("Starting iteration {}", iter);
+        trace!("Starting iteration {}", iter);
         // initialize favorites[] to 0 for each table/group
         let mut favorites = [0; 6];
 
@@ -148,11 +154,12 @@ pub fn huf_encode(
         // initialize chunk counters
         let mut start: usize = 0;
         let the_end = input.len();
-        // the cost array helps us find which table is best for each 50 byte chunk
-        let mut cost = [0; 6];
 
-        while start <= the_end {
-            let end = (start + 49).min(the_end);
+        while start < the_end {
+            let end = (start + 50).min(the_end);
+
+            // the cost array helps us find which table is best for each 50 byte chunk
+            let mut cost = [0; 6];
 
             // Read through the next chunk of 50 symbols (of input) to find the best
             // table for these 50 symbols
@@ -161,12 +168,17 @@ pub fn huf_encode(
                 for t in 0..table_count as usize {
                     // increment the appropriate cost array with the weight of the symbol
                     cost[t] += tables[t][byte as usize];
+                    // if t == 0 && iter == 1 {
+                    //     print!("{}, ",tables[t][byte as usize]);
+                    // }
                 }
             }
 
             // Find the table with the lowest (best) "icost" (Julian's term)
-            // bt = best table
-            let bt = *cost.iter().min().unwrap() as usize; // returns the FIRST lowest
+            // Get the lowest non-zero value
+            let min = cost[0..table_count as usize].iter().min().unwrap();
+            // ...and get the position of it in the array
+            let bt = cost.iter().position(|n| n == min).unwrap() as usize; // returns the FIRST lowest
 
             // Add that lowest cost to total_cost for the entire input data set
             total_cost += cost[bt];
@@ -187,8 +199,10 @@ pub fn huf_encode(
             for &symbol in input.iter().take(end as usize).skip(start) {
                 rfreq[bt as usize][symbol as usize] += 1;
             }
+            //debug!("rfreq for this chunk is \n>>>{:?}", &rfreq[bt][0..=eob as usize]);
+
             // Prepare to get the next group of 50 bytes from the input
-            start = end + 1;
+            start = end;
         } // End of the while loop, we've gone through the entire input (again).
         info!(
             " pass {}: size is {}, grp uses are {:?}",
@@ -197,13 +211,18 @@ pub fn huf_encode(
             favorites
         );
 
-        // Next we will call improve_code_len_from_freqs on each of the tables we made.
+        // Next we will call improve_code_len_from_weights on each of the tables we made.
         // This makes actual node trees based off our weighting. This will put the
         // improved weights into the weight arrays. As mentioned, we do this 4 times.
         for t in 0..table_count as usize {
-            trace!("Initial codes {:?}", tables[t]);
-            improve_code_len_from_freqs(&mut tables[t], &rfreq[t], eob);
-            trace!("Improved codes {:?}", tables[t]);
+            trace!("Initial codes {:?}", &tables[t][0..eob as usize]);
+            improve_code_len_from_weights(&mut tables[t], &rfreq[t], eob);
+            trace!(
+                "Iteration {}, \ntable {} {:?}",
+                iter,
+                t,
+                &tables[t][0..eob as usize]
+            );
         }
     }
     /*
@@ -212,21 +231,21 @@ pub fn huf_encode(
       we can use the code_from_length function to quickly generate codes.
     */
 
-    debug!("Writing symbol_map starting at {}", bw.loc());
+    trace!("Writing symbol_map starting at {}", bw.loc());
     // Next are the symbol maps , 16 bit L1 + 0-16 words of 16 bit L2 maps.
     for word in symbol_map {
         bw.out16(word);
     }
 
     // Symbol maps are followed by a 3 bit number of Huffman trees that exist
-    debug!(
+    trace!(
         "Writing table_count ({}) starting at {}",
         table_count,
         bw.loc()
     );
     bw.out24((3 << 24) | table_count);
 
-    debug!(
+    trace!(
         "Writing selector_count ({}) starting at {}",
         selector_count,
         bw.loc()
@@ -236,11 +255,11 @@ pub fn huf_encode(
     bw.out24((15 << 24) | selector_count);
 
     debug!(
-        "Writing {} selectors starting at {}",
+        "Writing {} selectors {:?} starting at {}",
         selectors.len(),
+        selectors,
         bw.loc()
     );
-    debug!("Selectors are {:?}", selectors);
 
     /*
     Selectors tell us which table is to be used for each 50 symbol chunk of input
@@ -388,7 +407,7 @@ pub fn huf_encode(
             // put this new length into origin for the next iteration of this loop
             origin = *l;
             // write out the length delta as ±1 repeatedly
-            debug!("Writing length {} with delta of {}", l, delta);
+            trace!("Writing length {} with delta of {}", l, delta);
             loop {
                 match delta.cmp(&0) {
                     // if the delta is greater than 0, write 0x10
@@ -425,7 +444,6 @@ pub fn huf_encode(
 
     // Initialize a progress counter so we can keep track of the symbol count 0-49,
     // and a table index that we can change every 50 symbols as needed.
-    let mut progress = 0;
     let mut table_idx = 0;
 
     for (progress, symbol) in input.into_iter().enumerate() {
@@ -440,10 +458,11 @@ pub fn huf_encode(
             );
         }
         trace!(
-            "symbol {}, table {}, code: {:032b}",
+            "symbol {}, table {}, length: {}, loc: {}",
             symbol,
             table_idx,
-            out_code_tables[table_idx][*symbol as usize].1
+            (out_code_tables[table_idx][*symbol as usize].1 >> 24),
+            bw.loc()
         );
         bw.out24(out_code_tables[table_idx][*symbol as usize].1);
     }

@@ -1,24 +1,25 @@
-use log::{debug, trace};
+use log::{debug, trace, warn};
 
 use super::huffman::{Node, NodeData};
 
 /// Improve a slice of Huffman codes lengths (u8) using a slice of  
-/// codes, symbol frequencies, and knowlege of how many symbols are valid
+/// codes, symbol weights, and knowlege of how many symbols are valid
 /// STILL NOT SYNCING WITH JULIAN'S IMPLEMENTATION. 17 March 2022.
-pub fn improve_code_len_from_freqs<'a>(
+pub fn improve_code_len_from_weights<'a>(
     codes: &'a mut [u32],
-    sym_freq: &'a [u32],
+    sym_weight: &'a [u32],
     eob: u16,
 ) -> &'a [u32] {
-    // Assign initial weights to each symbol based on the frequency
-    // If the freq was 0, put 1 otherwise put freq * 256 ( << 8 )
+    // Assign initial weights to each symbol based on the weight
+    // If the weight was 0, put 1 otherwise put weight * 256 ( << 8 )
     let mut weight: Vec<(u32, u16)> = vec![];
-    for (i, f) in sym_freq.iter().enumerate().take(eob as usize + 1) {
-        weight.push((if f == &0 { 1 } else { f << 8 }, i as u16));
+    //weight.push((32, 0));
+    for (i, f) in sym_weight.iter().enumerate().take(eob as usize + 1) {
+        weight.push((if f == &0 { 256 } else { f << 8 }, i as u16));
+        // Do a Julian style approximate fast 'sort'.
+        push_small_down(&mut weight);
+        // NOTE: I did use weight.sort_unstable(), but I'm trying to duplicate the odd behavior Julian has.
     }
-
-    // sort this by the weight
-    weight.sort_unstable();
 
     // We will try to make codes of 17 bits or less. If we can't, we will
     // cut the weights down and try again.
@@ -29,19 +30,19 @@ pub fn improve_code_len_from_freqs<'a>(
             tree.push(Node::new(*f, 0, NodeData::Leaf(*m)));
         }
 
-        // sort the tree by frequency before the next step
-        tree.sort_by(|a, b| b.frequency.cmp(&a.frequency));
-
         // ...then pare it down to one single node with child nodes - keep it sorted.
         while tree.len() > 1 {
             let left_child = tree.pop().unwrap();
             let right_child = tree.pop().unwrap();
             tree.push(Node::new(
-                add_weights(left_child.frequency, right_child.frequency),
+                add_weights(left_child.weight, right_child.weight),
                 left_child.depth.max(right_child.depth) + 1,
                 NodeData::Kids(Box::new(left_child), Box::new(right_child)),
             ));
-            tree.sort_by(|a, b| b.frequency.cmp(&a.frequency));
+            // Do a Julian style approximate fast 'sort'.
+            push_big_up(&mut tree);
+            // NOTE: I did have a true sort, but I'm trying to duplicate the odd behavior Julian has.
+            //tree.sort_by(|a, b| b.weight.cmp(&a.weight));
         }
 
         // If the tree depth <= 17 copy the new depths back into the code table.
@@ -56,8 +57,8 @@ pub fn improve_code_len_from_freqs<'a>(
             // Overwrite the codes and return the improved list.
             break 'outer codes;
         } else {
-            debug!("Lengths exceeded 17 bits... adjusting weights.");
-            // Adjust weights (frequencies) by dividing each frequency by 2 and adding 1
+            warn!("Lengths exceeded 17 bits... adjusting weights.");
+            // Adjust weights by dividing each weight by 2 and adding 1
             // This "flattens" the node tree. Then go try this again.
             for item in weight.iter_mut().take(eob as usize + 1).skip(1) {
                 let mut j = item.1 >> 8;
@@ -89,5 +90,29 @@ fn return_leaves(node: &Node, depth: u8, leaves: &mut Vec<(u16, u8)>) {
 
 /// Julian's version of weight adding for parent nodes
 fn add_weights(a: u32, b: u32) -> u32 {
-    (a + b) | (1 + a.max(b))
+    let weigh_mask: u32 = 0xffffff00;
+    let depth_mask: u32 = 0x000000ff;
+    ((a & weigh_mask) + (b & weigh_mask)) | (1 + (a & depth_mask).max(b & depth_mask))
+}
+
+///  Julian slide sort. Gets things in the right direction but not fully sorted.
+pub fn push_big_up(vec: &mut Vec<Node>) {
+    let mut idx = vec.len() - 1;
+    while idx > 0 {
+        if vec[idx] > vec[idx >> 1] {
+            vec.swap(idx, idx >> 1);
+        }
+        idx >>= 1;
+    }
+}
+
+///  Julian slide sort. Gets things in the right direction but not fully sorted.
+pub fn push_small_down(vec: &mut Vec<(u32, u16)>) {
+    let mut idx = vec.len() - 1;
+    while idx > 0 {
+        if vec[idx] > vec[idx >> 1] {
+            vec.swap(idx, idx >> 1);
+        }
+        idx >>= 1;
+    }
 }

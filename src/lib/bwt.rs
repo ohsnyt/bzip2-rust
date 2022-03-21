@@ -1,28 +1,26 @@
 use std::cmp::{min, Ordering};
 
-///Burrows-Wheeler-Transform. Probably could be drastically sped up.
-/// Receives reference to data. Returns the key as as u32 and the
-/// transformed data as a vec of u8.
+///Burrows-Wheeler-Transform - based on https://github.com/aufdj
+/// receives reference to incoming block of data and
+/// returns key for final data decomcpression. Key is u32.
 pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
-    // Create index to block.
+    // Create index into block. Index is u32, which should be more than enough
     let mut index = vec![0; orig.len()];
     for i in 0..index.len() {
         index[i as usize] = i as u32;
     }
-
-    // Sort index (There may be a faster way to do this.)
+    // Sort index
     index[..].sort_by(|a, b| block_compare(*a as usize, *b as usize, orig));
 
-    // Get key and BWT output. First initialize key and vec to return data
+    // Get key and BWT output (assumes u32 is 4 bytes)
     let mut key: u32 = 0;
     let mut bwt = vec![0; orig.len()];
-    // ..and then transform bwt "in place" using the index we built
     for i in 0..bwt.len() {
-        if index[i] == 1 {
+        if index[i] == 0 {
             key = i as u32;
         }
         if index[i] == 0 {
-            bwt[i] = orig[orig.len() - 1]; // wrap around the end of the array
+            bwt[i] = orig[orig.len() - 1];
         } else {
             bwt[i] = orig[(index[i] as usize) - 1];
         }
@@ -46,49 +44,39 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> Ordering {
     result
 }
 
-/// Decode a Burrows-Wheeler-Transform. Requires key and data in. Returns
-/// transformed data as vec of u8.
-pub fn bwt_decode(key: u32, bwt_in: &[u8]) -> Vec<u8> {
-    // First get a freq count of the symbols using an array for speed
+/// Decode a Burrows-Wheeler-Transform
+pub fn bwt_decode(key: u32, btw_in: &[u8]) -> Vec<u8> {
+    //first get a freq count of symbols
     let mut freq = [0; 256];
-    for i in 0..bwt_in.len() {
-        freq[bwt_in[i] as usize] += 1;
+    for i in 0..btw_in.len() {
+        freq[btw_in[i] as usize] += 1;
     }
-    //then build a cumulative count of frequency counts, again using an array
+    //then build a cumulative count of frequency counts (necessary??)
     let mut sum = 0;
-    let mut sum_freqs = [0; 256];
+    let mut sum_freq = [0; 256];
     for i in 0..256 {
-        sum_freqs[i] = sum;
+        sum_freq[i] = sum;
         sum += freq[i];
     }
-    /*
-    Build a transformation vector to find the next character in the original data.
-    We know that the original column of the transform was sorted. We can calculate how
-    far down that column we need to go by getting the cumulative counts of all u8s that
-    came before this one and adding the number of identical u8s to this one that we may
-    have previously seen.
-    */
-
-    // Re-use the freq count to recount frequencies in the transformation vector
+    //zero out the freq count of symbols to recount frequencies in the transformation vector
     let mut freq = [0; 256];
     //Build the transformation vector to find the next character in the original data
-    let mut t_vec = vec![0; bwt_in.len()];
-    for (i, &s) in bwt_in.iter().enumerate() {
-        t_vec[sum_freqs[s as usize] + freq[s as usize]] = i;
-        freq[s as usize] += 1;
+    let mut t_vec = vec![0; btw_in.len()];
+    for (i, &s) in btw_in.iter().enumerate() {
+        t_vec[freq[s as usize] + sum_freq[s as usize]] = i;
+        freq[s as usize] += 1
     }
-    // Transform the data using the the transformation index
-    // Initialize vec to place transformed data
-    let mut original = vec![0; bwt_in.len()];
-    // Initialize the transformation key to the first element
-    let mut key = key as usize;
-    // walk through the input putting the input date into the key location and getting the next key
-    for i in 0..original.len() {
-        original[i] = bwt_in[key];
-        key = t_vec[key];
+    // Transform the data
+    let mut orig = Vec::new();
+    let mut key = t_vec[key as usize];
+
+    for _ in 0..btw_in.len() {
+        orig.push(btw_in[key]);
+        key = t_vec[key]
     }
-    original
+    orig
 }
+
 
 #[test]
 fn bwt_simple_encode() {
@@ -97,7 +85,7 @@ fn bwt_simple_encode() {
         .to_string()
         .as_bytes()
         .to_vec();
-    assert_eq!(bwt_encode(input), (21 as u32, output));
+    assert_eq!(bwt_encode(input), (8 as u32, output));
 }
 #[test]
 fn bwt_encode_abracadabra() {
@@ -106,20 +94,20 @@ fn bwt_encode_abracadabra() {
         .to_string()
         .as_bytes()
         .to_vec();
-    assert_eq!(bwt_encode(input), (20 as u32, output));
+    assert_eq!(bwt_encode(input), (9 as u32, output));
 }
 
 #[test]
 fn bwt_simple_decode() {
     let input = "gTowtr ?WB n hnpsceitHiyecup  or".as_bytes().to_vec();
     let output = "How to encrypt using BWT cipher?".as_bytes();
-    assert_eq!(output, bwt_decode(21, &input));
+    assert_eq!(output, bwt_decode(8, &input));
 }
 #[test]
 fn bwt_decode_abracadabra() {
     let input = "aarrrddda  rrrcccaaaaaaaaaaaabbbbbb".as_bytes().to_vec();
     let output = "abracadabra abracadabra abracadabra".as_bytes();
-    assert_eq!(output, bwt_decode(20, &input));
+    assert_eq!(output, bwt_decode(9, &input));
 }
 
 #[test]

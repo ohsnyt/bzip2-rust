@@ -146,6 +146,8 @@ pub fn rle2_decode(v: &[u16]) -> Vec<u8> {
     if zeros > 0 {
         out.extend(vec![0; zeros as usize]);
     };
+    // Remove the EOB from the stream that we added during RLE2 encode.
+    let _ = out.pop();
     // return the expanded input
     out
 }

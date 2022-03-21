@@ -2,3 +2,5 @@
 target/
 *.txt
 *.bz2
+src/.DS_Store
+.DS_Store

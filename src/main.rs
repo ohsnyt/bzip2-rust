@@ -10,7 +10,7 @@ use lib::compress::compress;
 use lib::decompress::decompress;
 use lib::options::BzOpts;
 
-use log::{error, info, warn, LevelFilter};
+use log::{debug, error, info, warn, LevelFilter};
 use simplelog::{Config, TermLogger, TerminalMode};
 
 fn main() -> io::Result<()> {
@@ -39,6 +39,8 @@ fn main() -> io::Result<()> {
 
 use lib::mtf::{mtf_decode, mtf_encode};
 use lib::rle1::{rle1_decode, rle1_encode};
+
+use crate::lib::bitwriter::BitWriter;
 
 fn test() {
     let test_data = "If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????";
@@ -88,7 +90,7 @@ fn test() {
     } else {
         error!("Failed RLE1+BTW+MTF encode and decode")
     }
-        info!("------");
+    info!("------");
 
     info!("Adding RLE2 encode and decode");
     let a = rle1_encode(&test_data.as_bytes());
@@ -110,6 +112,5 @@ fn test() {
     } else {
         error!("Failed RLE1+BTW+MTF encode and decode")
     }
-        info!("------");
-
+    info!("------");
 }

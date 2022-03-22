@@ -47,7 +47,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
     // Use the block size to validate the max number of selectors.
     let block_size = br.read8(8).unwrap() - 0x30;
-    println!("Block size is {}", block_size);
 
     let mut block_counter = 0;
     'block: loop {
@@ -102,17 +101,17 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let debug_loc = br.loc();
         let table_count = br.read8(3).unwrap();
         debug!(
-            "Read table_count ({}, should be 2-6) at {}",
+            "table_count is {}, (should be 2-6) at {}",
             table_count, debug_loc
         );
-        info!("Found {} tables in use.", table_count);
+        info!("{} tables in use.", table_count);
 
         // Read Selector_count (NumSels)
         let debug_loc = br.loc();
         let tmp = br.read8plus(15).unwrap();
         let selector_count: u32 = (tmp[0] as u32) << 7 | tmp[1] as u32;
         debug!(
-            "Read selector_count ({}, about one per 50 bytes) at {}",
+            "selector_count is {} at {}",
             selector_count, debug_loc
         );
 
@@ -134,22 +133,25 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             table_map.push(group);
             group = 0;
         }
-        debug!("Found {} selectors at {}", selector_count, debug_loc);
+        debug!("Read {} selectors at {}", selector_count, debug_loc);
 
         // Decode selectors from MTF values for the selectors
+        // create an index from 0 to table_count long, incrementing each value
         let mut table_idx = vec![];
         for v in 0..table_count {
             table_idx.push(v);
         }
+        // iterate through each selector, putting the mapped index value where the old value was
+        // and then updating the map with the new index
         for selector in table_map.iter_mut() {
-            let mut v = *selector as usize;
-            let tmp = table_idx[v];
-            while v > 0 {
-                table_idx[v] = table_idx[v - 1];
-                v -= 1;
+            let mut i = *selector as usize;
+            let tmp = selector;
+            let selector = table_idx[i];
+            while i > 0 {
+                table_idx[i] = table_idx[i - 1];
+                i -= 1;
             }
-            table_idx[0] = tmp;
-            *selector = tmp;
+            table_idx[0] = *tmp;
             trace!(
                 "Pushing selector value of {} (should be 0-{})",
                 selector,
@@ -188,29 +190,30 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 }
             }
             //maps must be sorted by length for the next step
-            debug!("[symbol, length] table is {:?}", map);
+            trace!("[symbol, length] table is {:?}", map);
             map.sort_by(|a, b| a.1.cmp(&b.1));
             maps.push(map);
         }
 
         // Build the Huffman decoding maps as a vec of hashmaps. Like before, include the length
         // as part of the hashmap key (8 bits length, 24 bits code). Value is the symbol value.
-        let mut hm: Vec<HashMap<u32, u16>> = Vec::new(); // will be a vec of the hashmaps
-        for i in 0..maps.len() {
-            hm.push(HashMap::new());
+        let mut hm_vec: Vec<HashMap<u32, u16>> = vec![]; // will be a vec of the hashmaps
+        for map in &maps {
+            // create a blank hashmap
+            let mut hm = HashMap::new();
             // Get the minimum length in use so we can create the "last code" used
             // Lastcode contains the 32bit length and a 32 bit code with the embedded length.
-            let mut last_code: (u32, u32) = (maps[i][0].1, 0);
-            for (sym, len) in &maps[i] {
+            let mut last_code: (u32, u32) = (map[0].1, 0);
+            for (sym, len) in map {
                 if *len != last_code.0 {
                     last_code.1 <<= len - last_code.0;
                     last_code.0 = *len;
                 }
-                hm[i].insert(len << 24 | last_code.1, *sym);
+                hm.insert(len << 24 | last_code.1, *sym);
                 last_code.1 += 1;
             }
+            hm_vec.push(hm);
         }
-
         // Read the data and turn it into a Vec ready for RLE2 decoding
         let mut out = vec![];
 
@@ -228,6 +231,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Now read chunks of 50 symbols with the huffman tree selected by the selector vec
         // read the min_len of bits, then a bit at a time more until we get a symbol
         //let mut tmp = br.read8(min_len).unwrap() as u32;
+        let mut block_byte_count = 0;
 
         for &selector in table_map.iter().take(selector_count as usize) {
             debug!(
@@ -235,66 +239,69 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 br.loc(),
                 selector
             );
-            let mut block_byte_count = 0;
+            let mut chunk_byte_count = 0;
             let idx = selector as usize;
             let mut bit_count: u32 = 0;
             let mut bits = 0;
             // last symbol in the symbol map is eob
-            let eob = (maps[idx].len() - 1) as u16;
-            let mut debug_loc = br.loc();
+            let eob = (hm_vec[idx].len() - 1) as u16;
+            let debug_loc = br.loc();
 
             // loop through the data in 50 byte groups
-            while block_byte_count < 50 {
+            while chunk_byte_count < 50 {
                 bits <<= 1;
                 bits |= br.read8(1).unwrap() as u32;
                 bit_count += 1;
                 // check if we have found a valid symbol code yet
-                if let Some(sym) = hm[idx].get(&(bit_count << 24 | bits)) {
+                if let Some(sym) = hm_vec[idx].get(&(bit_count << 24 | bits)) {
                     trace!(
-                        "Loc: {} found {}, code {:0width$b}",
+                        "Byte {}, loc: {} found {}, code {:0width$b}",
+                        block_byte_count,
                         debug_loc,
                         sym,
                         bits,
                         width = bit_count as usize
                     );
+                    // Push the symbol out
+                    out.push(*sym);
                     if sym != &eob {
-                        // Still in the block. Push the symbol we found and continue
-                        out.push(*sym);
+                        // Reset bit counters
                         bits = 0;
                         bit_count = 0;
-                        block_byte_count += 1;
-                        debug_loc = br.loc();
+                        chunk_byte_count += 1;
+                        block_byte_count += 1; // for trace debugging
                     } else {
-                        // Found end of block!
-                        // (Don't push the end of block)
-                        // out.push(*sym);
-
                         // Undo the RLE2
                         let rle2_v = rle2_decode(&out);
 
-                        info!("MTF input is {:?}", std::str::from_utf8(&rle2_v).unwrap());
+                        trace!("MTF input is {:?}", std::str::from_utf8(&rle2_v).unwrap());
                         // Undo the MTF.
                         let mtf_v = mtf_decode(&rle2_v, symbol_set);
-                        info!("Entering BWT with key of {} and data of \n{:?}", key, std::str::from_utf8(&mtf_v));
+                        trace!(
+                            "Entering BWT with key of {} and data of \n{:?}",
+                            key,
+                            std::str::from_utf8(&mtf_v)
+                        );
 
                         // Undo the BWTransform
                         let btw_v = bwt_decode(key, &mtf_v); //, &symbol_set);
-                        debug!("{:?}", std::str::from_utf8(&btw_v));
+                        trace!("Left BWT with \n{:?}", std::str::from_utf8(&btw_v));
 
                         // Undo the initial RLE1
                         let rle1_v = rle1_decode(&btw_v);
+                        trace!("Left RLE1 with \n{:?}", std::str::from_utf8(&rle1_v));
 
                         // Compute the CRC
                         let this_crc = do_crc(&rle1_v);
+                        stream_crc = do_stream_crc(stream_crc, this_crc);
                         if block_crc == this_crc {
                             info!("Block {} CRCs matched.", block_counter);
                         } else {
                             warn!(
                                 "Block {} CRC failed!!! (Continuing to read data.)",
                                 block_counter
-                            )
+                            );
                         }
-                        stream_crc = do_stream_crc(stream_crc, this_crc);
 
                         // Done!! Write the data
                         let result = f_out.write(&rle1_v);

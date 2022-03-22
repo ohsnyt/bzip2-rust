@@ -58,8 +58,8 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
     // SHOULD HANDLE RESULT ERROR
 
     // write the block crc
-    debug!("CRC is {} at {}", block.block_crc, bw.loc());
-    bw.out32(block.block_crc);
+    //debug!("CRC is {} at {}", block.block_crc, bw.loc());
+    //bw.out32(block.block_crc);
 
     // if this is the last block, write the stream footer magic and  crc and flush
     // the output buffer

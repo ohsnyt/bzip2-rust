@@ -85,6 +85,6 @@ impl BitWriter {
 
     /// Debugging function to return the number of bytes.bits output so far
     pub fn loc(&self) -> String {
-        format! {"[{}.{}]",(self.output.len() * 8 + self.q_bits as usize)/8, (self.output.len() * 8 + self.q_bits as usize)%8}
+        format! {"[{}.{}]",((self.output.len() * 8) + self.q_bits as usize)/8, ((self.output.len() * 8) + self.q_bits as usize)%8}
     }
 }

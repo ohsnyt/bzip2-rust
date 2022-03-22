@@ -1,4 +1,4 @@
-use log::{debug, trace, warn};
+use log::{trace, warn};
 
 use super::huffman::{Node, NodeData};
 

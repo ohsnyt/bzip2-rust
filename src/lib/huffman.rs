@@ -254,13 +254,7 @@ pub fn huf_encode(
     // (how many 50 byte groups are in this block of data)
     bw.out24((15 << 24) | selector_count);
 
-    debug!(
-        "Writing {} selectors {:?} starting at {}",
-        selectors.len(),
-        selectors,
-        bw.loc()
-    );
-
+    
     /*
     Selectors tell us which table is to be used for each 50 symbol chunk of input
     data in this block.
@@ -270,6 +264,8 @@ pub fn huf_encode(
 
     HOWEVER, the selectors are written after a Move-To-Front transform, to save space.
     */
+
+
     // Initialize an index to the tables
     let mut table_idx = vec![0, 1, 2, 3, 4, 5];
 
@@ -286,7 +282,12 @@ pub fn huf_encode(
         table_idx[0] = tmp;
         mtf_selectors.push(tmp);
     }
-
+debug!(
+        "Writing {} mtf version of selectors {:?} starting at {}",
+        mtf_selectors.len(),
+        mtf_selectors,
+        bw.loc()
+    );
     // Now write out all the mtf'ed selectors
     for selector in &mtf_selectors {
         match selector {
@@ -317,11 +318,9 @@ pub fn huf_encode(
     let mut out_code_tables = vec![];
 
     // For as many tables as we have, we have quite few steps to do
-    for i in 0..table_count as usize {
+    for table in tables {
         // First create a output-style table
         let mut out_codes = vec![];
-        // Then grab the matching weight table
-        let table = tables[i];
         // ... and create a vec of the symbols actually used
         let mut len_sym: Vec<(u32, u16)> = vec![];
         for (i, &t) in table.iter().enumerate().take(eob as usize + 1) {
@@ -446,10 +445,10 @@ pub fn huf_encode(
     // and a table index that we can change every 50 symbols as needed.
     let mut table_idx = 0;
 
-    for (progress, symbol) in input.into_iter().enumerate() {
+    for (progress, symbol) in input.iter().enumerate() {
         // Switch the tables based on how many groups of 50 symbols we have done
         if progress % 50 == 0 {
-            table_idx = mtf_selectors[table_idx / 50];
+            table_idx = mtf_selectors[progress / 50];
             debug!(
                 "Chunk {}, table {}, output file location {}",
                 progress / 50,

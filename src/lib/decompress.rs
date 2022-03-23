@@ -110,10 +110,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let debug_loc = br.loc();
         let tmp = br.read8plus(15).unwrap();
         let selector_count: u32 = (tmp[0] as u32) << 7 | tmp[1] as u32;
-        debug!(
-            "selector_count is {} at {}",
-            selector_count, debug_loc
-        );
+        debug!("selector_count is {} at {}", selector_count, debug_loc);
 
         info!(
             "Found {} selectors for block {}. ({} max.)",
@@ -124,7 +121,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Read Selectors
         let debug_loc = br.loc();
-        let mut table_map = vec![];
+        let mut table_map = Vec::with_capacity(selector_count as usize);
         let mut group: u8 = 0;
         for _ in 0..selector_count {
             while br.read8(1).unwrap() == 1 {
@@ -134,6 +131,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             group = 0;
         }
         debug!("Read {} selectors at {}", selector_count, debug_loc);
+        debug!("Read mtf version of selectors {:?}", table_map);
 
         // Decode selectors from MTF values for the selectors
         // create an index from 0 to table_count long, incrementing each value
@@ -141,24 +139,18 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         for v in 0..table_count {
             table_idx.push(v);
         }
-        // iterate through each selector, putting the mapped index value where the old value was
-        // and then updating the map with the new index
-        for selector in table_map.iter_mut() {
-            let mut i = *selector as usize;
-            let tmp = selector;
-            let selector = table_idx[i];
-            while i > 0 {
-                table_idx[i] = table_idx[i - 1];
-                i -= 1;
-            }
-            table_idx[0] = *tmp;
-            trace!(
-                "Pushing selector value of {} (should be 0-{})",
-                selector,
-                selector_count
-            );
-        }
-        trace!("Selector (table) map is {:?}", table_map);
+        // then undo the move to front
+        let table_map =  table_map
+        .iter()
+        .fold((Vec::new(), table_idx), |(mut o, mut s), x| {
+            o.push(s[*x as usize]);
+            let c = s.remove(*x as usize);
+            s.insert(0, c);
+            (o, s)
+        })
+        .0;
+        
+        debug!("Decoded selector (table) map is {:?}", table_map);
         info!("Decoded the selectors for the {} tables.", table_count);
 
         // Read the Huffman symbol length maps

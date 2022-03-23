@@ -96,7 +96,7 @@ pub fn huf_encode(
         let f = freq;
         if portion + f > portion_limit && (table_index == 3 || table_index == 5) {
             tables[table_index][i] = 0;
-            table_index += 1;
+            table_index -= 1;
             portion = 0;
         } else {
             portion += f;
@@ -254,7 +254,6 @@ pub fn huf_encode(
     // (how many 50 byte groups are in this block of data)
     bw.out24((15 << 24) | selector_count);
 
-    
     /*
     Selectors tell us which table is to be used for each 50 symbol chunk of input
     data in this block.
@@ -265,42 +264,39 @@ pub fn huf_encode(
     HOWEVER, the selectors are written after a Move-To-Front transform, to save space.
     */
 
+    // Initialize an index to the tables to do a MTF transform for the selectors
+    let table_idx = vec![0, 1, 2, 3, 4, 5];
 
-    // Initialize an index to the tables
-    let mut table_idx = vec![0, 1, 2, 3, 4, 5];
+    // While we could do the MTF transform in place, we need the original table to do the encoding
+    let mtf_selectors =  selectors
+        .iter()
+        .fold((Vec::new(), table_idx), |(mut o, mut s), x| {
+            let i = s.iter().position(|c| c == x).unwrap();
+            let c = s.remove(i);
+            s.insert(0, c);
+            o.push(i);
+            (o, s)
+        })
+        .0;
+    
+    debug!("Original selectors are {:?}", selectors);
+    debug!("MTF'ed selectors are {:?}", mtf_selectors);
 
-    // Create a move-to-front vec for the selectors
-    let mut mtf_selectors = vec![];
-    // ...and do the mtf transform on the selector list
-    for selector in selectors.iter_mut() {
-        let mut v = *selector as usize;
-        let tmp = table_idx[v];
-        while v > 0 {
-            table_idx[v] = table_idx[v - 1];
-            v -= 1;
-        }
-        table_idx[0] = tmp;
-        mtf_selectors.push(tmp);
-    }
-debug!(
-        "Writing {} mtf version of selectors {:?} starting at {}",
-        mtf_selectors.len(),
-        mtf_selectors,
-        bw.loc()
-    );
     // Now write out all the mtf'ed selectors
     for selector in &mtf_selectors {
+        trace!("Writing {} at {:?}", selector, bw.loc());
         match selector {
             0 => bw.out24(0x01000000),
             1 => bw.out24(0x02000002),
-            2 => bw.out24(0x03000004),
+            2 => bw.out24(0x03000006),
             3 => bw.out24(0x0400000e),
             4 => bw.out24(0x0500001e),
             5 => bw.out24(0x0600003e),
             _ => error!("Bad selector value of {}", selector),
         };
     }
-
+    // All done with mtf_selectors.
+    drop(mtf_selectors);
     /*
     Now create the huffman codes. We need to convert our weights to huffman codes.
     (And later we will want to use the BitWriter with those codes also.)
@@ -318,7 +314,9 @@ debug!(
     let mut out_code_tables = vec![];
 
     // For as many tables as we have, we have quite few steps to do
-    for table in tables {
+    for i in 0..table_count as usize {
+        // Because we have a fixed array of tables, we must use an index to get only the ones we want
+        let table = tables[i];
         // First create a output-style table
         let mut out_codes = vec![];
         // ... and create a vec of the symbols actually used
@@ -447,8 +445,9 @@ debug!(
 
     for (progress, symbol) in input.iter().enumerate() {
         // Switch the tables based on how many groups of 50 symbols we have done
+        // Be sure to use the NON-MTF TABLES!
         if progress % 50 == 0 {
-            table_idx = mtf_selectors[progress / 50];
+            table_idx = selectors[progress / 50];
             debug!(
                 "Chunk {}, table {}, output file location {}",
                 progress / 50,

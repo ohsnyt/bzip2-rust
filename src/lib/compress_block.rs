@@ -7,6 +7,7 @@ use super::{
 /// Compress one block and write out the stream.
 /// Handles stream header and footer also.
 pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
+
     trace!("Starting compression at {}", bw.loc());
     // If this is the first block, write the stream header
     if block.seq == 1 {
@@ -33,8 +34,8 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
 
     let (key, bwt_data) = bwt_encode(&rle_data);
 
-    debug!("Input is {:?}", std::str::from_utf8(data).unwrap());
-    info!("BWT output is {:?}", std::str::from_utf8(&bwt_data).unwrap());
+    //trace!("Input is {:?}", std::str::from_utf8(data).unwrap());
+    //trace!("BWT output is {:?}", std::str::from_utf8(&bwt_data).unwrap());
     debug!("Key is {}, at {} (three bytes long)", key, bw.loc());
     // Now that we have the key, we can write the 24bit BWT key
     bw.out24(0x18_000000 | key); // and 24 bit key
@@ -42,7 +43,7 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
     // Now send the BTW data off for the MTF transform...
     //  MTF also returns the symbol map that we need for decompression.
     let (mdata, symbol_map) = mtf_encode(&bwt_data);
-    info!("MTF output is {:?}", std::str::from_utf8(&mdata).unwrap());
+    trace!("MTF output is {:?}", std::str::from_utf8(&mdata).unwrap());
 
     // We don't need bwt_data any more.
     drop(bwt_data);
@@ -56,10 +57,6 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
     // Now for the compression - the Huffman encoding (which also writes out data)
     let _result = huf_encode(bw, &rle2_data, &freq_out, symbol_map, eob);
     // SHOULD HANDLE RESULT ERROR
-
-    // write the block crc
-    //debug!("CRC is {} at {}", block.block_crc, bw.loc());
-    //bw.out32(block.block_crc);
 
     // if this is the last block, write the stream footer magic and  crc and flush
     // the output buffer
@@ -76,6 +73,6 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
     info!("{} bytes in block, {} after MTF & RLE2 coding, {} syms in use",
             block_length,
             &rle2_data.len(),
-            eob + 1,
+            eob + 1, 
     );
 }

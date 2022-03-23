@@ -268,7 +268,7 @@ pub fn huf_encode(
     let table_idx = vec![0, 1, 2, 3, 4, 5];
 
     // While we could do the MTF transform in place, we need the original table to do the encoding
-    let mtf_selectors =  selectors
+    let mtf_selectors = selectors
         .iter()
         .fold((Vec::new(), table_idx), |(mut o, mut s), x| {
             let i = s.iter().position(|c| c == x).unwrap();
@@ -278,7 +278,7 @@ pub fn huf_encode(
             (o, s)
         })
         .0;
-    
+
     debug!("Original selectors are {:?}", selectors);
     debug!("MTF'ed selectors are {:?}", mtf_selectors);
 

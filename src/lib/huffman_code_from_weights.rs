@@ -1,4 +1,4 @@
-use log::{trace, warn};
+use log::{trace, warn, debug};
 
 use super::huffman::{Node, NodeData};
 
@@ -57,13 +57,13 @@ pub fn improve_code_len_from_weights<'a>(
             // Overwrite the codes and return the improved list.
             break 'outer codes;
         } else {
-            warn!("Lengths exceeded 17 bits... adjusting weights.");
+            debug!("Lengths exceeded 17 bits... adjusting weights.");
             // Adjust weights by dividing each weight by 2 and adding 1
             // This "flattens" the node tree. Then go try this again.
-            for item in weight.iter_mut().take(eob as usize + 1).skip(1) {
-                let mut j = item.1 >> 8;
+            for item in weight.iter_mut().take(eob as usize + 1) {
+                let mut j = item.0 >> 8;
                 j = 1 + (j / 2);
-                item.1 = j << 8;
+                item.0 = j >> 8;
             }
         }
     }

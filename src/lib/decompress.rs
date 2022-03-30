@@ -131,7 +131,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             group = 0;
         }
         debug!("Read {} selectors at {}", selector_count, debug_loc);
-        debug!("Read mtf version of selectors {:?}", table_map);
+        trace!("Read mtf version of selectors {:?}", table_map);
 
         // Decode selectors from MTF values for the selectors
         // create an index from 0 to table_count long, incrementing each value
@@ -150,7 +150,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         })
         .0;
         
-        debug!("Decoded selector (table) map is {:?}", table_map);
+        trace!("Decoded selector (table) map is {:?}", table_map);
         info!("Decoded the selectors for the {} tables.", table_count);
 
         // Read the Huffman symbol length maps
@@ -226,7 +226,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let mut block_byte_count = 0;
 
         for &selector in table_map.iter().take(selector_count as usize) {
-            debug!(
+            trace!(
                 "Read 50 byte chunk at {} using table {}",
                 br.loc(),
                 selector
@@ -268,7 +268,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
                         trace!("MTF input is {:?}", std::str::from_utf8(&rle2_v).unwrap());
                         // Undo the MTF.
-                        let mtf_v = mtf_decode(&rle2_v, symbol_set);
+                        let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
                         trace!(
                             "Entering BWT with key of {} and data of \n{:?}",
                             key,
@@ -297,23 +297,15 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
                         // Done!! Write the data
                         let result = f_out.write(&rle1_v);
-                        info!("Wrote a block of data with {:?}.", result);
-                        // Finally break out of this block
-                        break 'block;
+                        info!("Wrote a block of data with {} bytes.", result.unwrap());
+                        // break out of while loop
+                        break;
                     }
                 }
             }
         }
     }
 
-    //br.ptr("Done with the block. Footer magic should be next");
-    debug!("Stream footer starting at {}", br.loc());
-    if vec![0x17, 0x72, 0x45, 0x38, 0x50, 0x90] == br.read8plus(48).unwrap() {
-        info!("Stream footer matched.");
-    } else {
-        warn!("Could not find stream footer.");
-    }
-    //br.ptr("Done with the block. Footer magic should be next");
     debug!("Looking for final crc at {}", br.loc());
     let final_crc = u32::from_be_bytes(br.read8plus(32).unwrap().try_into().unwrap());
     if final_crc == stream_crc {

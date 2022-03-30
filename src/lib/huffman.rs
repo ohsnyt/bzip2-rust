@@ -279,8 +279,8 @@ pub fn huf_encode(
         })
         .0;
 
-    debug!("Original selectors are {:?}", selectors);
-    debug!("MTF'ed selectors are {:?}", mtf_selectors);
+    trace!("Original selectors are {:?}", selectors);
+    trace!("MTF'ed selectors are {:?}", mtf_selectors);
 
     // Now write out all the mtf'ed selectors
     for selector in &mtf_selectors {
@@ -448,7 +448,7 @@ pub fn huf_encode(
         // Be sure to use the NON-MTF TABLES!
         if progress % 50 == 0 {
             table_idx = selectors[progress / 50];
-            debug!(
+            trace!(
                 "Chunk {}, table {}, output file location {}",
                 progress / 50,
                 table_idx,

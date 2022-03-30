@@ -18,7 +18,7 @@ impl BitReader {
     /// Called to create a new bitReader
     pub fn new(file: File) -> Self {
         Self {
-            queue: Vec::with_capacity(100000),
+            queue: Vec::with_capacity(900000),
             used: 0,
             file,
             position: 0,

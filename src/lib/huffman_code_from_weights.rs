@@ -63,7 +63,7 @@ pub fn improve_code_len_from_weights<'a>(
             for item in weight.iter_mut().take(eob as usize + 1) {
                 let mut j = item.0 >> 8;
                 j = 1 + (j / 2);
-                item.0 = j >> 8;
+                item.0 = j << 8;
             }
         }
     }

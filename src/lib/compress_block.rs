@@ -6,7 +6,7 @@ use super::{
 #[allow(clippy::unusual_byte_groupings)]
 /// Compress one block and write out the stream.
 /// Handles stream header and footer also.
-pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
+pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block, block_size: u8) {
 
     trace!("Starting compression at {}", bw.loc());
     // If this is the first block, write the stream header
@@ -15,7 +15,7 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block) {
         bw.out8(b'B');
         bw.out8(b'Z');
         bw.out8(b'h');
-        bw.out8((block.block_size/100000) as u8 + 0x30);
+        bw.out8(block_size as u8 + 0x30);
     }
 
     trace!("Block header starting at {}", bw.loc());

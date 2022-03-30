@@ -90,19 +90,24 @@ pub fn huf_encode(
     // For each symbol add the frequency to portion and set the weight value for this
     // symbol in this table to 0. If the current portion meets the portion limit
     // (based on how many groups we have, and remembering the special limits for
-    // tables 3 and 5) increment the table index to point to the next table and
+    // tables 2 and 4) increment the table index to point to the next table and
     // reset the portion sum to 0. Keep going through all the symbols.
     for (i, freq) in freq_out.iter().enumerate().take(eob as usize + 1) {
         let f = freq;
-        if portion + f > portion_limit && (table_index == 3 || table_index == 5) {
+        if portion + f > portion_limit && (table_index == 2 || table_index == 4) {
+            table_index = table_index.saturating_sub(1);
             tables[table_index][i] = 0;
-            table_index -= 1;
-            portion = 0;
+            portion = *f;
+            if portion > portion_limit {
+                tables[table_index][i] = 0;
+                table_index = table_index.saturating_sub(1);
+                portion = 0;
+            }
         } else {
             portion += f;
             tables[table_index][i] = 0;
             if portion > portion_limit {
-                table_index -= 1;
+                table_index = table_index.saturating_sub(1);
                 portion = 0;
             }
         };

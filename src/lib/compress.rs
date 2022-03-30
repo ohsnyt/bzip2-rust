@@ -42,7 +42,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     //let data = &vec![];
     let mut next_block = Block {
         bytes_to_go: 0,
-        block_size: opts.block_size as usize * 100000,
+        block_size: opts.block_size as usize * 100000 - 60, // ds, Julian took off 19 for nblockMAX (60 in real life exampleopts.block_size)
         seq: 0,
         block_crc: 0,
         stream_crc: 0,
@@ -107,7 +107,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
         next_block.stream_crc = do_stream_crc(next_block.stream_crc, next_block.block_crc);
 
         // Do the compression
-        compress_block( &buffer, &mut bw, &next_block);
+        compress_block( &buffer, &mut bw, &next_block, opts.block_size);
 
         // Write out what we have so we don't have to hold it all.
         f_out.write_all(&bw.output)?;

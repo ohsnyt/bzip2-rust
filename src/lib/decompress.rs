@@ -130,7 +130,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             table_map.push(group);
             group = 0;
         }
-        debug!("Read {} selectors at {}", selector_count, debug_loc);
+        trace!("Read {} selectors at {}", selector_count, debug_loc);
         trace!("Read mtf version of selectors {:?}", table_map);
 
         // Decode selectors from MTF values for the selectors
@@ -151,7 +151,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         .0;
         
         trace!("Decoded selector (table) map is {:?}", table_map);
-        info!("Decoded the selectors for the {} tables.", table_count);
+        info!("Decoded the {} selectors for the {} tables.", selector_count, table_count);
 
         // Read the Huffman symbol length maps
         let mut maps: Vec<Vec<(u16, u32)>> = Vec::new();
@@ -181,8 +181,10 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                     }
                 }
             }
+            // pretty print debug info for tables
+            let pretty_map = map.iter().map(|(_, l)| format!("{:0?}", l)).collect::<Vec<String>>();
+            debug!("{:?}", pretty_map);
             //maps must be sorted by length for the next step
-            trace!("[symbol, length] table is {:?}", map);
             map.sort_by(|a, b| a.1.cmp(&b.1));
             maps.push(map);
         }

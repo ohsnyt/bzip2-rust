@@ -25,6 +25,8 @@
                 //"/Users/david/Downloads/timeseries_export2.csv",
                 //"-z",
                 //"src/Peter.txt",
+                "src/idiot2.ds.bz2",
+                //"${workspaceFolder}/src/test.txt",
                 //"${workspaceFolder}/src/highwayman.txt.bz2",
                 //"src/Peter_Julian1.bz2",
                 //"src/she_sells_real.txt",
@@ -33,6 +35,7 @@
                 //"src/Peter.bz2",
                 //"-z",
                 //"1",
+                "9",
                 "-v4",
             ],
             "cwd": "${workspaceFolder}"

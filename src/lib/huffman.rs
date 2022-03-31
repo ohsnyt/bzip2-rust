@@ -5,13 +5,13 @@ use super::huffman_code_from_weights::improve_code_len_from_weights;
 use std::cmp::Ordering;
 use std::io::Error;
 
-#[derive(Eq, PartialEq, PartialOrd, Debug)]
+#[derive(Eq, PartialEq, PartialOrd, Debug, Clone)]
 pub enum NodeData {
     Kids(Box<Node>, Box<Node>),
     Leaf(u16),
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct Node {
     pub weight: u32,
     pub depth: u8,

@@ -5,12 +5,18 @@ use std::cmp::{min, Ordering};
 /// returns key for final data decomcpression. Key is u32.
 pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
+    //let ext = orig.len();
+    //let mut index: Vec<(u8, usize)> = orig.iter().enumerate().map(|(i, &s)| (s, i)).collect();
+    //index.append(&mut (orig.iter().enumerate().map(|(i, &s)| (s, i + ext)).collect()));
+
     let mut index = vec![0; orig.len()];
     for i in 0..index.len() {
         index[i as usize] = i as u32;
     }
     // Sort index
     index[..].sort_by(|a, b| block_compare(*a as usize, *b as usize, orig));
+    // Try radix sort
+    //rdxsort::RdxSort::rdxsort(&mut index);
 
     // Get key and BWT output (assumes u32 is 4 bytes)
     let mut key: u32 = 0;
@@ -76,7 +82,6 @@ pub fn bwt_decode(key: u32, btw_in: &[u8]) -> Vec<u8> {
     }
     orig
 }
-
 
 #[test]
 fn bwt_simple_encode() {

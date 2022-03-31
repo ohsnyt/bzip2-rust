@@ -4,6 +4,7 @@ use super::huffman::{Node, NodeData};
 /// Improve a slice of Huffman codes lengths (u8) using a slice of  
 /// codes, symbol weights, and knowlege of how many symbols are valid
 /// STILL NOT SYNCING WITH JULIAN'S IMPLEMENTATION. 17 March 2022.
+/// Should this be implemented with a BinaryHeap?
 pub fn improve_code_len_from_weights<'a>(
     codes: &'a mut [u32],
     sym_weight: &'a [u32],

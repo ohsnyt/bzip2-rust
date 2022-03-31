@@ -56,9 +56,10 @@ fn test() {
     }
     info!("------");
 
-    info!("Adding BWT encode and decode");
+    info!("Adding BWT test");
     let a = rle1_encode(test_data.as_bytes());
     let (key, bwt) = lib::bwt::bwt_encode(&a);
+    info!("Key: {}, BWT: {:?}",key, bwt);
     info!("{:?}", std::str::from_utf8(&bwt));
     let b = lib::bwt::bwt_decode(key, &bwt);
     if a == b {
@@ -74,7 +75,7 @@ fn test() {
     }
     info!("------");
 
-    info!("Adding MTF encode and decode");
+    info!("Adding MTF test");
     let a = rle1_encode(test_data.as_bytes());
     let (key, bwt) = lib::bwt::bwt_encode(&a);
     let (mtf, symbol_map) = mtf_encode(&bwt);
@@ -94,7 +95,7 @@ fn test() {
     }
     info!("------");
 
-    info!("Adding RLE2 encode and decode");
+    info!("Adding RLE2 tests");
     let a = rle1_encode(test_data.as_bytes());
     let (key, bwt) = lib::bwt::bwt_encode(&a);
     let (mtf, symbol_map) = mtf_encode(&bwt);

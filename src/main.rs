@@ -45,7 +45,7 @@ use lib::rle1::{rle1_decode, rle1_encode};
 
 fn test() {
     let test_data = "If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????";
-
+    //xlet test_data  = "confusedconfusedconfusedconfusedconfusedconfusedconfused1confused2confused3confused4confused5confused6How to encrypt using BWT cipher?";
     info!("Running RLE1 encode and decode");
     let a = rle1_encode(test_data.as_bytes());
     let result = rle1_decode(&a);

@@ -1,9 +1,8 @@
-use std::cmp::{min, Ordering};
 
 ///Burrows-Wheeler-Transform - based on https://github.com/aufdj
 /// receives reference to incoming block of data and
 /// returns key for final data decomcpression. Key is u32.
-pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
+/* pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
     //let ext = orig.len();
     //let mut index: Vec<(u8, usize)> = orig.iter().enumerate().map(|(i, &s)| (s, i)).collect();
@@ -17,6 +16,7 @@ pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     index[..].sort_by(|a, b| block_compare(*a as usize, *b as usize, orig));
     // Try radix sort
     //rdxsort::RdxSort::rdxsort(&mut index);
+    //info!("Known good index: {:?}", index);
 
     // Get key and BWT output (assumes u32 is 4 bytes)
     let mut key: u32 = 0;
@@ -49,7 +49,7 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> Ordering {
     }
     result
 }
-
+ */
 /// Decode a Burrows-Wheeler-Transform
 pub fn bwt_decode(key: u32, btw_in: &[u8]) -> Vec<u8> {
     //first get a freq count of symbols
@@ -83,24 +83,24 @@ pub fn bwt_decode(key: u32, btw_in: &[u8]) -> Vec<u8> {
     orig
 }
 
-#[test]
-fn bwt_simple_encode() {
-    let input = "How to encrypt using BWT cipher?".as_bytes();
-    let output = "gTowtr ?WB n hnpsceitHiyecup  or"
-        .to_string()
-        .as_bytes()
-        .to_vec();
-    assert_eq!(bwt_encode(input), (8 as u32, output));
-}
-#[test]
-fn bwt_encode_abracadabra() {
-    let input = "abracadabra abracadabra abracadabra".as_bytes();
-    let output = "aarrrddda  rrrcccaaaaaaaaaaaabbbbbb"
-        .to_string()
-        .as_bytes()
-        .to_vec();
-    assert_eq!(bwt_encode(input), (9 as u32, output));
-}
+// #[test]
+// fn bwt_simple_encode() {
+//     let input = "How to encrypt using BWT cipher?".as_bytes();
+//     let output = "gTowtr ?WB n hnpsceitHiyecup  or"
+//         .to_string()
+//         .as_bytes()
+//         .to_vec();
+//     assert_eq!(bwt_encode(input), (8 as u32, output));
+// }
+// #[test]
+// fn bwt_encode_abracadabra() {
+//     let input = "abracadabra abracadabra abracadabra".as_bytes();
+//     let output = "aarrrddda  rrrcccaaaaaaaaaaaabbbbbb"
+//         .to_string()
+//         .as_bytes()
+//         .to_vec();
+//     assert_eq!(bwt_encode(input), (9 as u32, output));
+// }
 
 #[test]
 fn bwt_simple_decode() {
@@ -115,10 +115,10 @@ fn bwt_decode_abracadabra() {
     assert_eq!(output, bwt_decode(9, &input));
 }
 
-#[test]
-fn bwt_encode_decode() {
-    let input = "If Peter Piper picked a peck of pickled peppers,  where's the peck of pickled peppers Peter Piper picked????".as_bytes();
-    let (key, vec) = bwt_encode(&input);
-    let output = bwt_decode(key, &vec);
-    assert_eq!(output, input);
-}
+// #[test]
+// fn bwt_encode_decode() {
+//     let input = "If Peter Piper picked a peck of pickled peppers,  where's the peck of pickled peppers Peter Piper picked????".as_bytes();
+//     let (key, vec) = bwt_encode(&input);
+//     let output = bwt_decode(key, &vec);
+//     assert_eq!(output, input);
+// }

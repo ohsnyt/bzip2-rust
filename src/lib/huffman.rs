@@ -1,4 +1,4 @@
-use log::{debug, error, info, trace};
+use log::{ error, info, trace};
 
 use super::bitwriter::BitWriter;
 use super::huffman_code_from_weights::improve_code_len_from_weights;
@@ -120,9 +120,7 @@ pub fn huf_encode(
      against real data. These adjusted numbers are used to build a huffman tree, and
      thereby the huffman codes.
 
-     We will iterate four times to improve the tables. Each time we will try to make codes
-     of 17 bits or less. If we can't, we will cut the weights down and try that iteration
-     again.
+     We will iterate four times to improve the tables. 
     */
 
     // Remember for later how many selectors we will have, and where we store them
@@ -200,7 +198,7 @@ pub fn huf_encode(
 
             // Now that we know the best table, go get the frequency counts for
             // the symbols in this group of 50 bytes and store the freq counts into rfreq.
-            // as we go through the input file, this becomes cumulative for each "best" table.
+            // as we go through an iteration, this becomes cumulative.
             for &symbol in input.iter().take(end as usize).skip(start) {
                 rfreq[bt as usize][symbol as usize] += 1;
             }
@@ -392,7 +390,7 @@ pub fn huf_encode(
 
         // We write the origin as a five bit int
         let mut origin = len_sym[0].0;
-        debug!(
+        trace!(
             "Writing a table with an origin of {} starting at {}",
             origin,
             bw.loc()
@@ -467,9 +465,16 @@ pub fn huf_encode(
             (out_code_tables[table_idx][*symbol as usize].1 >> 24),
             bw.loc()
         );
+        if symbol == &eob {
+            trace!(
+                "Writing eob from table {} at loc: {}",
+                table_idx,
+                bw.loc()
+            );
+        }
         bw.out24(out_code_tables[table_idx][*symbol as usize].1);
     }
-    debug!("Done at {}", bw.loc());
+    trace!("Done at {}", bw.loc());
 
     // All done
     Ok(())

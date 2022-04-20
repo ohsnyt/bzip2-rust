@@ -1,23 +1,32 @@
+use std::collections::VecDeque;
+
 use super::symbol_map::encode_sym_map;
 
 /// Encode data using Move To Front transform. Could bring RLE2 into here.
 /// Believe major improvements could happen here.
 pub fn mtf_encode(raw: &[u8]) -> (Vec<u8>, Vec<u16>) {
-    // Create a custom index of the input.
-    let mut index = raw.to_owned();
-    index.sort_unstable();
-    index.dedup();
+    // Create a custom index of the input. 
+    // Note: ds: This is 10 times faster than sort/dedup of a vec
+    let mut v = vec![false; 256];
+    for i in raw {
+        v[*i as usize] = true;
+    }
+    let index = v
+        .iter()
+        .enumerate()
+        .filter_map(|(s, &b)| if b == true { Some(s as u8) } else { None })
+        .collect::<VecDeque<u8>>();
 
     // Create the symbol map while we have the input data
     let map = encode_sym_map(&index);
 
-    // ...then do the transform
+    // ...then do the transform (VecDeque saves a tiny bit of time over a vec)
     let mtf = raw
         .iter()
-        .fold((Vec::new(), index), |(mut mtf_v, mut idx), x| {
+        .fold((Vec::with_capacity(raw.len()), index), |(mut mtf_v, mut idx), x| {
             let i = idx.iter().position(|c| c == x).unwrap();
-            let c = idx.remove(i); //might be faster to swap everything going to 0
-            idx.insert(0, c);
+            let _ = idx.remove(i); 
+            idx.push_front(*x);
             mtf_v.push(i as u8);
             (mtf_v, idx)
         })
@@ -27,7 +36,7 @@ pub fn mtf_encode(raw: &[u8]) -> (Vec<u8>, Vec<u16>) {
 
 /// Decode data using Move To Front transform. Could bring RLE2 into here.
 /// Decoding requires a sorted symbol map index.
-pub fn mtf_decode(raw: &[u8], index: Vec<u8>) -> Vec<u8> {    
+pub fn mtf_decode(raw: &[u8], index: Vec<u8>) -> Vec<u8> {
     raw.iter()
         .fold((Vec::new(), index), |(mut mtf_v, mut s), x| {
             mtf_v.push(s[*x as usize]);
@@ -46,7 +55,8 @@ fn simple_encode() {
     let input = "Baa baa".to_string().as_bytes().to_vec();
     let output = &[1, 2, 0, 2, 3, 2, 0];
     let (x, _) = mtf_encode(&input);
-    assert_eq!(x, output);}
+    assert_eq!(x, output);
+}
 
 #[test]
 fn mtf_encode_with_key() {

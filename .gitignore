@@ -7,3 +7,5 @@ debug/
 image.*
 *.tiff
 
+src/unused/*
+src/timeseries_export2.csv

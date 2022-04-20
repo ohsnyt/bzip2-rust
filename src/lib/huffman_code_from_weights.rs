@@ -1,4 +1,4 @@
-use log::{trace, warn, debug};
+use log::trace;
 use super::huffman::{Node, NodeData};
 
 /// Improve a slice of Huffman codes lengths (u8) using a slice of  
@@ -66,7 +66,7 @@ pub fn improve_code_len_from_weights<'a>(
             // Overwrite the codes and return the improved list.
             break 'outer codes;
         } else {
-            debug!("Lengths exceeded 17 bits... adjusting weights.");
+            trace!("Lengths exceeded 17 bits... adjusting weights.");
             // Adjust weights by dividing each weight by 2 and adding 1
             // This "flattens" the node tree. Then go try this again.
             for item in weight.iter_mut().take(eob as usize + 1) {
@@ -102,30 +102,6 @@ fn add_weights(a: u32, b: u32) -> u32 {
     let weigh_mask: u32 = 0xffffff00;
     let depth_mask: u32 = 0x000000ff;
     ((a & weigh_mask) + (b & weigh_mask)) | (1 + (a & depth_mask).max(b & depth_mask))
-}
-
-///  Julian slide sort. Gets things in the right direction but not fully sorted.
-pub fn push_big_up(vec: &mut Vec<Node>) {
-     let mut idx = vec.len() - 1;
-    while idx > 0 && vec[idx] > vec[idx - 1] {
-        vec.swap(idx, idx - 1);
-        idx -= 1;
-    }
-    //vec[idx] = tmp;
-    // let end = vec.len() - 1;
-    // loop {
-    //     let mut y = end >> 1;
-    //     if y == 0  {
-    //         break;
-    //     };
-    //     if (y > 0) && (vec[y - 1] > vec[y]) {
-    //         y -= 1;
-    //     }
-    //     if vec[0] < vec[y] {
-    //         break;
-    //     };
-    //     vec.swap(end, y);
-    // }
 }
 
 ///  Julian slide sort. Gets things in the right direction but not fully sorted.

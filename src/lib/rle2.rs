@@ -138,7 +138,7 @@ pub fn rle2_decode(v: &[u16]) -> Vec<u8> {
                     zeros = 0;
                 }
                 // and then output the symbol, decremented down by one (since RUNA/RUNB is gone)
-                out.push(n as u8 - 1);
+                out.push((n - 1) as u8);
             }
         }
     }

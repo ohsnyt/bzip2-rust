@@ -125,16 +125,23 @@ fn rle1_en_simple() {
 }
 #[test]
 fn rle1_en_simple2() {
-    let input = "Goofy teeeeeeeest".as_bytes();
+    let input = "Really ???? ???? ???? ???? ???? ???? ???????????????".as_bytes();
     assert_eq!(
         rle1_encode(input),
-        vec![71, 111, 111, 102, 121, 32, 116, 101, 101, 101, 101, 4, 115, 116]
+        vec![82, 101, 97, 108, 108, 121, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 11]
     )
 }
 #[test]
 fn rle1_roundtrip_simple() {
     let input =
-        "Peter Piper              picked a biiiiiiiiiiiiig peck of peppersssssss".as_bytes();
+        "Peter Piper              picked a biiii iiii iiiiig peck of peppersssssss".as_bytes();
+    let e = rle1_encode(input);
+    let d = rle1_decode(&e);
+    assert_eq!(input, d);
+}
+#[test]
+fn rle1_roundtrip_simple2() {
+    let input = "Really ???? ???? ???? ???? ???? ???? ???????????????".as_bytes();
     let e = rle1_encode(input);
     let d = rle1_decode(&e);
     assert_eq!(input, d);

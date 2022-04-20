@@ -2,7 +2,8 @@ use log::{debug, error, info, trace, warn};
 
 use super::{
     bitreader::BitReader,
-    bwt::bwt_decode,
+    //bwt_ds::bwt_decode,
+    //bwt_inverse::inverse_bwt,
     crc::{do_crc, do_stream_crc},
     mtf::mtf_decode,
     options::BzOpts,
@@ -110,7 +111,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let debug_loc = br.loc();
         let tmp = br.read8plus(15).unwrap();
         let selector_count: u32 = (tmp[0] as u32) << 7 | tmp[1] as u32;
-        debug!("selector_count is {} at {}", selector_count, debug_loc);
+        trace!("selector_count is {} at {}", selector_count, debug_loc);
 
         info!(
             "Found {} selectors for block {}. ({} max.)",
@@ -140,18 +141,21 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             table_idx.push(v);
         }
         // then undo the move to front
-        let table_map =  table_map
-        .iter()
-        .fold((Vec::new(), table_idx), |(mut o, mut s), x| {
-            o.push(s[*x as usize]);
-            let c = s.remove(*x as usize);
-            s.insert(0, c);
-            (o, s)
-        })
-        .0;
-        
+        let table_map = table_map
+            .iter()
+            .fold((Vec::new(), table_idx), |(mut o, mut s), x| {
+                o.push(s[*x as usize]);
+                let c = s.remove(*x as usize);
+                s.insert(0, c);
+                (o, s)
+            })
+            .0;
+
         trace!("Decoded selector (table) map is {:?}", table_map);
-        info!("Decoded the {} selectors for the {} tables.", selector_count, table_count);
+        info!(
+            "Decoded the {} selectors for the {} tables.",
+            selector_count, table_count
+        );
 
         // Read the Huffman symbol length maps
         let mut maps: Vec<Vec<(u16, u32)>> = Vec::new();
@@ -182,8 +186,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 }
             }
             // pretty print debug info for tables
-            let pretty_map = map.iter().map(|(_, l)| format!("{:0?}", l)).collect::<Vec<String>>();
-            debug!("{:?}", pretty_map);
+            //let pretty_map = map.iter().map(|(_, l)| format!("{:0?}", l)).collect::<Vec<String>>();
+            //debug!("{:?}", pretty_map);
             //maps must be sorted by length for the next step
             map.sort_by(|a, b| a.1.cmp(&b.1));
             maps.push(map);
@@ -239,7 +243,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             let mut bits = 0;
             // last symbol in the symbol map is eob
             let eob = (hm_vec[idx].len() - 1) as u16;
-            let debug_loc = br.loc();
+            let mut debug_loc = br.loc();
 
             // loop through the data in 50 byte groups
             while chunk_byte_count < 50 {
@@ -264,7 +268,12 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         bit_count = 0;
                         chunk_byte_count += 1;
                         block_byte_count += 1; // for trace debugging
+                        debug_loc = br.loc();
                     } else {
+                        // FOUND EOB
+                        if block_byte_count / 50 < selector_count - 1 {
+                            error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_byte_count/50, selector_count)
+                        }
                         // Undo the RLE2
                         let rle2_v = rle2_decode(&out);
 
@@ -278,7 +287,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         );
 
                         // Undo the BWTransform
-                        let btw_v = bwt_decode(key, &mtf_v); //, &symbol_set);
+                        let btw_v = crate::lib::bwt_ds::bwt_decode(key, &mtf_v); //, &symbol_set);
                         trace!("Left BWT with \n{:?}", std::str::from_utf8(&btw_v));
 
                         // Undo the initial RLE1
@@ -292,8 +301,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                             info!("Block {} CRCs matched.", block_counter);
                         } else {
                             warn!(
-                                "Block {} CRC failed!!! (Continuing to read data.)",
-                                block_counter
+                                "Block {} CRC failed!!! Found {} looking for {}. (Continuing...)",
+                                block_counter, this_crc, block_crc
                             );
                         }
 
@@ -313,7 +322,10 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     if final_crc == stream_crc {
         info!("Stream CRCs matched.");
     } else {
-        warn!("Stream CRC failed!!! (Data may be corrupt.)");
+        warn!(
+            "Stream CRC failed!!! Found {} looking for {}. (Data may be corrupt.)",
+            final_crc, stream_crc
+        );
     }
 
     info!("Wrote the decompressed file.\n");

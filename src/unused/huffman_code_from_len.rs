@@ -10,7 +10,7 @@ fn code_from_len(list: Vec<(u8, u32)>) -> Vec<(u8, u32)> {
     list_by_len.sort_by(|(_, l1), (_, l2)| l1.cmp(l2));
 
     // Get the minimum length in use so we can start at the first entry
-    let mut last_code: (u32, u32) = (list[0].1, 0);
+    let mut min_code: (u32, u32) = (list[0].1, 0);
 
     // Create a vec that we can push to so we can return the codes.
     let mut codes = vec![];
@@ -18,12 +18,12 @@ fn code_from_len(list: Vec<(u8, u32)>) -> Vec<(u8, u32)> {
     // For each code (sorted by length), increment the code by one. When the length changes, do a shift
     // left for each increment and continue.
     for (sym, len) in &list_by_len {
-        if *len != last_code.0 {
-            last_code.1 <<= len - last_code.0;
-            last_code.0 = *len;
+        if *len != min_code.0 {
+            min_code.1 <<= len - min_code.0;
+            min_code.0 = *len;
         }
-        codes.push((*sym, last_code.1));
-        last_code.1 += 1;
+        codes.push((*sym, min_code.1));
+        min_code.1 += 1;
     }
     codes
 }

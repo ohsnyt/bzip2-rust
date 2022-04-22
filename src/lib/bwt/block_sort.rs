@@ -2,15 +2,15 @@ use log::{debug, info};
 
 use super::{fallback_sort::fallback_sort, main_sort::main_sort};
 
-pub fn block_sort(mut block_data: &[u8], mut work_factor: u32) -> (usize, Vec<u8>) {
+pub fn block_sort (block_data: &[u8], mut work_factor: u32) -> (usize, Vec<u8>) {
     let end = block_data.len();
-    let mut bwt_data;
-    let mut key;
+    //let mut bwt_data;
+    //let mut key;
 
     //const OVERSHOOT: usize = 34;
     // If the size of the block us under 10k, use the fallbackSort function.
-    if end < 10000 {
-        (key, bwt_data) = fallback_sort(block_data);
+    let (key, bwt_data) = if end < 10000 {
+        fallback_sort(block_data)
     } else {
         /* (work_factor-1) / 3 puts the default-factor-30
            transition point at very roughly the same place as
@@ -25,10 +25,13 @@ pub fn block_sort(mut block_data: &[u8], mut work_factor: u32) -> (usize, Vec<u8
         if work_factor > 100 {
             work_factor = 100
         };
-        let budget_init: i32 = end as i32 * ((work_factor as i32 - 1) / 3);
-        let mut budget = budget_init;
 
-        (budget, key, bwt_data) = main_sort(block_data, budget);
+        // budget_init(ial) is used to provide user statistics below
+        let budget_init: i32 = end as i32 * ((work_factor as i32 - 1) / 3);
+        let budget = budget_init;
+
+        let result = main_sort(block_data, budget);
+        let (budget, key, bwt_data) = result;
         info!(
             " {} work, {} block, ratio {}",
             budget_init - budget,
@@ -37,9 +40,12 @@ pub fn block_sort(mut block_data: &[u8], mut work_factor: u32) -> (usize, Vec<u8
         );
         if budget < 0 {
             debug!("    too repetitive; using fallback sorting algorithm");
-            (key, bwt_data) = fallback_sort(&mut block_data);
+            let result = fallback_sort(block_data);
+            let (key, bwt_data) = result;
+            return (key, bwt_data.to_vec())
         }
-    }
+        (key, bwt_data)
+    };
 
-    return (key, bwt_data.to_vec());
+    (key, bwt_data.to_vec())
 }

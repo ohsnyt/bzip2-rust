@@ -14,7 +14,7 @@ pub fn mtf_encode(raw: &[u8]) -> (Vec<u8>, Vec<u16>) {
     let index = v
         .iter()
         .enumerate()
-        .filter_map(|(s, &b)| if b == true { Some(s as u8) } else { None })
+        .filter_map(|(s, &b)| if b { Some(s as u8) } else { None })
         .collect::<VecDeque<u8>>();
 
     // Create the symbol map while we have the input data

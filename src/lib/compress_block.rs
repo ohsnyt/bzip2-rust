@@ -34,7 +34,7 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block, block_size
     bw.out24(0x01_000000); // One zero bit
 
     // Before we can write the key, we need to do the BWT
-    let mut rle_data = rle1_encode(data);
+    let rle_data = rle1_encode(data);
 
     // Remember the data length for reporting later
     let block_length = data.len();
@@ -49,7 +49,7 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block, block_size
     //info!("Known good: {:?}", bwt_data_ds);
 
     // Using julians algorithm
-    let (key, bwt_data) = block_sort(&mut rle_data, 30);
+    let (key, bwt_data) = block_sort(&rle_data, 30);
     /* if key_ds == key as u32 {
         info!("HURRAY! MATCHING KEYS.")
     } else {

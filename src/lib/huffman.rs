@@ -317,6 +317,7 @@ pub fn huf_encode(
     let mut out_code_tables = vec![];
 
     // For as many tables as we have, we have quite few steps to do
+    #[allow(clippy::needless_range_loop)]
     for i in 0..table_count as usize {
         // Because we have a fixed array of tables, we must use an index to get only the ones we want
         let table = tables[i];

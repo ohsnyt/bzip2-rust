@@ -1,7 +1,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 
-use log::{info, trace};
+use log::{info, trace, debug};
 
 use super::bitwriter::BitWriter;
 use super::compress_block::compress_block;
@@ -39,15 +39,23 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // Initialize the size of the data vec to the block size to avoid resizing
     let mut bw = BitWriter::new(opts.block_size as usize * 100000);
 
-    //let data = &vec![];
+    // NOTE: There is a LIKELY PROBLEM with the block size calculation. 
+    /* Julian took 19 off the block size. I'm taking 19 off for every 100k in.
+    The problem can exist because if the first RLE effort expands the file, then the
+    original bzip2 will not decompress it. It seems to need the data to be limited
+    to less than 900k **at any time**. 
+    */
     let mut block = Block {
         bytes_to_go: 0,
-        block_size: opts.block_size as usize * 100000 - 19, // ds, Julian took off 19 for nblockMAX (60 in real life exampleopts.block_size)
+        block_size: opts.block_size as usize * (100000 - 19),
         seq: 0,
         block_crc: 0,
         stream_crc: 0,
         is_last: false,
     };
+
+    // THE ROUTINES BELOW FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE
+    // FILE METADATA AND ALL I/O ERRORS
 
     // Initialize stuff to read the file
     trace!("Getting command line parameters");
@@ -89,7 +97,10 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
         if block.bytes_to_go == 0 {
             block.is_last = true
         }
-        trace!(
+
+        // All debug and trace functions are used during detailed debugging. 
+        // They produce a lot of data, especially the trace calls.
+        debug!(
             "Block {} holds {} bytes{}.",
             block.seq,
             bytes_read,

@@ -26,7 +26,8 @@
                 //"-z",
                 //"src/Peter.txt",
                 //"src/IMG_7.tiff",
-                "src/idiot.txt.bz2",
+                //"src/idiot.txt",
+                "/Users/david/Documents/bzip2/bzip2/tests/sample1.bz2",
                 //"src/idiot shorter.txt",
                 //"${workspaceFolder}/src/test.txt",
                 //"${workspaceFolder}/src/highwayman.txt",
@@ -38,7 +39,7 @@
                 //"src/Peter.bz2",
                 //"-z",
                 "9",
-                "-v4",
+                "-v3",
             ],
             "cwd": "${workspaceFolder}"
         },

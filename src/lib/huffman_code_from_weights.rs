@@ -11,10 +11,9 @@ pub fn improve_code_len_from_weights<'a>(
     eob: u16,
 ) -> &'a [u32] {
     // Assign initial weights to each symbol based on the weight
-    // If the weight was 0, put 1 otherwise put weight * 256 ( << 8 )
-    let mut weight: Vec<(u32, u16)> = vec![];
-    weight.push((0, 0));
-    //weight.push((32, 0));
+    // If the weight was 0, put 1 otherwise put weight * 256 ( << 8 ) 
+    // Note: We need to start with one weight in the array for the sorting to work properly.
+    let mut weight: Vec<(u32, u16)> = vec![(0,0)];
     for (i, f) in sym_weight.iter().enumerate().take(eob as usize + 1) {
         weight.push((if f == &0 { 256 } else { f << 8 }, i as u16));
         // Do a Julian style approximate fast 'sort'.

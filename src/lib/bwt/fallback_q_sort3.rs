@@ -7,6 +7,8 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
     const FALLBACK_QSORT_STACK_SIZE: usize = 100;
     let mut stack: Vec<(i32, i32)> = Vec::with_capacity(10);
 
+    // C version uses this stack to push and pop ranges to sort. It MAY be 
+    // possible to just push and pop tuples to a vec, but this needs to be examined.
     stack.push((lo_st, hi_st));
 
     let mut ratio = 0;
@@ -66,7 +68,6 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
                 n = (block_data[freq_map[un_lo as usize] as usize] as i32) - median as i32;
                 if n == 0 {
                     freq_map.swap(un_lo as usize, lt_lo as usize);
-                    //info!("a Swapped freq_map indecies {} and {}", un_lo, lt_lo);
                     lt_lo += 1;
                     un_lo += 1;
                     continue;
@@ -103,7 +104,7 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
             un_hi -= 1;
         }
 
-        if !(un_hi == un_lo - 1) {
+        if un_hi != un_lo - 1 {
             error!("fallbackQSort3(2)") // whatever this is. ds
         }
 

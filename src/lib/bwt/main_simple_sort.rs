@@ -28,79 +28,77 @@ pub fn main_simple_sort(
     hp -= 1;
 
     while hp >= 0 {
-        let h = incs[hp as usize];
-        let mut i = lo + h;
+        let hp_incr = incs[hp as usize];
+        let mut i = lo + hp_incr;
         loop {
             /*-- copy 1 --*/
             if i > hi {
                 break;
             };
-            let mut v = bwt_ptr[i as usize];
+            let mut tmp_v = bwt_ptr[i as usize];
             let mut j = i;
-            // if i == 121 {
-            //     println!("Pause here")
-            // }
+
             while main_gtu(
-                bwt_ptr[(j - h) as usize] as i32 + d,
-                v as i32 + d,
+                bwt_ptr[(j - hp_incr) as usize] as i32 + d,
+                tmp_v as i32 + d,
                 block_data,
                 quadrant,
                 end,
                 budget,
             ) {
-                bwt_ptr[j as usize] = bwt_ptr[(j - h) as usize];
-                j -= h;
-                if j <= (lo + h - 1) {
+                bwt_ptr[j as usize] = bwt_ptr[(j - hp_incr) as usize];
+                j -= hp_incr;
+                if j <= (lo + hp_incr - 1) {
                     break;
                 };
             }
-            bwt_ptr[j as usize] = v;
+            bwt_ptr[j as usize] = tmp_v;
             i += 1;
 
             /*-- copy 2 --*/
             if i > hi {
                 break;
             };
-            v = bwt_ptr[i as usize];
+            tmp_v = bwt_ptr[i as usize];
             j = i;
             while main_gtu(
-                bwt_ptr[(j - h) as usize] as i32 + d,
-                v as i32 + d,
+                bwt_ptr[(j - hp_incr) as usize] as i32 + d,
+                tmp_v as i32 + d,
                 block_data,
                 quadrant,
                 end,
                 budget,
             ) {
-                bwt_ptr[j as usize] = bwt_ptr[(j - h) as usize];
-                j -= h;
-                if j <= (lo + h - 1) {
+                bwt_ptr[j as usize] = bwt_ptr[(j - hp_incr) as usize];
+                j -= hp_incr;
+                if j <= (lo + hp_incr - 1) {
                     break;
                 };
             }
-            bwt_ptr[j as usize] = v;
+            bwt_ptr[j as usize] = tmp_v;
             i += 1;
 
             /*-- copy 3 --*/
             if i > hi {
                 break;
             };
-            v = bwt_ptr[i as usize];
+            tmp_v = bwt_ptr[i as usize];
             j = i;
             while main_gtu(
-                bwt_ptr[(j - h) as usize] as i32 + d,
-                v as i32 + d,
+                bwt_ptr[(j - hp_incr) as usize] as i32 + d,
+                tmp_v as i32 + d,
                 block_data,
                 quadrant,
                 end,
                 budget,
             ) {
-                bwt_ptr[j as usize] = bwt_ptr[(j - h) as usize];
-                j -= h;
-                if j <= (lo + h - 1) {
+                bwt_ptr[j as usize] = bwt_ptr[(j - hp_incr) as usize];
+                j -= hp_incr;
+                if j <= (lo + hp_incr - 1) {
                     break;
                 };
             }
-            bwt_ptr[j as usize] = v;
+            bwt_ptr[j as usize] = tmp_v;
             i += 1;
             if *budget < 0 {
                 return;

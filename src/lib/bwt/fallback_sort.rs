@@ -90,13 +90,13 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
     sum_freq table, reduce the table by the one we found, and put the index sequence into the map.
     */
     for (idx, byte) in block_data.iter().enumerate() {
-        let k = sum_freq[*byte as usize] - 1;
-        sum_freq[*byte as usize] = k;
-        freq_map[k as usize] = idx as u32;
+        let tmp = sum_freq[*byte as usize] - 1;
+        sum_freq[*byte as usize] = tmp;
+        freq_map[tmp as usize] = idx as u32;
     }
 
     // Set a count-change marker for each change in sum_freq.
-    for i in 0..256 as usize {
+    for i in 0..256_usize {
         set_bh!(sum_freq[i]);
     }
 
@@ -115,8 +115,8 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
     We will call the sort function log(N) times in this loop below. N will be determined by whether
     we still have "buckets" that need to be sorted.
     We increase the number of characters to be considered each time by the power of 2.
-    Set h for the first iteration to 1 --*/
-    let mut h = 1;
+    Set depth for the first iteration to 1 --*/
+    let mut depth = 1;
 
     loop {
         let mut j = 0;
@@ -128,13 +128,13 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
                 j = i
             };
             /*
-            Get the offset in freq_map associated with this iteration, and subtract the loop level (h).
+            Get the offset in freq_map associated with this iteration, and subtract the loop level (depth).
             What this should do is point to the byte previous to this byte (previous by the loop level)
             */
-            let mut k = freq_map[i as usize] as i32 - h;
+            let mut offset = freq_map[i as usize] as i32 - depth;
             // if this offset is less than zero, wrap around the end of the input string
-            if k < 0 {
-                k += end as i32;
+            if offset < 0 {
+                offset += end as i32;
             };
             /*
             Update the input data at the offset we calculated to be equal to the bucket transition index
@@ -144,69 +144,67 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
             Thus banana will be 040403, where the 0 indicates the next byte belongs to bucket 0, the 4 indicates
             the next byte belongs to bucket 4, etc.
             */
-            block_data[k as usize] = j as u16;
+            block_data[offset as usize] = j as u16;
         }
 
         // Begin to count how many lines are not fully sorted
         // Initialize a counter to count how many unsorted lines exist at this level - used in reporting
         let mut not_done_count = 0;
         // Set the right boundary to -1 so we can initialize our index for the loop)
-        let mut r: i32 = -1;
+        let mut right: i32 = -1;
         loop {
-            /*-- find the next non-singleton bucket --*/
-            let mut k = r + 1;
+            /*-- find the next non-singleton bucket boundry --*/
+            let mut bndry = right + 1;
 
-            // If k is not aligned to the u16 boundary, increment k so it is.
-            while is_set_bh!(k) && unaligned_bh!(k) {
-                k += 1;
+            // If bucket is not aligned to the u16 boundary, increment bucket so it is.
+            while is_set_bh!(bndry) && unaligned_bh!(bndry) {
+                bndry += 1;
             }
-            if is_set_bh!(k) {
-                // If k indicates a bucket that has 32 members, increment k by 32
-                while word_bh!(k) == 0xffffffff {
-                    k += 32
+            if is_set_bh!(bndry) {
+                // If bucket bndry indicates a bucket that has 32 members, increment bucket bndry by 32
+                while word_bh!(bndry) == 0xffffffff {
+                    bndry += 32
                 }
                 // Otherwise increment by 1 by 1 in this loop until we find how big the bucket is
-                while is_set_bh!(k) {
-                    k += 1;
+                while is_set_bh!(bndry) {
+                    bndry += 1;
                 }
             }
 
             // Set the "left" boundary of the bucket to sort
-            let l = k - 1;
-            if l >= end as i32 {
+            let left = bndry - 1;
+            if left >= end as i32 {
                 break;
             };
             // Look for the right boundary of the bucket. If we are not at a boundary and we
-            // are unaligned, increment k
-            while !is_set_bh!(k) && unaligned_bh!(k) {
-                k += 1;
+            // are unaligned, increment bucket
+            while (bhtab[bndry as usize >> 5] & (1 << (bndry & 31)) as u32) == 0 {
+                bndry += 1;
             }
-            // If k indicates a bucket that has 32 members, increment k by 32
-            if !is_set_bh!(k) {
-                while word_bh!(k) == 0x00000000 {
-                    k += 32;
+            // If bucket bndry indicates a bucket that has 32 members, increment bndry by 32
+            if (bhtab[bndry as usize >> 5] & (1 << (bndry & 31)) as u32) == 0 {
+                    bndry += 32;
                 }
-                // Otherwise increment by 1 by 1 in this loop until we find how big the bucket is
-                while !is_set_bh!(k) {
-                    k += 1;
-                }
+            // Otherwise increment by 1 by 1 in this loop until we find how big the bucket is
+            while (bhtab[bndry as usize >> 5] & (1 << (bndry & 31)) as u32) == 0 {
+                bndry += 1;
             }
             // Set the right boundary for the bucket
-            r = k - 1;
-            if r >= end as i32 {
+            right = bndry - 1;
+            if right >= end as i32 {
                 break;
             }
 
-            /*-- Julian's note: now [l, r] bracket current bucket --*/
-            // Make sure l & r are logically sized
-            if r > l {
-                // The number of unsorted lines is incremented by the distance between l&r in this bucket
-                not_done_count += r - l + 1;
+            /*-- Julian's note: now [left, right] bracket current bucket --*/
+            // Make sure left & right are logically sized
+            if right > left {
+                // The number of unsorted lines is incremented by the distance between left&right in this bucket
+                not_done_count += right - left + 1;
 
-                // Go sort this bucket (slice between l and r). This slice will always be 32 or less bytes.
+                // Go sort this bucket (slice between left and right). This slice will always be 32 or less bytes.
                 // (Only sort if needed, though.)
-                if not_done_count > 1 && l >= 0 && l < r {
-                    fallback_q_sort3(&mut freq_map, &block_data, l, r)
+                if not_done_count > 1 && left >= 0 && left < right {
+                    fallback_q_sort3(&mut freq_map, &block_data, left, right)
                 }
 
                 /*--
@@ -215,7 +213,7 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
                 need to clear header bits - when they are either all set, or all 1010, we are done.
                 -- */
                 let mut cc: i32 = -1;
-                for i in l..=r {
+                for i in left..=right {
                     let cc1 = block_data[freq_map[i as usize] as usize] as i32;
                     if cc != cc1 {
                         set_bh!(i);
@@ -227,13 +225,13 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
 
         info!(
             "depth {}{} has {} unresolved strings",
-            if h < 10 { " " } else { "" },
-            h,
+            if depth < 10 { " " } else { "" },
+            depth,
             not_done_count
         );
 
-        h *= 2;
-        if h > end as i32 || not_done_count == 0 {
+        depth *= 2;
+        if depth > end as i32 || not_done_count == 0 {
             break;
         };
     }

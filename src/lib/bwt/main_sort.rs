@@ -258,7 +258,7 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
         Necessity for this case is demonstrated by compressing a sequence of approximately
         48.5 million of character 251; 1.0.0/1.0.1 will then die here.
         */
-        if !(copy_start[ss as usize] - 1 == copy_end[ss as usize])
+        if (copy_start[ss as usize] - 1 != copy_end[ss as usize])
             || ((copy_start[ss as usize] == 0) && copy_end[ss as usize] == end as i32 - 1)
         {
             error!("Massive 251 attack detected!")
@@ -351,11 +351,7 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
             bwt_data[i] = block_data8[bwt_ptr[i] as usize - 1] as u8
         }
     }
-    // println!("ptr");
-    // println!("{:?}", bwt_ptr);
-    // println!("Quadrant");
-    // println!("{:?}", quadrant);
-    return (budget, key, bwt_data);
+    (budget, key, bwt_data)
 }
 
 fn big_freq(freq_tab: &[u32], n: u32) -> u32 {

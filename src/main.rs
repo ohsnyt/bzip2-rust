@@ -84,8 +84,8 @@ fn test() {
         for el in &test_data[0..end] {
             if let (Some(byte), part_b) = rle.next(*el) {
                 rle_data.push(byte);
-                if part_b.is_some() {
-                    rle_data.push(part_b.unwrap())
+                if let Some(byte) = part_b {
+                    rle_data.push(byte)
                 }
             }
         }

@@ -1,4 +1,4 @@
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, warn};
 
 use crate::lib::crc::CRC;
 
@@ -83,7 +83,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         drop(key_vec);
 
         // Read the Symbol Map
-        let debug_loc = br.loc();
+        //let debug_loc = br.loc();
         let sym_map1: u16 = u16::from_be_bytes(br.read8plus(16).unwrap().try_into().unwrap());
         let mut sym_map: Vec<u16> = vec![sym_map1];
         for _ in 0..sym_map1.count_ones() {
@@ -109,10 +109,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         info!("{} tables in use.", table_count);
 
         // Read Selector_count (NumSels)
-        let debug_loc = br.loc();
         let tmp = br.read8plus(15).unwrap();
         let selector_count: u32 = (tmp[0] as u32) << 7 | tmp[1] as u32;
-        trace!("selector_count is {} at {}", selector_count, debug_loc);
 
         info!(
             "Found {} selectors for block {}. ({} max.)",
@@ -122,7 +120,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         );
 
         // Read Selectors
-        let debug_loc = br.loc();
+        //let debug_loc = br.loc();
         let mut table_map = Vec::with_capacity(selector_count as usize);
         let mut group: u8 = 0;
         for _ in 0..selector_count {
@@ -132,9 +130,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             table_map.push(group);
             group = 0;
         }
-        trace!("Read {} selectors at {}", selector_count, debug_loc);
-        trace!("Read mtf version of selectors {:?}", table_map);
-
         // Decode selectors from MTF values for the selectors
         // create an index from 0 to table_count long, incrementing each value
         let mut table_idx = vec![];
@@ -152,7 +147,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             })
             .0;
 
-        trace!("Decoded selector (table) map is {:?}", table_map);
         info!(
             "Decoded the {} selectors for the {} tables.",
             selector_count, table_count
@@ -163,15 +157,13 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let mut diff: i32 = 0;
         for _ in 0..table_count {
             let mut map: Vec<(u16, u32)> = Vec::new();
-            let debug_loc = br.loc();
+            //let debug_loc = br.loc();
             let mut l: i32 = br.read8(5).unwrap() as i32;
-            debug!("Read origin (first symbol length) ({}) at {}", l, debug_loc);
 
             for symbol in 0..symbols as u16 {
                 loop {
                     let bit = br.read8(1).unwrap();
                     if bit == 0 {
-                        trace!("Added index {}, length {}", symbol, (l + diff));
                         map.push((symbol, (l + diff) as u32));
                         l += diff;
                         diff = 0;
@@ -233,18 +225,13 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let mut block_byte_count = 0;
 
         for &selector in table_map.iter().take(selector_count as usize) {
-            trace!(
-                "Read 50 byte chunk at {} using table {}",
-                br.loc(),
-                selector
-            );
             let mut chunk_byte_count = 0;
             let idx = selector as usize;
             let mut bit_count: u32 = 0;
             let mut bits = 0;
             // last symbol in the symbol map is eob
             let eob = (hm_vec[idx].len() - 1) as u16;
-            let mut debug_loc = br.loc();
+            //let mut debug_loc;
 
             // loop through the data in 50 byte groups
             while chunk_byte_count < 50 {
@@ -253,14 +240,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 bit_count += 1;
                 // check if we have found a valid symbol code yet
                 if let Some(sym) = hm_vec[idx].get(&(bit_count << 24 | bits)) {
-                    trace!(
-                        "Byte {}, loc: {} found {}, code {:0width$b}",
-                        block_byte_count,
-                        debug_loc,
-                        sym,
-                        bits,
-                        width = bit_count as usize
-                    );
                     // Push the symbol out
                     out.push(*sym);
                     if sym != &eob {
@@ -269,7 +248,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         bit_count = 0;
                         chunk_byte_count += 1;
                         block_byte_count += 1; // for trace debugging
-                        debug_loc = br.loc();
+                        //debug_loc = br.loc();
                     } else {
                         // FOUND EOB
                         if block_byte_count / 50 < selector_count - 1 {
@@ -278,22 +257,14 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         // Undo the RLE2
                         let rle2_v = rle2_decode(&out);
 
-                        trace!("MTF input is {:?}", std::str::from_utf8(&rle2_v).unwrap());
                         // Undo the MTF.
                         let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
-                        trace!(
-                            "Entering BWT with key of {} and data of \n{:?}",
-                            key,
-                            std::str::from_utf8(&mtf_v)
-                        );
 
                         // Undo the BWTransform
                         let btw_v = crate::lib::bwt_ds::bwt_decode(key, &mtf_v); //, &symbol_set);
-                        trace!("Left BWT with \n{:?}", std::str::from_utf8(&btw_v));
 
                         // Undo the initial RLE1
                         let rle1_v = rle1_decode(&btw_v);
-                        trace!("Left RLE1 with \n{:?}", std::str::from_utf8(&rle1_v));
 
                         // Compute the CRC
                         crc.reset_block_crc();

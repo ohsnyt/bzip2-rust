@@ -20,7 +20,7 @@ However it proved to require lots of lookups through BtreeMaps. I have moved bac
 hopes of signficant speed advantages of direct indexing instead of searches.)
 */
 
-use log::{error, trace};
+use log::error;
 
 pub(crate) const RUNA: u16 = 0;
 pub(crate) const RUNB: u16 = 1;
@@ -47,10 +47,6 @@ pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
         } else {
             // We didn't find a zero. So If we have any pending zeros to put out
             if zeros > 0 {
-                // for debugging purposes, report more than 20 in a row
-                if zeros > 20 {
-                    trace! {"{}",zeros};
-                };
                 // write out the pending zeros using the special bzip2 coding
                 out.append(&mut rle2_encode_runs(zeros, &mut freq_out));
                 // and reset the zeros counter

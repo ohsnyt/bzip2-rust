@@ -52,7 +52,6 @@ pub(crate) fn main_q_sort3(
 
         mpop!(lo, hi, d);
         if (hi - lo < MAIN_QSORT_SMALL_THRESH) || (d > MAIN_QSORT_DEPTH_THRESH) {
-            trace!("Going to main_simple_sort");
             main_simple_sort(bwt_ptr, block_data, quadrant, end, lo, hi, d, budget);
             if *budget < 0 {
                 return;

@@ -1,4 +1,4 @@
-use log::{error, info, warn};
+use log::{error, info};
 
 use super::{main_simple_sort::main_simple_sort, main_sort::QSort};
 const MAIN_QSORT_STACK_SIZE: usize = 100;
@@ -13,7 +13,7 @@ pub(crate) fn main_q_sort3(
     budget: &mut i32,
     qs: &mut QSort,
 ) {
-    while qs.stack.len() > 0 {
+    while !qs.stack.is_empty() {
         if qs.stack.len() >= MAIN_QSORT_STACK_SIZE - 2 {
             error!("Excessive stack size in main_q_sort3.")
         };

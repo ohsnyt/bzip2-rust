@@ -1,4 +1,4 @@
-use log::{trace, error};
+use log::error;
 
 /// Creates a bitstream for output. Although output is accessible at any time, it
 /// is best to call Flush before reading the "final" output.
@@ -43,7 +43,6 @@ impl BitWriter {
         let depth = (data >> 24) as u8; //get bit length
         self.queue <<= depth; //shift queue by bit length
         self.queue |= (data & (0xffffffff >> (32 - depth))) as u64; //add data portion to queue
-        trace!("Writing {} bits: {:0width$b}", depth, data & (0xffffffff >> (32 - depth)), width = depth as usize );
         self.q_bits += depth; //update depth of queue bits
         self.write_stream();
     }

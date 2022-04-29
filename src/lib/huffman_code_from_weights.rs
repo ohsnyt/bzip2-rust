@@ -1,4 +1,3 @@
-use log::trace;
 use super::huffman::{Node, NodeData};
 
 /// Improve a slice of Huffman codes lengths (u8) using a slice of  
@@ -42,13 +41,6 @@ pub fn improve_code_len_from_weights<'a>(
                 NodeData::Kids(Box::new(left_child), Box::new(right_child)),
             ));
             // Do a Julian style approximate fast 'sort'.
-            // let tree_clone = tree.clone();
-            //push_big_up(&mut tree); // needed???
-            // if tree != tree_clone {
-            //     debug!("Hmmm")
-            // } else {
-            //     debug!("ok")
-            // }
             // NOTE: I did have a true sort, but I'm trying to duplicate the odd behavior Julian has.
             tree.sort_by(|a, b| b.weight.cmp(&a.weight));
         }
@@ -65,7 +57,6 @@ pub fn improve_code_len_from_weights<'a>(
             // Overwrite the codes and return the improved list.
             break 'outer codes;
         } else {
-            trace!("Lengths exceeded 17 bits... adjusting weights.");
             // Adjust weights by dividing each weight by 2 and adding 1
             // This "flattens" the node tree. Then go try this again.
             for item in weight.iter_mut().take(eob as usize + 1) {
@@ -91,7 +82,6 @@ fn return_leaves(node: &Node, depth: u8, leaves: &mut Vec<(u16, u8)>) {
         }
         NodeData::Leaf(mtf) => {
             leaves.push((*mtf, depth));
-            trace!("symbol {}, depth {}", mtf, depth);
         }
     };
 }

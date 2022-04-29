@@ -2,7 +2,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::prelude::*;
 use std::io::{self, Write};
 
-use log::{info, trace, warn};
+use log::{info, warn};
 
 use crate::lib::crc::CRC;
 use crate::lib::rle1::Encode;
@@ -36,7 +36,6 @@ pub struct Block {
 
 /// Compress the input file defined in the command line.
 pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
-    trace!("Initializing BitWriter and block struct");
     // Create the struct to pass data to compress_block.rs
     // Initialize the size of the data vec to the block size to avoid resizing
     let mut bw = BitWriter::new(opts.block_size as usize * 100000);
@@ -60,7 +59,6 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // NOTE: All writes append with out deleting existing files!!
 
     // Initialize stuff to read the file
-    trace!("Getting command line parameters");
     let _input = match data_in::init(opts) {
         Err(e) => {
             opts.status = Status::NoData;
@@ -71,7 +69,6 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
 
     // Prepare to read the data.
     let fname = opts.file.as_ref().unwrap().clone();
-    trace!("Preparing to get input file for reading ({})", fname);
     let fin = File::open(&fname)?;
     let _fin_metadata = fs::metadata(&fname)?;
 
@@ -85,7 +82,6 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.file.as_ref().unwrap().clone();
     fname.push_str(".bz2");
-    trace!("Opening output file for writing ({})", fname);
     let mut f_out = OpenOptions::new()
         .write(true)
         .create(true)
@@ -100,8 +96,8 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
         // Encode the data with the Run Length Encoder - which will return 0, 1, or 2 bytes
         if let (Some(byte), part_b) = rle.next(byte) {
             block_data.push(byte);
-            if part_b.is_some() {
-                block_data.push(part_b.unwrap());
+            if let Some(byte) = part_b {
+                block_data.push(byte);
             }
         }
         // Check if we have reached the maximum block size, but not in the middle of run

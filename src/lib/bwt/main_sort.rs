@@ -27,8 +27,6 @@ impl QSort {
 
 pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
     info!("Main sort initialize.");
-    //debug
-    //let watch_me = 121;
 
     // initialize key constants
     const OVERSHOOT: usize = 34;
@@ -234,10 +232,6 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
                     k += end as i32
                 }
                 let c1 = block_data[k as usize];
-                // // three lines of debug code
-                // if c1 == watch_me as u16 {
-                //     error!("242: Pause here to check {}", watch_me)
-                // } // debug end
 
                 if !big_done[c1 as usize] {
                     bwt_ptr[copy_end[c1 as usize] as usize] = k as u32;

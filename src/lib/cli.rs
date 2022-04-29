@@ -141,7 +141,7 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
     };
 
     // Below we lot initialization status to the user
-    info!("\n---- Bzip2 Initialization Start ----",);
+    info!("---- Bzip2 Initialization Start ----",);
     info!("Verbosity set to {}", log::max_level());
     info!("Operational mode set to {}", bz_opts.op_mode);
     match &bz_opts.file {

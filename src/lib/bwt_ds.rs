@@ -2,7 +2,7 @@
 ///Burrows-Wheeler-Transform - based on https://github.com/aufdj
 /// receives reference to incoming block of data and
 /// returns key for final data decomcpression. Key is u32.
-/* pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
+pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
     //let ext = orig.len();
     //let mut index: Vec<(u8, usize)> = orig.iter().enumerate().map(|(i, &s)| (s, i)).collect();
@@ -35,21 +35,21 @@
 }
 
 /// compare the next two chunks of the original data to decide which sorts first
-fn block_compare(a: usize, b: usize, block: &[u8]) -> Ordering {
-    let min = min(block[a..].len(), block[b..].len());
+fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
+    let min = std::cmp::min(block[a..].len(), block[b..].len());
 
     // Lexicographical comparison
     let result = block[a..a + min].cmp(&block[b..b + min]);
 
     // Implement wraparound if needed
-    if result == Ordering::Equal {
+    if result == std::cmp::Ordering::Equal {
         return [&block[a + min..], &block[0..a]]
             .concat()
             .cmp(&[&block[b + min..], &block[0..b]].concat());
     }
     result
 }
- */
+ 
 /// Decode a Burrows-Wheeler-Transform
 pub fn bwt_decode(key: u32, btw_in: &[u8]) -> Vec<u8> {
     //first get a freq count of symbols

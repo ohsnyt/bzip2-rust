@@ -50,6 +50,7 @@ pub fn main_simple_sort(
                 j -= hp_incr;
                 if j <= (lo + hp_incr - 1) {
                     break;
+   
                 };
             }
             bwt_ptr[j as usize] = tmp_v;

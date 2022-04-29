@@ -1,10 +1,11 @@
 use log::{debug, error, info, trace, warn};
 
+use crate::lib::crc::CRC;
+
 use super::{
     bitreader::BitReader,
     //bwt_ds::bwt_decode,
     //bwt_inverse::inverse_bwt,
-    crc::{do_crc, do_stream_crc},
     mtf::mtf_decode,
     options::BzOpts,
     rle1::rle1_decode,
@@ -20,7 +21,7 @@ use std::{
 /// Decompress the file given in the command line
 pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     // Initialize stream crc
-    let mut stream_crc = 0;
+    let mut crc = CRC::new();
 
     // Initialize stuff to read the file
     let mut f = "test.txt.bz2".to_string();
@@ -295,14 +296,18 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         trace!("Left RLE1 with \n{:?}", std::str::from_utf8(&rle1_v));
 
                         // Compute the CRC
-                        let this_crc = do_crc(&rle1_v);
-                        stream_crc = do_stream_crc(stream_crc, this_crc);
-                        if block_crc == this_crc {
+                        crc.reset_block_crc();
+                        for byte in &rle1_v {
+                            crc.add_byte(*byte)
+                        };
+                        crc.update_stream_crc();
+
+                        if block_crc == crc.get_block_crc() {
                             info!("Block {} CRCs matched.", block_counter);
                         } else {
-                            warn!(
+                            error!(
                                 "Block {} CRC failed!!! Found {} looking for {}. (Continuing...)",
-                                block_counter, this_crc, block_crc
+                                block_counter, crc.get_block_crc(), block_crc
                             );
                         }
 
@@ -319,12 +324,12 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
     debug!("Looking for final crc at {}", br.loc());
     let final_crc = u32::from_be_bytes(br.read8plus(32).unwrap().try_into().unwrap());
-    if final_crc == stream_crc {
-        info!("Stream CRCs matched.");
+    if final_crc == crc.get_stream_crc() {
+        info!("Stream CRCs matched: {}.", final_crc);
     } else {
-        warn!(
+        error!(
             "Stream CRC failed!!! Found {} looking for {}. (Data may be corrupt.)",
-            final_crc, stream_crc
+            crc.get_stream_crc(), final_crc
         );
     }
 

@@ -1,59 +1,139 @@
 /*
-Logic: Iterate through the input, counting how far we go before we hit a sequence of 4 identical bytes.
-(Extending a vec should be faster than pushing data at each byte. Searching for 4 bytes at a time should
-be faster than counting pairs in a loop.) When you find a duplicate sequence, output all the bytes
- you skipped over, go count how many bytes are identical, output the identical bytes (you can only
-do 260 at a time, hence the divide and mod math), then adjust the index and start location.*/
+Stream orient Run Length Encoder. Being stream oriented allows this encoder to work with
+the logic that divides a block so that the BWT encoding can received as close to the
+maximum block size as possible without overrunning the 19 byte buffer.
 
-/// Performs RLE encoding on strings of four or more identical characters.
-pub fn rle1_encode(v: &[u8]) -> Vec<u8> {
-    // Initialize several variables
-    // skip_start marks where we started skipping bytes while we look for the next sequence
-    let mut skip_start: usize = 0;
-    // idx is the index of where we are in the input file, starting from 0 to the end.
-    let mut idx = 0;
-    // the end is three bytes from the end, because... we are looking for sequences of 4 bytes!
-    let end = v.len().saturating_sub(3);
-    // out is the vec holding the transform - it will be the same size as the input
-    let mut out = Vec::with_capacity(v.len());
+When we find a run of 4 or more, we have to return the run counter as well as the non-matching 
+byte that marked the end of the run. Hence the .next() function will return a tuple of option 
+u8s, not just one u8.
 
-    // Loop through the input file looking for a sequence of four identical bytes
-    while idx < end {
-        if v[idx] == v[idx + 1] && v[idx] == v[idx + 2] && v[idx] == v[idx + 3] {
-            // If we found a sequence, first push out all that we skipped over to get here
-            out.extend_from_slice(&v[skip_start..idx]);
-            // Go count how many identical bytes start at the index (4+, but how many?)
-            let mut dups = count_dups(v, idx);
-            // Since we can only write out 260 at a time, write out the duplicates in groups as needed
-            for _ in 0..dups / 260 {
-                // each time we write the 4 bytes we found...
-                out.extend_from_slice(&v[idx..=idx + 3]);
-                // ...followed by a number that says how many more should be there, up to 255
-                out.push(255);
-                // Then reduce the dups counter
-                dups -= 260;
-            }
-            // When we got down to less than 260, write out the rest
-            // Write the 4 bytes we found...
-            out.extend_from_slice(&v[idx..=idx + 3]);
-            // ...followed by a number that says how many more should be there
-            out.push(((dups) % 256) as u8);
-            // move the index past the sequence we found
-            idx += dups + 4 ;
-            // and reset the zeros counter
-            skip_start = idx;
-            // dups gets reset above, so we can leave it for now
+Since it is important that a run of four always close with a count u8 after it, it is
+important that the calling function loop with logic similar to this to flush out the
+counter if we are in the middle of a run, and reset the encoder before restarting again:
+    // Initialize encoder
+    let mut rle = Encode::new();
+    // Set block size. A size less than 4 makes no sense.
+    let max = 15;
+    // Initialize a vec to receive the RLE data
+    let mut block: Vec<u8> = Vec::with_capacity(max + 19);
+
+// Loop through the block
+    for el in contents {
+        if let Some(byte) = rle.next(el) {
+            block.push(byte)
         }
-        idx += 1;
+        // Check if we are done with a block, but not in the middle of run
+        if block.len() >= max && !rle.run {
+            if let (Some(byte), part_b) = rle.next(*el) {
+                block.push(byte);
+                if part_b.is_some() {
+                    block.push(part_b.unwrap())
+                }
+        }            }
+            //... do stuff here with the RLE encoded full block ...
+        }
     }
+    // Flush the encoder at the end in case we 
+    if let Some(byte) = rle.flush() {
+        block.push(byte)
+    }
+    //... do stuff here with the RLE encoded partial block ...
 
-    // We probably didn't finish with a sequence of identical bytes, so write out all we skipped
-    // since the last sequence (or the beginning, if we didn't have any sequences)
-    if skip_start < v.len() {
-        out.extend_from_slice(&v[skip_start..v.len()]);
-    }
-    out
+ */
+/// Encoder for RLE 1 (any run of 4+ identical bytes), prior to calculating block size & BWT. Returns tuple
+#[derive(Clone, Copy)]
+pub struct Encode {
+    prev: Option<u8>,
+    run_count: u32,
+    pub run: bool,
 }
+impl Default for Encode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl Encode {
+    /// Create a new, empty encoder
+    pub fn new() -> Self {
+        Self {
+            prev: None,
+            run_count: 0,
+            run: false,
+        }
+    }
+    /// Look for identical runs of 4+ bytes. Return Some(byte), or None if we are
+    /// in the middle of a run and just counting.
+    pub fn next(&mut self, byte: u8) -> (Option<u8>, Option<u8>) {
+        // If we have seen two identical bytes
+        if Some(byte) == self.prev {
+            match self.run_count {
+                // First time we have a match, set the counter to 2 and output the byte
+                0 => {
+                    self.run_count = 2;
+                    (Some(byte), None)
+                }
+                // Third byte, increment the counter again and output the byte
+                2 => {
+                    self.run_count += 1;
+                    (Some(byte), None)
+                }
+                // Fourth identical byte. Mark the start of a run
+                // Increment counter and output byte
+                3 => {
+                    self.run = true;
+                    self.run_count += 1;
+                    (Some(byte), None)
+                }
+                // We cannot exceed 260 bytes in a run, so terminate the run by
+                // outputing the counter and resetting the encoder.
+                260 => {
+                    self.run_count = 0;
+                    self.run = false;
+                    self.prev = None;
+                    (Some(255_u8), Some(byte))
+                }
+                // Anything between 3 and 260, just increment the counter and return None
+                _ => {
+                    self.run_count += 1;
+                    (None, None)
+                }
+            }
+        // If we found a non-matching byte, check if we just finished a run
+        } else if self.run {
+            // If so, reset the run indicator, remember this new byte for the next loop,
+            // prepare to output the counter, reset the counter and output the counter.
+            self.run = false;
+            self.prev = Some(byte);
+            let temp = self.run_count as u8 - 4;
+            self.run_count = 0;
+            (Some(temp), Some(byte))
+        } else {
+            // If not, remember the current byte so we can compare with the next byte
+            self.prev = Some(byte);
+            // Reset the run counter 
+            self.run_count = 0;
+            // Output the byte
+            (Some(byte), None)
+        }
+    }
+    /// Make sure the current length of a run is output if the input ends in a run
+    pub fn flush(&mut self) -> Option<u8> {
+        // Clear the comparison byte
+        self.prev = None;
+        // If we NOT are in the middle of a run
+        if !self.run {
+            // Return nothing
+            None
+        } else {
+            // Otherwise return the counter and reset things for the next possible block
+            let temp = self.run_count as u8 - 4;
+            self.run_count = 0;
+            self.run = false;
+            Some(temp)
+        }
+    }
+}
+
 
 /*
 Logic: This is similar to the encoding. Start looking for a sequence of 4 identical bytes.
@@ -81,7 +161,7 @@ pub fn rle1_decode(v: &[u8]) -> Vec<u8> {
         } else if v[i] == v[i + 1] && v[i] == v[i + 2] && v[i] == v[i + 3] {
             // If we found a sequence of 4, first write out everything from start to now.
             out.extend_from_slice(&v[start..i + 4]);
-            // Create a vec of the identical characters, sizing the vec on the counter byte 
+            // Create a vec of the identical characters, sizing the vec on the counter byte
             // after sequence of 4 we found
             let tmp = vec![v[i]; v[i + 4].into()];
             // ...and write that out
@@ -98,54 +178,6 @@ pub fn rle1_decode(v: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Helper function for rel1_encode to count how many duplicate bytes occur.
-fn count_dups(v: &[u8], i: usize) -> usize {
-    // Initialize a counter
-    let mut count = 0;
-    // Starting three past the current index location
-    for j in i + 3..v.len() - 1 {
-        // If we have a different byte, return the count
-        if v[j] != v[j + 1] {
-            return count;
-        }
-        // Otherwise increment the count an check the next byte
-        count += 1;
-    }
-    // return the count, needed in case we end the loop without finding a different byte
-    count
-}
-
-#[test]
-fn rle1_en_simple() {
-    let input = "Goofy teeeeeeeest".as_bytes();
-    assert_eq!(
-        rle1_encode(input),
-        vec![71, 111, 111, 102, 121, 32, 116, 101, 101, 101, 101, 4, 115, 116]
-    )
-}
-#[test]
-fn rle1_en_simple2() {
-    let input = "Really ???? ???? ???? ???? ???? ???? ???????????????".as_bytes();
-    assert_eq!(
-        rle1_encode(input),
-        vec![82, 101, 97, 108, 108, 121, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 0, 32, 63, 63, 63, 63, 11]
-    )
-}
-#[test]
-fn rle1_roundtrip_simple() {
-    let input =
-        "Peter Piper              picked a biiii iiii iiiiig peck of peppersssssss".as_bytes();
-    let e = rle1_encode(input);
-    let d = rle1_decode(&e);
-    assert_eq!(input, d);
-}
-#[test]
-fn rle1_roundtrip_simple2() {
-    let input = "Really ???? ???? ???? ???? ???? ???? ???????????????".as_bytes();
-    let e = rle1_encode(input);
-    let d = rle1_decode(&e);
-    assert_eq!(input, d);
-}
 
 #[test]
 fn rle1_de_simple() {

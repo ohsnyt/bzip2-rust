@@ -8,10 +8,6 @@ pub fn main_gtu(
     end: usize,
     budget: &mut i32,
 ) -> bool {
-    //debug
-    // if i1 == 47 {
-    //     println!("Pause here, main_gtu")
-    // }
     if i1 == i2 {
         error!("mainGtU error")
     }

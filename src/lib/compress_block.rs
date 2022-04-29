@@ -4,7 +4,7 @@ use super::bwt::block_sort::block_sort;
 use log::{info, trace};
 
 use super::{
-    bitwriter::BitWriter, compress::Block, huffman::huf_encode, mtf::mtf_encode, rle1::rle1_encode,
+    bitwriter::BitWriter, compress::Block, huffman::huf_encode, mtf::mtf_encode,
     rle2::rle2_encode,
 };
 #[allow(clippy::unusual_byte_groupings)]
@@ -33,12 +33,9 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block, block_size
     bw.out32(block.block_crc); // crc
     bw.out24(0x01_000000); // One zero bit
 
-    // Before we can write the key, we need to do the BWT
-    let rle_data = rle1_encode(data);
-
     // Remember the data length for reporting later
     let block_length = data.len();
-
+    
     // Using SAIS algorithm
     //let bwt_combined = crate::lib::bwt_internal::bwt(rle_data);
     //let key = bwt_combined.end_of_string;
@@ -49,7 +46,7 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block, block_size
     //info!("Known good: {:?}", bwt_data_ds);
 
     // Using julians algorithm
-    let (key, bwt_data) = block_sort(&rle_data, 30);
+    let (key, bwt_data) = block_sort(&data, 30);
     /* if key_ds == key as u32 {
         info!("HURRAY! MATCHING KEYS.")
     } else {

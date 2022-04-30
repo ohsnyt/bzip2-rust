@@ -40,11 +40,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // Initialize the size of the data vec to the block size to avoid resizing
     let mut bw = BitWriter::new(opts.block_size as usize * 100000);
 
-    // NOTE: There is a LIKELY PROBLEM with the block size calculation.
-    /* Julian took 19 off the block size. I'm taking 19 off for every 100k in.
-    The problem can exist because if the first RLE effort expands the file, then the
-    original bzip2 will not decompress it. It seems to need the data to be limited
-    to less than 900k **at any time**.
+    /* Julian took 19 off the block size. 
     */
     let mut block = Block {
         block_size: opts.block_size as usize * 100000 - 19,

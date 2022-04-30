@@ -9,7 +9,7 @@ pub fn block_sort (block_data: &[u8], mut work_factor: u32) -> (usize, Vec<u8>) 
 
     //const OVERSHOOT: usize = 34;
     // If the size of the block us under 10k, use the fallbackSort function.
-    let (key, bwt_data) = if end < 35 {
+    let (key, bwt_data) = if end < 10000 {
         fallback_sort(block_data)
     } else {
         /* (work_factor-1) / 3 puts the default-factor-30

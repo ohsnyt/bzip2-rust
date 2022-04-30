@@ -15,18 +15,48 @@ a version using a for loop is below. It runs in the same time, but may be more r
     }
     !crc*/
 
-/// Calculate CRC in BZIP style on entire each block
-pub fn do_crc(data: &[u8]) -> u32 {
-    !data.iter().fold(0xffffffff, |crc, b| {
-        (crc << 8) ^ BZ2_CRC32_TABLE[((crc >> 24) ^ (*b as u32)) as usize]
-    })
+/// Struct to hold and compute both block and stream CRCs for Bzip2
+pub struct CRC {
+    block_crc: u32,
+    stream_crc: u32,
+}
+/// Default implementation
+impl Default for CRC {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-/// Join Block CRC to Stream CRC after each block
-pub fn do_stream_crc(stream_crc: u32, block_crc: u32) -> u32 {
-    let mut new_crc = (stream_crc << 1) | (stream_crc >> 31);
-    new_crc ^= block_crc;
-    new_crc
+impl CRC {
+    /// Create a new CRC encoder
+    pub fn new() -> Self {
+        Self {
+            block_crc: 0xffffffff,
+            stream_crc: 0,
+        }
+    }
+    /// Add data to block crc byte-by-byte
+    pub fn add_byte(&mut self, byte: u8) {
+        self.block_crc = (self.block_crc << 8)
+            ^ BZ2_CRC32_TABLE[((self.block_crc >> 24) ^ (byte as u32)) as usize];
+    }
+    /// Update the stream crc with current block crc. Should only be used once per block.
+    pub fn update_stream_crc(&mut self) {
+        self.stream_crc = (self.stream_crc << 1) | (self.stream_crc >> 31);
+        self.stream_crc ^= self.block_crc;
+    }
+    /// Return the block crc.
+    pub fn get_block_crc(&mut self) -> u32 {
+        !self.block_crc
+    }
+    /// Return the stream CRC.
+    pub fn get_stream_crc(&mut self) -> u32 {
+        self.stream_crc
+    }
+    /// Rest the block crc for the next block.
+    pub fn reset_block_crc(&mut self) {
+        self.block_crc = 0xffffffff;
+    }
 }
 
 const BZ2_CRC32_TABLE: [u32; 256] = [
@@ -287,22 +317,3 @@ const BZ2_CRC32_TABLE: [u32; 256] = [
     0xb5365d03u32,
     0xb1f740b4u32,
 ];
-
-#[test]
-fn one_block_crc_test() {
-    assert_eq!(do_stream_crc(0, 0x5a55c41e), 0x5a55c41e)
-}
-
-#[test]
-fn double_block_crc_test() {
-    assert_eq!(do_stream_crc(0x5a55c41e, 0x5a55c41e), 0xeefe4c22)
-}
-
-#[test]
-fn crc_test() {
-    assert_eq!(0x8e9a7706, do_crc("Hello, world!".as_bytes()))
-}
-#[test]
-fn crc_peter_test() {
-    assert_eq!(0x5a55c41e, do_crc("If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????".as_bytes()))
-}

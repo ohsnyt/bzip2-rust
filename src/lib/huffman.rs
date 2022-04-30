@@ -1,4 +1,4 @@
-use log::{debug, error, info, trace};
+use log::{ error, info};
 
 use super::bitwriter::BitWriter;
 use super::huffman_code_from_weights::improve_code_len_from_weights;
@@ -52,7 +52,6 @@ pub fn huf_encode(
         1200..=2399 => 5,
         _ => 6,
     };
-    trace!("We need {} huffman code tables", table_count);
 
     // Initialize the tables to weights of 15. Since Rust requires compile time array
     // sizing, let's just make 6 even though we might need less.
@@ -112,7 +111,6 @@ pub fn huf_encode(
             }
         };
     }
-    trace!("Created {} tables based on frequency ratios.", table_count);
 
     /*
      So now we have our tables divided out by frequency ratios. Each symbol in each table
@@ -120,9 +118,7 @@ pub fn huf_encode(
      against real data. These adjusted numbers are used to build a huffman tree, and
      thereby the huffman codes.
 
-     We will iterate four times to improve the tables. Each time we will try to make codes
-     of 17 bits or less. If we can't, we will cut the weights down and try that iteration
-     again.
+     We will iterate four times to improve the tables. 
     */
 
     // Remember for later how many selectors we will have, and where we store them
@@ -130,7 +126,6 @@ pub fn huf_encode(
     let mut selectors = vec![];
 
     for iter in 0..4 {
-        trace!("Starting iteration {}", iter);
         // initialize favorites[] to 0 for each table/group
         let mut favorites = [0; 6];
 
@@ -200,11 +195,10 @@ pub fn huf_encode(
 
             // Now that we know the best table, go get the frequency counts for
             // the symbols in this group of 50 bytes and store the freq counts into rfreq.
-            // as we go through the input file, this becomes cumulative for each "best" table.
+            // as we go through an iteration, this becomes cumulative.
             for &symbol in input.iter().take(end as usize).skip(start) {
                 rfreq[bt as usize][symbol as usize] += 1;
             }
-            //debug!("rfreq for this chunk is \n>>>{:?}", &rfreq[bt][0..=eob as usize]);
 
             // Prepare to get the next group of 50 bytes from the input
             start = end;
@@ -220,14 +214,7 @@ pub fn huf_encode(
         // This makes actual node trees based off our weighting. This will put the
         // improved weights into the weight arrays. As mentioned, we do this 4 times.
         for t in 0..table_count as usize {
-            trace!("Initial codes {:?}", &tables[t][0..eob as usize]);
             improve_code_len_from_weights(&mut tables[t], &rfreq[t], eob);
-            trace!(
-                "Iteration {}, \ntable {} {:?}",
-                iter,
-                t,
-                &tables[t][0..eob as usize]
-            );
         }
     }
     /*
@@ -236,25 +223,14 @@ pub fn huf_encode(
       we can use the code_from_length function to quickly generate codes.
     */
 
-    trace!("Writing symbol_map starting at {}", bw.loc());
     // Next are the symbol maps , 16 bit L1 + 0-16 words of 16 bit L2 maps.
     for word in symbol_map {
         bw.out16(word);
     }
 
     // Symbol maps are followed by a 3 bit number of Huffman trees that exist
-    trace!(
-        "Writing table_count ({}) starting at {}",
-        table_count,
-        bw.loc()
-    );
     bw.out24((3 << 24) | table_count);
 
-    trace!(
-        "Writing selector_count ({}) starting at {}",
-        selector_count,
-        bw.loc()
-    );
     // Then a 15 bit number indicating the how many selectors are used
     // (how many 50 byte groups are in this block of data)
     bw.out24((15 << 24) | selector_count);
@@ -284,12 +260,8 @@ pub fn huf_encode(
         })
         .0;
 
-    trace!("Original selectors are {:?}", selectors);
-    trace!("MTF'ed selectors are {:?}", mtf_selectors);
-
     // Now write out all the mtf'ed selectors
     for selector in &mtf_selectors {
-        trace!("Writing {} at {:?}", selector, bw.loc());
         match selector {
             0 => bw.out24(0x01000000),
             1 => bw.out24(0x02000002),
@@ -319,6 +291,7 @@ pub fn huf_encode(
     let mut out_code_tables = vec![];
 
     // For as many tables as we have, we have quite few steps to do
+    #[allow(clippy::needless_range_loop)]
     for i in 0..table_count as usize {
         // Because we have a fixed array of tables, we must use an index to get only the ones we want
         let table = tables[i];
@@ -392,13 +365,7 @@ pub fn huf_encode(
 
         // We write the origin as a five bit int
         let mut origin = len_sym[0].0;
-        debug!(
-            "Writing a table with an origin of {} starting at {}",
-            origin,
-            bw.loc()
-        );
         bw.out24((5 << 24) | origin as u32);
-        trace!("Length symbol table is {:?}", len_sym);
 
         // ... and iterate through the entire symbol list writing the deltas
         for entry in len_sym.iter() {
@@ -409,7 +376,6 @@ pub fn huf_encode(
             // put this new length into origin for the next iteration of this loop
             origin = *l;
             // write out the length delta as ±1 repeatedly
-            trace!("Writing length {} with delta of {}", l, delta);
             loop {
                 match delta.cmp(&0) {
                     // if the delta is greater than 0, write 0x10
@@ -436,7 +402,6 @@ pub fn huf_encode(
         out_codes.sort_unstable();
         out_code_tables.push(out_codes);
     }
-    trace!("tables are {:?}", out_code_tables);
 
     /*
     Now encode and write the data.
@@ -453,23 +418,11 @@ pub fn huf_encode(
         // Be sure to use the NON-MTF TABLES!
         if progress % 50 == 0 {
             table_idx = selectors[progress / 50];
-            trace!(
-                "Chunk {}, table {}, output file location {}",
-                progress / 50,
-                table_idx,
-                bw.loc()
-            );
         }
-        trace!(
-            "symbol {}, table {}, length: {}, loc: {}",
-            symbol,
-            table_idx,
-            (out_code_tables[table_idx][*symbol as usize].1 >> 24),
-            bw.loc()
-        );
+        if symbol == &eob {
+        }
         bw.out24(out_code_tables[table_idx][*symbol as usize].1);
     }
-    debug!("Done at {}", bw.loc());
 
     // All done
     Ok(())

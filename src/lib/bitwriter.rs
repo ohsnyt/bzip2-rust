@@ -1,4 +1,4 @@
-use log::trace;
+use log::error;
 
 /// Creates a bitstream for output. Although output is accessible at any time, it
 /// is best to call Flush before reading the "final" output.
@@ -10,9 +10,9 @@ pub struct BitWriter {
 
 impl BitWriter {
     /// Called to create a new bitwriter
-    pub fn new() -> Self {
+    pub fn new(size:usize) -> Self {
         Self {
-            output: Vec::new(),
+            output: Vec::with_capacity(size),
             queue: 0,
             q_bits: 0,
         }
@@ -43,7 +43,6 @@ impl BitWriter {
         let depth = (data >> 24) as u8; //get bit length
         self.queue <<= depth; //shift queue by bit length
         self.queue |= (data & (0xffffffff >> (32 - depth))) as u64; //add data portion to queue
-        trace!("Writing {} bits: {:0width$b}", depth, data & (0xffffffff >> (32 - depth)), width = depth as usize );
         self.q_bits += depth; //update depth of queue bits
         self.write_stream();
     }
@@ -77,9 +76,10 @@ impl BitWriter {
     pub fn flush(&mut self) {
         if self.q_bits > 0 {
             self.queue <<= 8 - self.q_bits; //pad the queue with zeros
-            self.output.push(self.queue as u8); //push the packed byte out
-            self.queue = 0; //clear the queue
-            self.q_bits = 0; //clear the queue bit counter
+            self.q_bits += 8 - self.q_bits;
+            self.write_stream(); // write out all tha tis left
+            if self.q_bits > 0 {
+            error!("Stuff left in the BitWriter queue.");}
         }
     }
 

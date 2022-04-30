@@ -1,7 +1,9 @@
+use std::collections::VecDeque;
+
 /// Similar to makeMaps_e
 /// Takes a sorted deduped vec of all symbols used in the input and
 /// creates the unique bzip2 symbol map of symbols encoded as u16s
-pub fn encode_sym_map(symbols: &[u8]) -> Vec<u16> {
+pub fn encode_sym_map(symbols: &VecDeque<u8>) -> Vec<u16> {
     let mut map_l1: u16 = 0;
     let mut map_l2: Vec<u16> = vec![0; 16];
 
@@ -46,6 +48,7 @@ fn encode_symbol_map_test() {
     let mut x = "Making a silly test.".as_bytes().to_vec();
     x.sort_unstable();
     x.dedup();
+    let x = VecDeque::from(x);
     let idx = vec![11008, 32770, 4, 17754, 6208];
     assert_eq!(idx, encode_sym_map(&x))
 }
@@ -63,6 +66,7 @@ fn roundtrip_symbol_map_test() {
     let mut x = "Decode this.".as_bytes().to_vec();
     x.sort_unstable();
     x.dedup();
-    let rt = encode_sym_map(&x);
+    let y = VecDeque::from(x.clone());
+    let rt = encode_sym_map(&y);
     assert_eq!(decode_sym_map(&rt), x)
 }

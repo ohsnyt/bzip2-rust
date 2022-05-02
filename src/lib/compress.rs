@@ -119,8 +119,8 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
             // Record the block crc
             block.block_crc = crc.get_block_crc();
 
-            // Do the compression
-            compress_block(&block_data, &mut bw, &block, opts.block_size);
+            // Do the compression, allowing choice between sorting algorithms for the BWTransform
+            compress_block(&block_data, &mut bw, &block, opts.block_size, &opts.algorithm);
 
             // Write out what we have so we don't have to hold it all.
             f_out.write_all(&bw.output)?;
@@ -159,7 +159,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // Inform block_compress that this is the last block
     block.is_last = true;
     // Then do the compression
-    compress_block(&block_data, &mut bw, &block, opts.block_size);
+    compress_block(&block_data, &mut bw, &block, opts.block_size, &opts.algorithm);
 
     // Write out what we have so we don't have to hold it all.
     f_out.write_all(&bw.output)?;

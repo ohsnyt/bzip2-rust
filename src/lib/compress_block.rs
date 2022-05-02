@@ -10,7 +10,7 @@ use super::{
 #[allow(clippy::unusual_byte_groupings)]
 /// Compress one block and write out the stream.
 /// Handles stream header and footer also.
-pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block, block_size: u8) {
+pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block, block_size: u8, algorithm: &super::cli::Algorithms) {
     // If this is the first block, write the stream header
     if block.seq == 1 {
         // Put the header onto the bit stream
@@ -39,8 +39,16 @@ pub fn compress_block(data: &[u8], bw: &mut BitWriter, block: &Block, block_size
     //let (key_ds, bwt_data_ds) = bwt_encode(&rle_data);
     //info!("Known good: {:?}", bwt_data_ds);
 
+
+    let (key, bwt_data) = match algorithm{
+    // Using DS algorithm
+    crate::lib::cli::Algorithms::Simple =>  crate::lib::bwt_ds::bwt_encode(data),// Using Snyders simple algorithm
+    // Using SAIS algorithm
+    //crate::lib::cli::Algorithms::SAIS => block_sort(data, 30),// Using ribzip algorithm
     // Using julians algorithm
-    let (key, bwt_data) = block_sort(data, 30);
+    crate::lib::cli::Algorithms::Julian => block_sort(data, 30),// Using julians algorithm
+    _ => block_sort(data, 30),
+};
 
     // Now that we have the key, we can write the 24bit BWT key
     bw.out24(0x18_000000 | key as u32); // and 24 bit key

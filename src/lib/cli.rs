@@ -3,6 +3,16 @@ use clap::Parser;
 use log::info;
 use log::warn;
 
+#[derive(Debug, clap::Subcommand)]
+pub enum Algorithms {
+    /// Use original Bzip2 Burrow Wheeler Transform algorithm when compressing
+    Julian,
+    /// Use SAIS based Burrow Wheeler Transform algorithm when compressing
+    SAIS,
+    /// Use simple Burrow Wheeler Transform algorithm when compressing
+    Simple,
+}
+
 /// Command Line Interpretation - uses external CLAP crate.
 /// (Define author, version and about here.)
 /// Needs to be reworked. This is barely working.
@@ -70,6 +80,10 @@ pub struct Args {
     /// 1..9 - Set the block size from 100-900k. 900k is the default
     #[clap()]
     block_size: Option<u8>,
+
+    /// Sort algorithm choice
+    #[clap(subcommand)]
+    algorithm: Option<Algorithms>,
 }
 
 /// Official license statement for Bzip2
@@ -139,8 +153,14 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
     if args.license {
         info!("{}", license())
     };
+    match args.algorithm {
+        Some(julian) => Algorithms::Julian,
+        Some(said) => Algorithms::SAIS,
+        Some(simple) => Algorithms::Simple,
+        None => Algorithms::Julian,
+    };
 
-    // Below we lot initialization status to the user
+    // Below we report initialization status to the user
     info!("---- Bzip2 Initialization Start ----",);
     info!("Verbosity set to {}", log::max_level());
     info!("Operational mode set to {}", bz_opts.op_mode);

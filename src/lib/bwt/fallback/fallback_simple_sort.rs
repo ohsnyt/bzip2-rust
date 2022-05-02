@@ -1,3 +1,5 @@
+// NOTE: Dropped this in favor of using the build-in Rust sort for vecs
+
 /*---------------------------------------------*/
 /*--- Fallback O(N log(N)^2) sorting        ---*/
 /*--- algorithm, for repetitive blocks      ---*/

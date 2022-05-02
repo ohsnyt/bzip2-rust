@@ -14,3 +14,4 @@ target/.rustc_info.json
 Cargo.lock
 target/.rustc_info.json
 .gitignore
+target/.rustc_info.json

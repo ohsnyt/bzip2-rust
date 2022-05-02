@@ -1,18 +1,19 @@
 use log::{debug, info};
 
-use super::{fallback_sort::fallback_sort, main_sort::main_sort};
+use super::primary::main_sort::main_sort;
+use super::fallback::fallback_sort::fallback_sort;
 
+/// Primary entry into Julian's BWT sorting system. This receives a ref to the block,  and the work factor. 
+/// It returns the key (usize) and data.
 pub fn block_sort (block_data: &[u8], mut work_factor: u32) -> (usize, Vec<u8>) {
     let end = block_data.len();
-    //let mut bwt_data;
-    //let mut key;
 
-    //const OVERSHOOT: usize = 34;
     // If the size of the block us under 10k, use the fallbackSort function.
     let (key, bwt_data) = if end < 10000 {
         fallback_sort(block_data)
     } else {
-        /* (work_factor-1) / 3 puts the default-factor-30
+        /* Julian note:
+           (work_factor-1) / 3 puts the default-factor-30
            transition point at very roughly the same place as
            with v0.1 and v0.9.0.
            Not that it particularly matters any more, since the

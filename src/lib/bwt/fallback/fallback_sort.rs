@@ -1,11 +1,9 @@
-use log::info;
 
+use log::info;
 use super::fallback_q_sort3::fallback_q_sort3;
 
-/// Sort function for blocks of less than 10k size and... (TBD)
+/// Sort function for blocks of less than 10k size and highly repetitive data.
 pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
-    //warn!("\nEntering fallback_sort ...");
-
     // Define the length of the block data
     let end = block_data8.len();
 
@@ -235,12 +233,6 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
             break;
         };
     }
-
-    /*--
-       Reconstruct the original block in
-       block_data [0 .. end-1], since the
-       previous phase destroyed it.
-    --*/
 
     // Generate the burrow-wheeler data.
     info!("        building burrow-wheeler-transform data ...\n");

@@ -1,13 +1,12 @@
 use log::error;
 
-//use super::fallback_simple_sort::fallback_simple_sort;
-
+/// Three-way quick sort used by fallback_sort
 pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi_st: i32) {
     const FALLBACK_QSORT_SMALL_THRESH: usize = 10;
     const FALLBACK_QSORT_STACK_SIZE: usize = 100;
     let mut stack: Vec<(i32, i32)> = Vec::with_capacity(10);
 
-    // C version uses this stack to push and pop ranges to sort. It MAY be 
+    // C version uses this stack to push and pop ranges to sort. It MAY be
     // possible to just push and pop tuples to a vec, but this needs to be examined.
     stack.push((lo_st, hi_st));
 
@@ -30,7 +29,8 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
         let (lo, hi) = stack.pop().unwrap();
 
         // use quicksort if the slice between hi and lo is less than 10 (FALLBACK_QSORT_STACK_SIZE)
-        if hi - lo < 10+ FALLBACK_QSORT_SMALL_THRESH as i32 {
+        // NOTE: Julian called fallback_simple_sort() here. I use .sort_by() instead
+        if hi - lo < 10 + FALLBACK_QSORT_SMALL_THRESH as i32 {
             // ...but only if it is a valid, non-empty slice
             if hi > 0 && lo >= 0 && hi - lo > 0 {
                 freq_map[(lo as usize)..=(hi as usize)]

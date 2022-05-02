@@ -1,6 +1,8 @@
 /// bzip2 options - structs and impls and read & parse command line args
 use std::{fmt::Display, fmt::Formatter};
 
+use super::cli::Algorithms;
+
 #[derive(Debug)]
 /// Defines three operational modes
 pub enum Mode {
@@ -52,6 +54,8 @@ pub struct BzOpts {
     pub output: Output,
     /// Current status of progress - not yet used
     pub status: Status,
+    /// Algorithm used
+    pub algorithm: Algorithms,
 }
 
 impl BzOpts {
@@ -66,6 +70,7 @@ impl BzOpts {
             force_overwrite: false,
             output: Output::File,
             status: Status::Init,
+            algorithm: Algorithms::Julian,
         }
     }
 }

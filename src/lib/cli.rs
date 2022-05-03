@@ -153,12 +153,13 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
     if args.license {
         info!("{}", license())
     };
-    match args.algorithm {
-        Some(julian) => Algorithms::Julian,
-        Some(said) => Algorithms::SAIS,
-        Some(simple) => Algorithms::Simple,
-        None => Algorithms::Julian,
-    };
+    bz_opts.algorithm =  args.algorithm.unwrap_or(Algorithms::Julian);
+    // bz_opts.algorithm = match args.algorithm {
+    //     Some(julian) => Algorithms::Julian,
+    //     Some(said) => Algorithms::SAIS,
+    //     Some(simple) => Algorithms::Simple,
+    //     None => Algorithms::Julian,
+    // };
 
     // Below we report initialization status to the user
     info!("---- Bzip2 Initialization Start ----",);

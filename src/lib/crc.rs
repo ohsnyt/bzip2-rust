@@ -51,7 +51,7 @@ impl CRC {
     }
     /// Return the stream CRC.
     pub fn get_stream_crc(&mut self) -> u32 {
-        self.stream_crc
+        !self.stream_crc
     }
     /// Rest the block crc for the next block.
     pub fn reset_block_crc(&mut self) {

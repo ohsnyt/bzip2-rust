@@ -35,14 +35,6 @@ pub fn compress_block(
     // Remember the data length for reporting later
     let block_length = data.len();
 
-    // Using SAIS algorithm
-    //let bwt_combined = crate::lib::bwt_internal::bwt(rle_data);
-    //let key = bwt_combined.end_of_string;
-    //let bwt_data = bwt_combined.data;
-
-    // compare to using my (slow) algorithm
-    //let (key_ds, bwt_data_ds) = bwt_encode(&rle_data);
-    //info!("Known good: {:?}", bwt_data_ds);
 
     let (key, bwt_data) = match algorithm {
         // Using simple DS algorithm
@@ -52,8 +44,17 @@ pub fn compress_block(
         }
         // Using SAIS algorithm
         // crate::lib::cli::Algorithms::SAIS => {
-        //     info!("Using SAIS algorithm."),
-        //     block_sort(data, 30),// Using ribzip algorithm
+            //     info!("Using SAIS algorithm."),
+            //     block_sort(data, 30),// Using ribzip algorithm
+            // Using SAIS algorithm
+            //let bwt_combined = crate::lib::bwt_internal::bwt(rle_data);
+            //let key = bwt_combined.end_of_string;
+            //let bwt_data = bwt_combined.data;
+
+            // compare to using my (slow) algorithm
+            //let (key_ds, bwt_data_ds) = bwt_encode(&rle_data);
+            //info!("Known good: {:?}", bwt_data_ds);
+
         // Using julians algorithm
         crate::lib::cli::Algorithms::Julian => {
             info!("Using Julians algorithm.");

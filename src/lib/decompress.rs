@@ -1,6 +1,6 @@
 use log::{debug, error, info, warn};
 
-use crate::lib::crc::CRC;
+use crate::lib::crc::{do_crc, do_stream_crc};
 
 use super::{
     bitreader::BitReader,
@@ -20,8 +20,8 @@ use std::{
 
 /// Decompress the file given in the command line
 pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
-    // Initialize stream crc
-    let mut crc = CRC::new();
+    // Initialize steam CRC value
+    let mut stream_crc = 0;
 
     // Initialize stuff to read the file
     let mut f = "test.txt.bz2".to_string();
@@ -61,7 +61,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             break 'block;
         }
         if header_footer != vec![0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59] {
-            warn!("Cannot find the start of the first block.");
+            warn!("Cannot find the start of block {}.", block_counter);
             return Ok(()); // Probably should be an error!!
         }
         debug!("Found a valid header for block {}.", block_counter);
@@ -267,18 +267,15 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         let rle1_v = rle1_decode(&btw_v);
 
                         // Compute the CRC
-                        crc.reset_block_crc();
-                        for byte in &rle1_v {
-                            crc.add_byte(*byte)
-                        };
-                        crc.update_stream_crc();
+                        let this_block_crc = do_crc(0, &rle1_v);
+                        stream_crc = do_stream_crc(stream_crc, this_block_crc);
 
-                        if block_crc == crc.get_block_crc() {
+                        if block_crc == this_block_crc {
                             info!("Block {} CRCs matched.", block_counter);
                         } else {
                             error!(
                                 "Block {} CRC failed!!! Found {} looking for {}. (Continuing...)",
-                                block_counter, crc.get_block_crc(), block_crc
+                                block_counter, this_block_crc, block_crc
                             );
                         }
 
@@ -295,12 +292,12 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
     debug!("Looking for final crc at {}", br.loc());
     let final_crc = u32::from_be_bytes(br.read8plus(32).unwrap().try_into().unwrap());
-    if final_crc == crc.get_stream_crc() {
+    if final_crc == stream_crc {
         info!("Stream CRCs matched: {}.", final_crc);
     } else {
         error!(
             "Stream CRC failed!!! Found {} looking for {}. (Data may be corrupt.)",
-            crc.get_stream_crc(), final_crc
+            stream_crc, final_crc
         );
     }
 

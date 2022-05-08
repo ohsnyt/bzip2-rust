@@ -8,56 +8,90 @@ crc be the crc shifted left 8 then XORed wiht a lookup from the CRC constant tab
 is based on the crc value shifted right 24 bits and XORed with the byte. Then return the
 inverse of the resulting number.
 
-a version using a for loop is below. It runs in the same time, but may be more readable
+a version using for loop is below. It runs in the same time.
     let mut crc = 0xffffffff;
     for b in &input {
         crc = (crc << 8) ^ BZ2_CRC32_TABLE[((crc >> 24) ^ (*b as u32)) as usize];
     }
     !crc*/
 
-/// Struct to hold and compute both block and stream CRCs for Bzip2
-pub struct CRC {
-    block_crc: u32,
-    stream_crc: u32,
-}
-/// Default implementation
-impl Default for CRC {
-    fn default() -> Self {
-        Self::new()
-    }
+/// Calculate CRC in BZIP style on entire raw input file
+pub fn do_crc(existing_crc: u32, data: &[u8]) -> u32 {
+    let init = match existing_crc {
+        0 => 0xffffffff,
+        _ => !existing_crc,
+    };
+    !data.iter().fold(init, |crc, b| {
+        (crc << 8) ^ BZ2_CRC32_TABLE[((crc >> 24) ^ (*b as u32)) as usize]
+    })
 }
 
-impl CRC {
-    /// Create a new CRC encoder
-    pub fn new() -> Self {
-        Self {
-            block_crc: 0xffffffff,
-            stream_crc: 0,
-        }
-    }
-    /// Add data to block crc byte-by-byte
-    pub fn add_byte(&mut self, byte: u8) {
-        self.block_crc = (self.block_crc << 8)
-            ^ BZ2_CRC32_TABLE[((self.block_crc >> 24) ^ (byte as u32)) as usize];
-    }
-    /// Update the stream crc with current block crc. Should only be used once per block.
-    pub fn update_stream_crc(&mut self) {
-        self.stream_crc = (self.stream_crc << 1) | (self.stream_crc >> 31);
-        self.stream_crc ^= self.block_crc;
-    }
-    /// Return the block crc.
-    pub fn get_block_crc(&mut self) -> u32 {
-        !self.block_crc
-    }
-    /// Return the stream CRC.
-    pub fn get_stream_crc(&mut self) -> u32 {
-        !self.stream_crc
-    }
-    /// Rest the block crc for the next block.
-    pub fn reset_block_crc(&mut self) {
-        self.block_crc = 0xffffffff;
-    }
+/// Calculate stream crc from block_crc 
+pub fn do_stream_crc(strm_crc: u32, block_crc: u32) -> u32 {
+   (strm_crc << 1 | strm_crc >> 31) ^ block_crc
 }
+
+// CRC computation for bzip2
+/*
+The BlockCRC is a 32-bit integer and contains the CRC-32 checksum of the uncompressed data
+contained in BlockData.
+
+The calculation is: Start with u32 value of all 1s. For each byte in the input, let the new
+crc be the crc shifted left 8 then XORed wiht a lookup from the CRC constant table. The lookup
+is based on the crc value shifted right 24 bits and XORed with the byte. Then return the
+inverse of the resulting number.
+
+a version using a for loop is below. It runs in the same time, but may be more readable
+    let mut crc = 0xffffffff;
+    for b in &input {
+        crc = (crc << 8) ^ BZ2_CRC32_TABLE[((crc >> 24) ^ (*b as u32)) as usize];
+    }
+    !crc
+    */
+
+// /// Struct to hold and compute both block and stream CRCs for Bzip2
+// pub struct CRC {
+//     block_crc: u32,
+//     stream_crc: u32,
+// }
+// /// Default implementation
+// impl Default for CRC {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
+
+// impl CRC {
+//     /// Create a new CRC encoder
+//     pub fn new() -> Self {
+//         Self {
+//             block_crc: 0xffffffff,
+//             stream_crc: 0,
+//         }
+//     }
+//     /// Add data to block crc byte-by-byte
+//     pub fn add_byte(&mut self, byte: u8) {
+//         self.block_crc = (self.block_crc << 8)
+//             ^ BZ2_CRC32_TABLE[((self.block_crc >> 24) ^ (byte as u32)) as usize];
+//     }
+//     /// Update the stream crc with current block crc. Should only be used once per block.
+//     pub fn update_stream_crc(&mut self) {
+//         self.stream_crc = (self.stream_crc << 1) | (self.stream_crc >> 31);
+//         self.stream_crc ^= self.block_crc;
+//     }
+//     /// Return the block crc.
+//     pub fn get_block_crc(&mut self) -> u32 {
+//         !self.block_crc
+//     }
+//     /// Return the stream CRC.
+//     pub fn get_stream_crc(&mut self) -> u32 {
+//         !self.stream_crc
+//     }
+//     /// Rest the block crc for the next block.
+//     pub fn reset_block_crc(&mut self) {
+//         self.block_crc = 0xffffffff;
+//     }
+// }
 
 const BZ2_CRC32_TABLE: [u32; 256] = [
     0x00000000u32,

@@ -35,7 +35,7 @@ fn main() -> io::Result<()> {
         lib::options::Mode::Zip => compress(&mut options),
         lib::options::Mode::Unzip => decompress(&options),
         lib::options::Mode::Test => {
-            test();
+           // test();
             Ok(())
         }
     }
@@ -46,11 +46,9 @@ fn main() -> io::Result<()> {
 
 use crate::lib::bwt_ds::bwt_decode;
 use lib::rle1::rle1_decode;
-use lib::rle1::Encode;
-
 use crate::lib::mtf::{mtf_decode, mtf_encode};
 
-fn test() {
+/* fn test() {
     // Prepare to read the data.
     //let filename = "src/highwayman.txt";
     //let filename = "/Users/david/Documents/bzip2/bzip2/tests/sample1.ref";
@@ -75,8 +73,6 @@ fn test() {
             println!("     Testing {} bytes", end);
             println!("******************************\n");
 
-            // Initialize encoder
-        let mut rle = Encode::new();
         // Set block size. A size less than 4 makes no sense.
         let max = end;
         // Initialize a vec to receive the RLE data
@@ -228,3 +224,4 @@ fn test() {
         //info!("-------------------------------------\n");
     }
 }
+ */

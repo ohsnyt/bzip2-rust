@@ -1,4 +1,4 @@
-use log::{error, info, debug};
+use log::{debug, error, info};
 
 use super::main_q_sort3::main_q_sort3;
 

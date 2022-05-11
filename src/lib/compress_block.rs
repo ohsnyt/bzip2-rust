@@ -42,18 +42,12 @@ pub fn compress_block(
             info!("Using DS simple algorithm.");
             crate::lib::bwt_ds::bwt_encode(data)
         }
-        // Using SAIS algorithm
-        // crate::lib::cli::Algorithms::SAIS => {
-            //     info!("Using SAIS algorithm."),
-            //     block_sort(data, 30),// Using ribzip algorithm
-            // Using SAIS algorithm
-            //let bwt_combined = crate::lib::bwt_internal::bwt(rle_data);
-            //let key = bwt_combined.end_of_string;
-            //let bwt_data = bwt_combined.data;
-
-            // compare to using my (slow) algorithm
-            //let (key_ds, bwt_data_ds) = bwt_encode(&rle_data);
-            //info!("Known good: {:?}", bwt_data_ds);
+        // Using SAIS algorithm from ribzip2
+        crate::lib::cli::Algorithms::SAIS => {
+                info!("Using SAIS algorithm.");
+                //block_sort(data, 30);   
+            crate::lib::bwt_ribzip::bwt_internal::bwt(data)
+        },
 
         // Using julians algorithm
         crate::lib::cli::Algorithms::Julian => {

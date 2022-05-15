@@ -31,7 +31,6 @@ pub(crate) fn main_q_sort3(
             };
             continue;
         }
-        //warn!("Using broken algorithm. Hi is {} and lo is {}", hi, lo);
         // Get the approximate median value from the block data in this bucket
         let med = mmed3(
             block_data[bwt_ptr[lo as usize] as usize + d as usize],
@@ -47,6 +46,8 @@ pub(crate) fn main_q_sort3(
         loop {
             // Sort the bucket based on lt_lo and un_lo
             while un_hi >= un_lo {
+                let n =
+                    block_data[bwt_ptr[un_lo as usize] as usize + d as usize] as i32 - med as i32;
                 let n =
                     block_data[bwt_ptr[un_lo as usize] as usize + d as usize] as i32 - med as i32;
                 if n == 0 {
@@ -147,6 +148,7 @@ pub(crate) fn main_q_sort3(
     }
 }
 
+// ds. Cannot improve this version
 /// Return the middle value of these three
 fn mmed3(mut a: u16, mut b: u16, c: u16) -> u32 {
     if a > b {
@@ -161,15 +163,10 @@ fn mmed3(mut a: u16, mut b: u16, c: u16) -> u32 {
     b as u32
 }
 
+//  ds. This version 15% faster than previous while loop version
 /// Swap n pointers starting a lo/lo_2
-fn mvswap(bwt_ptr: &mut Vec<u32>, lo: i32, lo_2: i32, n: i32) {
-    let mut lo = lo as usize;
-    let mut lo_2 = lo_2 as usize;
-    let mut n = n;
-    while n > 0 {
-        bwt_ptr.swap(lo, lo_2);
-        lo += 1;
-        lo_2 += 1;
-        n -= 1;
+pub fn mvswap(bwt_ptr: &mut Vec<u32>, lo: i32, lo_2: i32, n: i32) {
+    for i in 0..n {
+        bwt_ptr.swap((lo + i) as usize, (lo_2 + i) as usize)
     }
 }

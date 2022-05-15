@@ -41,7 +41,7 @@
                 "-v4",
                 //"src/Peter.txt",
                 "9",
-                "sais",
+                //"sais",
             ],
             "cwd": "${workspaceFolder}"
         },

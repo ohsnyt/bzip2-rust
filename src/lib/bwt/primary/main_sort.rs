@@ -7,9 +7,6 @@ const BZ_N_RADIX: i32 = 2;
 
 pub struct QSort {
     pub stack: Vec<(i32, i32, i32)>,
-    pub next_lo: [i32; 3],
-    pub next_hi: [i32; 3],
-    pub next_d: [i32; 3],
     pub end: usize,
 }
 
@@ -17,9 +14,6 @@ impl QSort {
     fn new() -> Self {
         Self {
             stack: Vec::with_capacity(MAIN_QSORT_STACK_SIZE),
-            next_lo: [0, 0, 0],
-            next_hi: [0, 0, 0],
-            next_d: [0, 0, 0],
             end: 0,
         }
     }
@@ -36,7 +30,6 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
 
     // Initialize data structures
     let mut quadrant: Vec<u16> = vec![0; end + OVERSHOOT];
-    //let mut bwt_ptr: Vec<u32> = vec![0; end + OVERSHOOT];
     let mut copy_start = vec![0_i32; 256];
     let mut copy_end = vec![0_i32; 256];
 
@@ -343,6 +336,7 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
 
 /// Return the difference between the second bytes in freq_tab[[n+1]] and freq_tab[[n]].
 /// The difference is returned as the second byte in a u32 (00_0).
+#[inline(always)]
 fn big_freq(freq_tab: &[u32], n: u32) -> u32 {
     (freq_tab[((n + 1) as usize) << 8] as u32) - (freq_tab[(n as usize) << 8] as u32)
 }

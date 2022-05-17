@@ -1,4 +1,6 @@
-use log::{error, info};
+use std::cmp::Ordering;
+
+use log::{error, info, warn};
 
 use super::{main_simple_sort::main_simple_sort, main_sort::QSort};
 const MAIN_QSORT_STACK_SIZE: usize = 100;
@@ -19,7 +21,7 @@ pub(crate) fn main_q_sort3(
         };
 
         // Get the current boundaries and depth
-        let (lo, hi, d) = qs.stack.pop().unwrap_or_default();
+        let (mut lo, mut hi, mut d) = qs.stack.pop().unwrap_or_default();
 
         // Use main_simple_sort if the context is simple (small, not deep)
         if ((hi - lo) < MAIN_QSORT_SMALL_THRESH) || (d > MAIN_QSORT_DEPTH_THRESH) {
@@ -32,6 +34,7 @@ pub(crate) fn main_q_sort3(
             continue;
         }
         // Get the approximate median value from the block data in this bucket
+        // Shifting from [] to .get() did not alter speed, but did increase complexity
         let med = mmed3(
             block_data[bwt_ptr[lo as usize] as usize + d as usize],
             block_data[bwt_ptr[hi as usize] as usize + d as usize],
@@ -45,9 +48,8 @@ pub(crate) fn main_q_sort3(
 
         loop {
             // Sort the bucket based on lt_lo and un_lo
+            // This indexed versio is marginally faster than a .get() version.
             while un_hi >= un_lo {
-                let n =
-                    block_data[bwt_ptr[un_lo as usize] as usize + d as usize] as i32 - med as i32;
                 let n =
                     block_data[bwt_ptr[un_lo as usize] as usize + d as usize] as i32 - med as i32;
                 if n == 0 {
@@ -61,6 +63,23 @@ pub(crate) fn main_q_sort3(
                 };
                 un_lo += 1;
             }
+            // Alternate .get() version of Sort the bucket based on lt_lo and un_lo
+            // while un_hi >= un_lo {
+            //     if let Some(ptr) = bwt_ptr.get(un_lo as usize) {
+            //         if let Some(n) = block_data.get(*ptr as usize + d as usize) {
+            //             let x = *n as i32 - med as i32;
+            //             match (*n as i32 - med as i32).cmp(&0) {
+            //                 Ordering::Equal => {
+            //                     bwt_ptr.swap(un_lo as usize, lt_lo as usize);
+            //                     lt_lo += 1;
+            //                     un_lo += 1;
+            //                 },
+            //                 Ordering::Greater => break,
+            //                 Ordering::Less => un_lo += 1,
+            //             }
+            //         }
+            //     }
+            // }
             // Sort the bucket based on gt_hi and un_hi
             while un_hi >= un_lo {
                 if un_hi == 0 {
@@ -109,42 +128,38 @@ pub(crate) fn main_q_sort3(
         n = lo + un_lo as i32 - lt_lo as i32 - 1;
         m = hi - (gt_hi as i32 - un_hi as i32) + 1;
 
-        qs.next_lo[0] = lo;
-        qs.next_hi[0] = n;
-        qs.next_d[0] = d;
-        qs.next_lo[1] = m;
-        qs.next_hi[1] = hi;
-        qs.next_d[1] = d;
-        qs.next_lo[2] = n + 1;
-        qs.next_hi[2] = m - 1;
-        qs.next_d[2] = d + 1;
+        // ds: This is slightly faster than using the small vecs of next_lo, next_hi, next_d
+        let mut d1 = d;
+        let mut lo2 = n + 1;
+        let mut hi2 = m - 1;
+        let mut d2 = d + 1;
 
-        if (qs.next_hi[0] - qs.next_lo[0]) < (qs.next_hi[1] - qs.next_lo[1]) {
-            qs.next_lo.swap(0, 1);
-            qs.next_hi.swap(0, 1);
-            qs.next_d.swap(0, 1);
+        if (n - lo) < (hi - m) {
+            std::mem::swap(&mut lo, &mut m);
+            std::mem::swap(&mut n, &mut hi);
+            std::mem::swap(&mut d, &mut d1);
         }
-        if (qs.next_hi[1] - qs.next_lo[1]) < (qs.next_hi[2] - qs.next_lo[2]) {
-            qs.next_lo.swap(1, 2);
-            qs.next_hi.swap(1, 2);
-            qs.next_d.swap(1, 2);
+        if (hi - m) < (hi2 - lo2) {
+            std::mem::swap(&mut m, &mut lo2);
+            std::mem::swap(&mut hi, &mut hi2);
+            std::mem::swap(&mut d1, &mut d2);
         }
-        if (qs.next_hi[0] - qs.next_lo[0]) < (qs.next_hi[1] - qs.next_lo[1]) {
-            qs.next_lo.swap(0, 1);
-            qs.next_hi.swap(0, 1);
-            qs.next_d.swap(0, 1);
+        if (n - lo) < (hi - m) {
+            std::mem::swap(&mut lo, &mut m);
+            std::mem::swap(&mut n, &mut hi);
+            std::mem::swap(&mut d, &mut d1);
         }
 
-        if (qs.next_hi[0] - qs.next_lo[0]) < (qs.next_hi[1] - qs.next_lo[1]) {
+        if (n - lo) < (hi - m) {
             error!("mainQSort3(8)a")
         };
-        if (qs.next_hi[1] - qs.next_lo[1]) < (qs.next_hi[2] - qs.next_lo[2]) {
+        if (hi - m) < (hi2 - lo2) {
             error!("mainQSort3(8)b")
         };
 
-        qs.stack.push((qs.next_lo[0], qs.next_hi[0], qs.next_d[0]));
-        qs.stack.push((qs.next_lo[1], qs.next_hi[1], qs.next_d[1]));
-        qs.stack.push((qs.next_lo[2], qs.next_hi[2], qs.next_d[2]));
+        qs.stack.push((lo, n, d));
+        qs.stack.push((m, hi, d1));
+        qs.stack.push((lo2, hi2, d2));
     }
 }
 

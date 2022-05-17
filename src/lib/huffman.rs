@@ -151,6 +151,8 @@ pub fn huf_encode(
         of data, and record that in the selector table.
         */
 
+        /* ds:  WOULD IT BE FASTER to record these 50 in a frequency vec, and append each time? */
+
         // initialize chunk counters
         let mut start: usize = 0;
         let the_end = input.len();

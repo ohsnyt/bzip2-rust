@@ -2,18 +2,14 @@ use std::cmp::Ordering;
 
 use log::{error, info, warn};
 
-use super::{main_simple_sort::main_simple_sort, main_sort::QSort};
+use super::{main_simple_sort::main_simple_sort, main_sort::QsortData};
 const MAIN_QSORT_STACK_SIZE: usize = 100;
 const MAIN_QSORT_SMALL_THRESH: i32 = 20;
 const MAIN_QSORT_DEPTH_THRESH: i32 = 14;
 //const OVERSHOOT: usize = 34;
 
 pub(crate) fn main_q_sort3(
-    bwt_ptr: &mut Vec<u32>,
-    block_data: &[u16],
-    quadrant: &mut Vec<u16>,
-    budget: &mut i32,
-    qs: &mut QSort,
+    qs: &mut QsortData,
 ) {
     while !qs.stack.is_empty() {
         if qs.stack.len() >= MAIN_QSORT_STACK_SIZE - 2 {
@@ -25,9 +21,9 @@ pub(crate) fn main_q_sort3(
 
         // Use main_simple_sort if the context is simple (small, not deep)
         if ((hi - lo) < MAIN_QSORT_SMALL_THRESH) || (d > MAIN_QSORT_DEPTH_THRESH) {
-            main_simple_sort(bwt_ptr, block_data, quadrant, qs.end, lo, hi, d, budget);
+            main_simple_sort(qs, lo, hi, d);
             // If sorting took too long, go use the fallback sorting algorithm
-            if *budget < 0 {
+            if qs.budget < 0 {
                 info!("Falling back to secondary sort algorithm");
                 return;
             };
@@ -36,9 +32,9 @@ pub(crate) fn main_q_sort3(
         // Get the approximate median value from the block data in this bucket
         // Shifting from [] to .get() did not alter speed, but did increase complexity
         let med = mmed3(
-            block_data[bwt_ptr[lo as usize] as usize + d as usize],
-            block_data[bwt_ptr[hi as usize] as usize + d as usize],
-            block_data[bwt_ptr[(lo as usize + hi as usize) >> 1] as usize + d as usize],
+            qs.block_data[qs.bwt_ptr[lo as usize] as usize + d as usize],
+            qs.block_data[qs.bwt_ptr[hi as usize] as usize + d as usize],
+            qs.block_data[qs.bwt_ptr[(lo as usize + hi as usize) >> 1] as usize + d as usize],
         );
 
         let mut un_lo = lo;
@@ -51,9 +47,9 @@ pub(crate) fn main_q_sort3(
             // This indexed versio is marginally faster than a .get() version.
             while un_hi >= un_lo {
                 let n =
-                    block_data[bwt_ptr[un_lo as usize] as usize + d as usize] as i32 - med as i32;
+                    qs.block_data[qs.bwt_ptr[un_lo as usize] as usize + d as usize] as i32 - med as i32;
                 if n == 0 {
-                    bwt_ptr.swap(un_lo as usize, lt_lo as usize);
+                    qs.bwt_ptr.swap(un_lo as usize, lt_lo as usize);
                     lt_lo += 1;
                     un_lo += 1;
                     continue;
@@ -86,9 +82,9 @@ pub(crate) fn main_q_sort3(
                     error!("main_q_sort3 line 64: un_hi == {}", un_hi);
                 }
                 let n =
-                    (block_data[bwt_ptr[un_hi as usize] as usize + d as usize]) as i32 - med as i32;
+                    (qs.block_data[qs.bwt_ptr[un_hi as usize] as usize + d as usize]) as i32 - med as i32;
                 if n == 0 {
-                    bwt_ptr.swap(un_hi as usize, gt_hi as usize);
+                    qs.bwt_ptr.swap(un_hi as usize, gt_hi as usize);
                     gt_hi -= 1;
                     un_hi -= 1;
                     continue;
@@ -102,7 +98,7 @@ pub(crate) fn main_q_sort3(
                 break;
             };
             // Swap un_lo and un_hi, and repeat.
-            bwt_ptr.swap(un_lo as usize, un_hi as usize);
+            qs.bwt_ptr.swap(un_lo as usize, un_hi as usize);
             un_lo += 1;
             un_hi -= 1;
         }
@@ -120,10 +116,10 @@ pub(crate) fn main_q_sort3(
         }
 
         let mut n = (lt_lo as i32 - lo).min(un_lo as i32 - lt_lo as i32);
-        mvswap(bwt_ptr, lo as i32, un_lo as i32 - n as i32, n as i32);
+        mvswap(&mut qs.bwt_ptr, lo as i32, un_lo as i32 - n as i32, n as i32);
 
         let mut m = (hi - gt_hi as i32).min(gt_hi as i32 - un_hi as i32);
-        mvswap(bwt_ptr, un_lo as i32, hi as i32 - m as i32 + 1, m as i32);
+        mvswap(&mut qs.bwt_ptr, un_lo as i32, hi as i32 - m as i32 + 1, m as i32);
 
         n = lo + un_lo as i32 - lt_lo as i32 - 1;
         m = hi - (gt_hi as i32 - un_hi as i32) + 1;

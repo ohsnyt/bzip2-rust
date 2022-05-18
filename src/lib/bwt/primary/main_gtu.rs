@@ -1,13 +1,12 @@
 use log::{error, warn};
 
+use super::main_sort::QsortData;
+
 /// Revised C version - Rust iterated versions were slower
 pub fn main_gtu(
     i1: i32,
     i2: i32,
-    block_data: &[u16],
-    quadrant: &[u16],
-    end: usize,
-    budget: &mut i32,
+    qs: &mut QsortData,
 ) -> bool {
     if i1 == i2 {
         error!("mainGtU error")
@@ -17,7 +16,7 @@ pub fn main_gtu(
 
     macro_rules! check_bd {
         () => {
-            if let Some(result) = check_data(block_data, a, b) {
+            if let Some(result) = check_data(&qs.block_data, a, b) {
                 return result;
             }
             a += 1;
@@ -26,10 +25,10 @@ pub fn main_gtu(
     }
     macro_rules! check_bdq {
         () => {
-            if let Some(result) = check_data(block_data, a, b) {
+            if let Some(result) = check_data(&qs.block_data, a, b) {
                 return result;
             }
-            if let Some(result) = check_data(quadrant, a, b) {
+            if let Some(result) = check_data(&qs.quadrant, a, b) {
                 return result;
             }
             a += 1;
@@ -51,7 +50,7 @@ pub fn main_gtu(
     check_bd!();
     check_bd!();
 
-    let mut k: i32 = end as i32 + 8;
+    let mut k: i32 = qs.end as i32 + 8;
     while k >= 0 {
         // Check block data then quadrant data 8 times
         check_bdq!();
@@ -65,14 +64,14 @@ pub fn main_gtu(
 
         // Wrap around the end of the block.
         // (Note: the block_data and quadrant are extened past end.)
-        if a > end {
-            a -= end
+        if a > qs.end {
+            a -= qs.end
         }
-        if b > end {
-            b -= end
+        if b > qs.end {
+            b -= qs.end
         }
         k -= 8;
-        *budget -= 1;
+        qs.budget -= 1;
     }
     false
 }

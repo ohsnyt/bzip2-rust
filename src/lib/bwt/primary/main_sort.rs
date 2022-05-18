@@ -196,17 +196,15 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
         // Since copy_start and copy_end are fully overwritten, no need to initialize them
         // Set bucket start and end marks
         (0..256).for_each(|i| {
-            copy_start[i] = (freq_tab[(i << 8) + (ss as usize)] & CLEARMASK) as i32;
-            copy_end[i] = (freq_tab[(i << 8) + (ss as usize) + 1] & CLEARMASK) as i32 - 1
+            let idx = (i << 8) + ss as usize;
+            copy_start[i] = (freq_tab[idx] & CLEARMASK) as i32;
+            copy_end[i] = (freq_tab[idx + 1] & CLEARMASK) as i32 - 1;
         });
 
-        // HERE NEXT
         {
             let mut j = (freq_tab[(ss as usize) << 8] & CLEARMASK) as i32;
-            loop {
-                if j >= copy_start[ss as usize] {
-                    break;
-                }
+            while  j < copy_start[ss as usize] {
+                let mut k = bwt_ptr[j as usize] as i32 - 1;
                 let mut k = bwt_ptr[j as usize] as i32 - 1;
                 if k < 0 {
                     k += end as i32;

@@ -5,7 +5,7 @@ use super::{duval::rotate_duval, sais::build_suffix_array};
 /// and passes this to the SAIS algorithm. The rotation makes sure that the BWT is computed
 /// correctly because the rotation is lexicographically minimal.
 pub fn bwt(string: &[u8]) -> (usize, Vec<u8>) {
-    let (rotated, shift) = rotate_duval(&string);
+    let (rotated, shift) = rotate_duval(string);
 
     let entries = build_suffix_array(&rotated);
     let len = string.len();

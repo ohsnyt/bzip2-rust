@@ -10,8 +10,8 @@ edition = "2021"
 clap = { version = "3", features = ["derive"] }
 log = {version = "0.4.14", features = ["release_max_level_warn"]}
 simplelog = { version = "0.12.0", features = ["paris"] }
-#cargo-instruments = "0.4.5"
+cargo-instruments = "0.4.5"
 #rdxsort = "0.3.0"
 
-#[profile.release]
-#debug = true
+[profile.release]
+debug = true

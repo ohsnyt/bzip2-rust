@@ -2,48 +2,54 @@ use log::{debug, error, info};
 
 use super::main_q_sort3::main_q_sort3;
 
+// initialize key constants
 const MAIN_QSORT_STACK_SIZE: usize = 100;
 const BZ_N_RADIX: i32 = 2;
+const OVERSHOOT: usize = 34;
 
-pub struct QSort {
+/// Data used in the sort algorithm
+pub struct QsortData {
+    /// Block data, converted to two-byte format
+    pub block_data: Vec<u16>,
+    /// Quadrant data for sorting
+    pub quadrant: Vec<u16>,
+    /// Pointers to sorted data
+    pub bwt_ptr: Vec<u32>,
+    /// Temporary stack used in sorting
     pub stack: Vec<(i32, i32, i32)>,
-    pub next_lo: [i32; 3],
-    pub next_hi: [i32; 3],
-    pub next_d: [i32; 3],
+    /// Size of initial data
     pub end: usize,
+    /// Variable used to measure redundancy of data - use fallback sort if too redundant
+    pub budget: i32,
 }
 
-impl QSort {
-    fn new() -> Self {
+impl QsortData {
+    fn new(end: usize, budget: i32) -> Self {
         Self {
+            block_data: vec![0; end + OVERSHOOT],
+            quadrant: vec![0; end + OVERSHOOT],
+            bwt_ptr: vec![0; end + OVERSHOOT],
             stack: Vec::with_capacity(MAIN_QSORT_STACK_SIZE),
-            next_lo: [0, 0, 0],
-            next_hi: [0, 0, 0],
-            next_d: [0, 0, 0],
-            end: 0,
+            end,
+            budget,
         }
     }
 }
 
-pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
+pub fn main_sort(block_data8: &[u8], mut initial_budget: i32) -> (i32, usize, Vec<u8>) {
     info!("Main sort initialize.");
 
-    // initialize key constants
-    const OVERSHOOT: usize = 34;
-    let end = block_data8.len();
-    let mut qs = QSort::new();
-    qs.end = block_data8.len();
+    // initialize key variables and structs
+    let mut qs = QsortData::new(block_data8.len(), initial_budget);
 
-    // Initialize data structures
-    let mut quadrant: Vec<u16> = vec![0; end + OVERSHOOT];
-    //let mut bwt_ptr: Vec<u32> = vec![0; end + OVERSHOOT];
+    // Initialize vecs for buckets
     let mut copy_start = vec![0_i32; 256];
     let mut copy_end = vec![0_i32; 256];
 
     // We need to convert the input to a u16 format
-    let mut block_data = block_data8.iter().map(|b| *b as u16).collect::<Vec<u16>>();
+    qs.block_data = block_data8.iter().map(|b| *b as u16).collect::<Vec<u16>>();
     // And wrap the beginning data around OVERSHOOT length at the end.
-    block_data.extend(
+    qs.block_data.extend(
         block_data8[0..OVERSHOOT]
             .iter()
             .map(|b| *b as u16)
@@ -69,13 +75,11 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
         *x
     });
 
-    info!("   bucket sorting ...");
+    // Create a two-byte version of the data vec so we can work against 2 bytes at once
+    let mut s = (qs.block_data[0]) << 8;
 
-    // Create a two-byte data vec from the block array (UInt8 array) so we can work against 2 bytes at once
-    let mut s = (block_data[0]) << 8;
-
-    let mut bwt_ptr = block_data.iter().enumerate().rev().skip(OVERSHOOT).fold(
-        vec![0; block_data.len()],
+    qs.bwt_ptr = qs.block_data.iter().enumerate().rev().skip(OVERSHOOT).fold(
+        vec![0; qs.block_data.len()],
         |mut vec, (idx, byte)| {
             s = (s >> 8) | (*byte) << 8;
             let j = (freq_tab[s as usize]) - 1;
@@ -87,18 +91,16 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
 
     // Initialize big_done
     let mut big_done = vec![false; 256];
-    // Initialize running_order as a vec with values from 0 - 255
+    // Initialize running_order as a vec with values 0, 1, 2... 255
     let mut running_order = (0..=255_u8).fold(vec![], |mut v: Vec<u8>, n| {
         v.push(n);
         v
     });
 
-    // Why not just set h to 364????
-    // let mut h = 1;
-    // while h <= 256 {
-    //     h = 3 * h + 1;
-    // }
     let mut h = 364;
+
+    // Initialization done.
+    info!("   bucket sorting ...");
 
     // Do a rough, partial sort of running_order based on data in big_freq
     // running_order is the "big bucket" in which the little buckets reside
@@ -120,10 +122,10 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
         }
     }
     // The main sorting loop
-    // Initialize how many "rows" have been quick sorted
+    // Initialize how many "rows" have been quick sorted - zero in the beginning of course!
     let mut num_q_sorted = 0;
     /*--
-       Process big buckets, starting with the least full.
+       Process buckets, starting with the least full.
        Basically this is a 3-step process in which we call
        mainQSort3 to sort the small buckets [ss, j], but
        also make a big effort to avoid the calls if we can.
@@ -143,10 +145,10 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
         for j in 0..=255 {
             if j != ss {
                 // This moves ss into the second byte of sb, and j into the first.
-                // First time through, freq_tab has nothing in the upper 2 bytes, so this
+                // First time through, freq_tab has nothing in the upper byte, so this
                 // will call main_q_sort3 every time that freq_tab[sb+1] > freq_tab[sb].
                 let sb = ((ss as u32) << 8) + j as u32;
-                if 0 == (freq_tab[sb as usize] & SETMASK) {
+                if (freq_tab[sb as usize] & SETMASK) == 0{
                     let lo = (freq_tab[sb as usize] & CLEARMASK) as i32;
                     let hi = (freq_tab[sb as usize + 1] & CLEARMASK) as i32 - 1;
                     if hi > lo {
@@ -162,17 +164,13 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
                         );
                         // Then sort the bucket
                         main_q_sort3(
-                            &mut bwt_ptr,
-                            &block_data,
-                            &mut quadrant,
-                            &mut budget,
-                            &mut qs,
+                             &mut qs,
                         );
                         // Update our count of rows that are now sorted
                         num_q_sorted += hi - lo + 1;
 
                         // if the sorting was too "expensive", we fail out and try the fallback method
-                        if budget < 0 {
+                        if qs.budget < 0 {
                             // let mut bwt_data: Vec<u8> = vec![0; end];
                             // let mut key = 0;
                             // for i in 0..end as usize {
@@ -185,7 +183,7 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
                             // }
                             let bwt_data: Vec<u8> = vec![];
                             let key = 0;
-                            return (budget, key, bwt_data);
+                            return (qs.budget, key, bwt_data);
                         };
                     }
                 }
@@ -203,38 +201,36 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
         // Since copy_start and copy_end are fully overwritten, no need to initialize them
         // Set bucket start and end marks
         (0..256).for_each(|i| {
-            copy_start[i] = (freq_tab[(i << 8) + (ss as usize)] & CLEARMASK) as i32;
-            copy_end[i] = (freq_tab[(i << 8) + (ss as usize) + 1] & CLEARMASK) as i32 - 1
+            let idx = (i << 8) + ss as usize;
+            copy_start[i] = (freq_tab[idx] & CLEARMASK) as i32;
+            copy_end[i] = (freq_tab[idx + 1] & CLEARMASK) as i32 - 1;
         });
 
-        // HERE NEXT
         {
             let mut j = (freq_tab[(ss as usize) << 8] & CLEARMASK) as i32;
-            loop {
-                if j >= copy_start[ss as usize] {
-                    break;
-                }
-                let mut k = bwt_ptr[j as usize] as i32 - 1;
+            while j < copy_start[ss as usize] {
+                let mut k = qs.bwt_ptr[j as usize] as i32 - 1;
+                let mut k = qs.bwt_ptr[j as usize] as i32 - 1;
                 if k < 0 {
-                    k += end as i32;
+                    k += qs.end as i32;
                 };
-                let c1 = block_data[k as usize];
+                let c1 = qs.block_data[k as usize];
                 if !big_done[c1 as usize] {
-                    bwt_ptr[copy_start[c1 as usize] as usize] = k as u32;
+                    qs.bwt_ptr[copy_start[c1 as usize] as usize] = k as u32;
                     copy_start[c1 as usize] += 1;
                 }
                 j += 1;
             }
             let mut j = ((freq_tab[(ss as usize + 1) << 8] & CLEARMASK) as i32) - 1;
             while j > copy_end[ss as usize] {
-                let mut k = bwt_ptr[j as usize] as i32 - 1;
+                let mut k = qs.bwt_ptr[j as usize] as i32 - 1;
                 if k < 0 {
-                    k += end as i32
+                    k += qs.end as i32
                 }
-                let c1 = block_data[k as usize];
+                let c1 = qs.block_data[k as usize];
 
                 if !big_done[c1 as usize] {
-                    bwt_ptr[copy_end[c1 as usize] as usize] = k as u32;
+                    qs.bwt_ptr[copy_end[c1 as usize] as usize] = k as u32;
                     copy_end[c1 as usize] -= 1;
                 }
                 j -= 1;
@@ -246,7 +242,7 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
         48.5 million of character 251; 1.0.0/1.0.1 will then die here.
         */
         if (copy_start[ss as usize] - 1 != copy_end[ss as usize])
-            || ((copy_start[ss as usize] == 0) && copy_end[ss as usize] == end as i32 - 1)
+            || ((copy_start[ss as usize] == 0) && copy_end[ss as usize] == qs.end as i32 - 1)
         {
             error!("Massive 251 attack detected!")
         }
@@ -307,11 +303,11 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
 
             let mut j = bb_size - 1;
             while j >= 0 {
-                let a2update = bwt_ptr[bb_start as usize + j as usize] as usize;
+                let a2update = qs.bwt_ptr[bb_start as usize + j as usize] as usize;
                 let q_val = (j as u16) >> shifts;
-                quadrant[a2update] = q_val;
+                qs.quadrant[a2update] = q_val;
                 if a2update < OVERSHOOT {
-                    quadrant[a2update + end] = q_val
+                    qs.quadrant[a2update + qs.end] = q_val
                 }
                 j -= 1;
             }
@@ -322,27 +318,28 @@ pub fn main_sort(block_data8: &[u8], mut budget: i32) -> (i32, usize, Vec<u8>) {
     }
     info!(
         "{} pointers, {} sorted, {} scanned",
-        end,
+        qs.end,
         num_q_sorted,
-        end as i32 - num_q_sorted
+        qs.end as i32 - num_q_sorted
     );
 
     info!("        building burrow-wheeler-transform data ...\n");
-    let mut bwt_data = vec![0; end];
+    let mut bwt_data = vec![0; qs.end];
     let mut key = 0;
-    for i in 0..end as usize {
-        if bwt_ptr[i] == 0 {
+    for i in 0..qs.end as usize {
+        if qs.bwt_ptr[i] == 0 {
             key = i;
-            bwt_data[i] = block_data8[end - 1] as u8;
+            bwt_data[i] = block_data8[qs.end - 1] as u8;
         } else {
-            bwt_data[i] = block_data8[bwt_ptr[i] as usize - 1] as u8
+            bwt_data[i] = block_data8[qs.bwt_ptr[i] as usize - 1] as u8
         }
     }
-    (budget, key, bwt_data)
+    (qs.budget, key, bwt_data)
 }
 
-/// Return the difference between the second bytes in freq_tab[[n+1]] and freq_tab[[n]].
-/// The difference is returned as the second byte in a u32 (00_0).
+/// Return the difference between freq_tab[(n+1)<<8] and freq_tab[n<<8].
+/// The difference is returned as a u32.
+#[inline(always)]
 fn big_freq(freq_tab: &[u32], n: u32) -> u32 {
     (freq_tab[((n + 1) as usize) << 8] as u32) - (freq_tab[(n as usize) << 8] as u32)
 }

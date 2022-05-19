@@ -20,7 +20,7 @@ fn duval(input: &[u8]) -> usize {
             i += j - k;
         }
     }
-    return final_start;
+    final_start
 }
 
 /// Compute lexicographically minimal rotation using the duval algorithm.

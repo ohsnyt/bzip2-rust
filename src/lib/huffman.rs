@@ -36,16 +36,15 @@ impl PartialOrd for Node {
 /// Encode MTF data using Julian's multi-table system.
 /// In addition to the options and BitWriter, we need frequency counts,
 /// the bwt key, crc, the symbol map, and eob symbol (last symbol).
-//TODO: RENAME INPUT TO BLOCK_INPUT
 pub fn huf_encode(
     bw: &mut BitWriter,
-    input: &[u16],
+    block_input: &[u16],
     freq_out: &[u32; 258],
     symbol_map: Vec<u16>,
     eob: u16,
 ) -> Result<(), Error> {
     // We can have 2-6 coding tables depending on how much data we have coming in.
-    let table_count = match input.len() {
+    let table_count = match block_input.len() {
         0..=199 => 2,
         200..=599 => 3,
         600..=1199 => 4,
@@ -58,7 +57,7 @@ pub fn huf_encode(
     let mut tables = [[15_u32; 258]; 6];
 
     // Then set the soft limits to divide the data out to the tables.
-    let portion_limit: u32 = input.len() as u32 / table_count;
+    let portion_limit: u32 = block_input.len() as u32 / table_count;
     /* How this works is a bit weird.
     We initially make tables based on the frequency of the symbols. For example, say we
     have enough data for six tables. Some symbols will have greater frequency than other
@@ -145,17 +144,15 @@ pub fn huf_encode(
 
         NOTE: Julian did a trick with rolling all six 16 bit arrays into 3 32 bit arrays.
         I'm not doing that here. If we do in the future, we could use 1 128 bit array
-        for the same purpose, I beleive.
+        for the same purpose, I beleive (or possibly multiple usize arrays).
 
         Our goal is to find the coding table which has the lowest cost for this chunk
         of data, and record that in the selector table.
         */
 
-        /* ds:  WOULD IT BE FASTER to record these 50 in a frequency vec, and append each time? */
-
         // initialize chunk counters
         let mut start: usize = 0;
-        let the_end = input.len();
+        let the_end = block_input.len();
 
         while start < the_end {
             let end = (start + 50).min(the_end);
@@ -165,14 +162,11 @@ pub fn huf_encode(
 
             // Read through the next chunk of 50 symbols (of input) to find the best
             // table for these 50 symbols
-            for &byte in input.iter().take(end as usize).skip(start) {
+            for &byte in block_input.iter().take(end as usize).skip(start) {
                 // For each table...
                 for t in 0..table_count as usize {
                     // increment the appropriate cost array with the weight of the symbol
                     cost[t] += tables[t][byte as usize];
-                    // if t == 0 && iter == 1 {
-                    //     print!("{}, ",tables[t][byte as usize]);
-                    // }
                 }
             }
 
@@ -198,7 +192,7 @@ pub fn huf_encode(
             // Now that we know the best table, go get the frequency counts for
             // the symbols in this group of 50 bytes and store the freq counts into rfreq.
             // as we go through an iteration, this becomes cumulative.
-            for &symbol in input.iter().take(end as usize).skip(start) {
+            for &symbol in block_input.iter().take(end as usize).skip(start) {
                 rfreq[bt as usize][symbol as usize] += 1;
             }
 
@@ -225,7 +219,7 @@ pub fn huf_encode(
       we can use the code_from_length function to quickly generate codes.
     */
 
-    // Next are the symbol maps , 16 bit L1 + 0-16 words of 16 bit L2 maps.
+    // Next are the symbol maps, 16 bit L1 + 0-16 words of 16 bit L2 maps.
     for word in symbol_map {
         bw.out16(word);
     }
@@ -415,7 +409,7 @@ pub fn huf_encode(
     // and a table index that we can change every 50 symbols as needed.
     let mut table_idx = 0;
 
-    for (progress, symbol) in input.iter().enumerate() {
+    for (progress, symbol) in block_input.iter().enumerate() {
         // Switch the tables based on how many groups of 50 symbols we have done
         // Be sure to use the NON-MTF TABLES!
         if progress % 50 == 0 {

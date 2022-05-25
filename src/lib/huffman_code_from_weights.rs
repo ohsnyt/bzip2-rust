@@ -1,36 +1,35 @@
 use super::huffman::{Node, NodeData};
 
 /// Improve a slice of Huffman codes lengths (u8) using a slice of  
-/// codes, symbol weights, and knowlege of how many symbols are valid
-/// STILL NOT SYNCING WITH JULIAN'S IMPLEMENTATION. 17 March 2022.
-/// Should this be implemented with a BinaryHeap?
+/// codes, symbol weights, and knowlege of how many symbols are valid. Returns depth.
 pub fn improve_code_len_from_weights<'a>(
-    codes: &'a mut [u32],
-    sym_weight: &'a [u32],
-    eob: u16,
+    codes: &'a mut [u32],  //[u32; 258]
+    sym_weight: &'a [u32], //[u32; 258]
+    eob: u16,              //symbol marking last valid byte in the above slices
 ) -> &'a [u32] {
     // Assign initial weights to each symbol based on the weight
-    // If the weight was 0, put 1 otherwise put weight * 256 ( << 8 ) 
+    // If the weight was 0, put 1 otherwise put weight * 256 ( << 8 )
     // Note: We need to start with one weight in the array for the sorting to work properly.
-    let mut weight: Vec<(u32, u16)> = vec![(0,0)];
+    // Using indexing instead of pushing for speed.
+    let mut weight: Vec<(u32, u16)> = vec![(0, 0); eob as usize + 2];
     for (i, f) in sym_weight.iter().enumerate().take(eob as usize + 1) {
-        weight.push((if f == &0 { 256 } else { f << 8 }, i as u16));
-        // Do a Julian style approximate fast 'sort'.
-        push_big_down(&mut weight);
-        // NOTE: I did use weight.sort_unstable(), but I'm trying to duplicate the odd behavior Julian has.
+        weight[i + 1] = ((if f == &0 { 256 } else { f << 8 }, i as u16));
+        // Do a Julian style approximate fast 'sort'. (sort_unstable doesn't work as well)
+        push_big_down(&mut weight, i);
     }
 
-    // We will try to make codes of 17 bits or less. If we can't, we will
-    // cut the weights down and try again.
+    // We need to make codes of 17 bits or less. If we can't, we will adjust the weights and try again.
     'outer: loop {
         // Turn the array into a tree
-        let mut tree = Vec::new();
-        for (f, m) in weight.iter().skip(1) {
-            tree.push(Node::new(*f, 0, NodeData::Leaf(*m)));
-        }
+        let mut tree: Vec<Node> = weight
+            .iter()
+            .skip(1)
+            .map(|&(f, m)| Node::new(f, 0, NodeData::Leaf(m)))
+            .collect();
 
-        // reverse the tree because we pop rather than pick from the front of the array
-        tree.reverse(); 
+        // reverse the tree so we can we pop elements
+        tree.reverse();
+
         // ...then pare it down to one single node with child nodes - keep it sorted.
         while tree.len() > 1 {
             let left_child = tree.pop().unwrap();
@@ -40,13 +39,13 @@ pub fn improve_code_len_from_weights<'a>(
                 left_child.depth.max(right_child.depth) + 1,
                 NodeData::Kids(Box::new(left_child), Box::new(right_child)),
             ));
-            // Do a Julian style approximate fast 'sort'.
-            // NOTE: I did have a true sort, but I'm trying to duplicate the odd behavior Julian has.
-            tree.sort_by(|a, b| b.weight.cmp(&a.weight));
+            // Keep the leaves sorted by weight so we pop elements correctly.
+            tree.sort_unstable_by(|a, b| b.weight.cmp(&a.weight));
         }
 
         // If the tree depth <= 17 copy the new depths back into the code table.
         // Otherwise adjust weights and try again.
+        // NOTE: THERE MAY BE A FASTER WAY TO DO THIS OTHER THAN RECURSING A TREE
         if tree[0].depth <= 17 {
             let mut leaves = vec![];
             return_leaves(&tree[0], 0, &mut leaves);
@@ -87,6 +86,7 @@ fn return_leaves(node: &Node, depth: u8, leaves: &mut Vec<(u16, u8)>) {
 }
 
 /// Julian's version of weight adding for parent nodes
+#[inline(always)]
 fn add_weights(a: u32, b: u32) -> u32 {
     let weigh_mask: u32 = 0xffffff00;
     let depth_mask: u32 = 0x000000ff;
@@ -94,8 +94,11 @@ fn add_weights(a: u32, b: u32) -> u32 {
 }
 
 ///  Julian slide sort. Gets things in the right direction but not fully sorted.
-pub fn push_big_down<T: std::cmp::PartialOrd + Clone>(vec: &mut Vec<T>) {
-    let mut idx = vec.len() - 1;
+pub fn push_big_down<T: std::cmp::PartialOrd + Clone>(vec: &mut Vec<T>, mut idx: usize) {
+    if idx == 0 {
+        return;
+    }
+    idx;
     let tmp = vec[idx].clone();
     while vec[idx] < vec[idx >> 1] {
         vec.swap(idx, idx >> 1);

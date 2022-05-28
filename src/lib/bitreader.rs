@@ -8,82 +8,110 @@ pub enum ReadError {
 /// Reads a Bzip2 file and allows reading a specified number of bits
 #[derive(Debug)]
 pub struct BitReader {
-    queue: Vec<u8>,
-    used: usize,
+    buf: Vec<u8>,
+    buf_size: usize,
+    bytes_left: usize,
+    byte_index: usize,
+    bit_index: usize,
     file: File,
-    position: usize,
 }
 
 impl BitReader {
     /// Called to create a new bitReader
-    pub fn new(file: File) -> Self {
+    pub fn new(file: File, file_length: usize, buf_size: usize) -> Self {
         Self {
-            queue: Vec::with_capacity(900000),
-            used: 0,
+            buf: vec![0; buf_size],
+            buf_size,
+            bytes_left: 0,
+            byte_index: 0,
+            bit_index: 0,
             file,
-            position: 0,
         }
     }
 
     /// Internal bitstream read function that tries to keep the read buffer in good shape
     /// NOTE: Reading is not done in buffered chunks properly
-    fn clean_stream(&mut self) {
-        if self.used >= 8 {
-            let bytes = self.used / 8;
-            self.position += bytes * 8;
-            self.used %= 8;
-            self.queue.drain(..bytes);
+    fn check_stream(&mut self) -> bool {
+        if self.bytes_left == 0 && self.bit_index == 0 {
+            self.bytes_left = self
+                .file
+                .read(&mut self.buf)
+                .expect("Oops, can't read more bytes"); // needs better error msg!
+            if self.bytes_left == 0 {
+                return false;
+            }
         }
-        if self.queue.len() < 500 {
-            let mut buf = Vec::new();
-            //buf.reserve(50000); // I need to find a better way to read chunks
-            self.file.read_to_end(&mut buf).expect("oops"); // needs better error msg!
-            self.queue.append(&mut buf);
-        }
+        true
     }
 
     /// Debugging function. Report current position.
     pub fn loc(&mut self) -> String {
-        format!("[{}.{}]", (self.position + self.used) / 8, (self.position  + self.used)% 8,)
+        format!("[{}.{}]", self.byte_index, self.bit_index)
     }
 
-    /// Read 8 or less bits and return it in a u8 with leading zeros
-    /// Error if size > 8
-    pub fn read8(&mut self, length: u32) -> Result<u8, ReadError> {
-        if length > 8 {
-            return Err(ReadError::Size);
+    /// Read 8 or less bits and return it in a u8 with leading zeros, or None if there is no data
+    pub fn read8(&mut self, mut length: usize) -> Option<u8> {
+        // Return no more than 8 bits
+        length = length.min(8);
+
+        // Aways check to see if we have data
+        if !self.check_stream() {
+            return None;
         }
-        // Aways start with a clean slate
-        self.clean_stream();
-        // Get the beginning of the queue and remove the "used" bits
-        let mut out = self.queue[0] << (self.used % 8);
-        // See if we need more bits
-        if length > 8 - self.used as u32 {
-            // Get a new byte, shift it right so we don't clobber the good bits
-            //  and OR this new shifted byte onto the good bits we have
-            out |= self.queue[1] >> (8 - self.used);
+
+        // Start by grabbing bits from the current queue byte position
+        let mut byte = self.buf[self.byte_index%self.buf_size];
+
+        // Left shift it to get rid of bits we may have already have used
+        byte <<= self.bit_index;
+
+        // Adjust the bit index by the number of bits we were able to read
+        let bits_read = match self.bit_index {
+            0 => 8.min(length),
+            _ => (8 - self.bit_index).min(length),
+        };
+        self.bit_index += bits_read;
+
+        // Adjust the byte index (and reset the bit index) if we used up the current byte
+        if self.bit_index == 8 {
+            self.byte_index += 1;
+            self.bytes_left -= 1;
+            self.bit_index = 0;
         }
-        // Update how many bits we have used
-        self.used += length as usize;
-        // shift any excess bits
-        out >>= (8 - length) % 8;
-        Ok(out)
+
+        // Did we get enough bits? If so, return the data (right shifted).
+        if length-bits_read == 0 {
+            return Some(byte >> ((8 - length) % 8));
+        } else {
+            // We need more bits. Get a new byte, shifted right by the number of bits
+            // we already got so we don't clobber that info.  Then OR the new bits
+            // onto the bits we already have.
+            byte |= (self.buf[self.byte_index%self.buf_size] >> bits_read);
+
+            // Then right shift to get rid of any bits we don't need
+            if length < 8 {
+                byte >>= 8 - (length);
+            }
+
+            // Update how many bits we have used (this will always be less than 8)
+            self.bit_index = length-bits_read;
+
+            // Return the new byte
+            Some(byte)
+        }
     }
 
-    /// Read more than 8 bits and return it in a u8 with trailing padding (0s)
-    /// Not yet checking or EOF problems
-    pub fn read8plus(&mut self, length: u32) -> Result<Vec<u8>, ReadError> {
-        let mut out: Vec<u8> = Vec::new();
-        for _ in 0..(length / 8) {
-            match self.read8(8) {
-                Ok(byte) => out.push(byte),
-                Err(e) => return Err(e),
+    /// Read more than 8 bits and return it in a Vec<u8> with trailing padding (0s), not leading
+    pub fn read8plus(&mut self, length: usize) -> Result<Vec<u8>, ReadError> {
+        let mut out: Vec<u8> = vec![0; length as usize / 8];
+        for i in 0..(length as usize / 8) {
+            if let Some(byte) = self.read8(8) {
+                out[i] = byte
             };
         }
         if length % 8 > 0 {
-            match self.read8(length % 8) {
-                Ok(byte) => out.push(byte),
-                Err(e) => return Err(e),
+            if let Some(byte) = self.read8(length % 8) {
+                out.push(byte << (8 - (length % 8)))
             };
         }
         Ok(out)

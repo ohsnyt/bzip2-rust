@@ -12,10 +12,11 @@ use super::{
     rle2::rle2_decode,
     symbol_map::decode_sym_map,
 };
+
 use std::{
     collections::HashMap,
     fs::{File, OpenOptions},
-    io::{self, Write},
+    io::{self, Error, Write},
     time::Instant,
 };
 
@@ -38,21 +39,24 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         f = opts.file.as_ref().unwrap().to_string()
     }
 
-    let file = File::open(&f).expect("Having trouble opening the input file.");
-    let metadata = std::fs::metadata(&f).expect("Can't get metadata for the input file");
+    let file = File::open(&f)?;
+    let metadata = std::fs::metadata(&f)?;
 
     let mut br = BitReader::new(file, metadata.len() as usize, BUFFER_SIZE);
     debug!("Starting decompression at {}", br.loc());
 
-    // Look for a valid signature.
-    if br.read8plus(24).unwrap() != "BZh".as_bytes() {
-        info!("{} is not a Bzip2 file.", f);
-        return Ok(()); // Probably should be an error!!
+    // Look for a valid signature. Checking u8s is a bit faster than checking a vec.
+    let signature = br.read8plus(24).unwrap();
+    if signature != "BZh".as_bytes() {
+        info!("Found a valid bzip2 signature.");
     }
-    info!("Found a valid bzip2 signature.");
 
     // Use the block size to validate the max number of selectors.
-    let block_size = br.read8(8).unwrap() - 0x30;
+    let block_size_raw = br.read8(8).unwrap();
+    if !(0x30..=0x39).contains(&block_size_raw) {
+        return Err(Error::new(io::ErrorKind::Other, "Invalid block size"));
+    }
+    let block_size = block_size_raw - 0x30;
 
     let mut block_counter = 0;
     'block: loop {
@@ -65,8 +69,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             break 'block;
         }
         if header_footer != vec![0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59] {
-            warn!("Cannot find the start of block {}.", block_counter);
-            return Ok(()); // Probably should be an error!!
+            return Err(Error::new(io::ErrorKind::Other, "Invalid block header"));
         }
         debug!("Found a valid header for block {}.", block_counter);
 
@@ -83,6 +86,9 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let key_vec: Vec<u8> = br.read8plus(24).unwrap();
         let key = (key_vec[0] as u32) << 16 | (key_vec[1] as u32) << 8 | key_vec[2] as u32;
         debug!("Read key ({})  at {}", key, debug_loc);
+        if key > block_size as u32 * 100000 + 10 {
+            return Err(Error::new(io::ErrorKind::Other, "Invalid key pointer"));
+        }
         info!("Key is {}.", key);
         drop(key_vec);
 
@@ -98,7 +104,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Decode the symbol map
         let symbol_set = decode_sym_map(&sym_map);
-        //  and count how many symbols are in the symbol map
+        //  and count how many symbols are in the symbol map. The +2 adds in RUNA and RUNB.
         let symbols = symbol_set.len() + 2;
         info!("Found {} symbols for block {}.", symbols, block_counter);
         info!("Read {} symbols at {}", symbols, debug_loc);
@@ -106,47 +112,47 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Read NumTrees
         let debug_loc = br.loc();
         let table_count = br.read8(3).unwrap();
-        info!(
-            "table_count is {}, (should be 2-6) at {}",
-            table_count, debug_loc
-        );
+        if !(2..=6).contains(&table_count) {
+            return Err(Error::new(io::ErrorKind::Other, "Invalid table count"));
+        }
         info!("{} tables in use.", table_count);
 
         // Read Selector_count (NumSels)
         let debug_loc = br.loc();
         let tmp = br.read8plus(15).unwrap();
-        let selector_count: u32 = ((tmp[0] as u32) << 8 | tmp[1] as u32) >> 1;
-
-        info!(
-            "Found {} selectors for block {} at {}. ({} max.)",
-            selector_count,
-            block_counter,
-            debug_loc,
-            block_size as u32 * 100000 / 50
+        let mut selector_count: u32 = ((tmp[0] as u32) << 8 | tmp[1] as u32) >> 1;
+        debug!(
+            "Found {} selectors for block {} at {}.",
+            selector_count, block_counter, debug_loc,
         );
         warn!("Time ready to read selectors is {:?}.", start.elapsed());
 
-        // Read Selectors
-        //let debug_loc = br.loc();
+        // Read Selectors based on the actual number of selectors reported
         let mut table_map = Vec::with_capacity(selector_count as usize);
         let mut group: u8 = 0;
         for _ in 0..selector_count {
             while br.read8(1).unwrap() == 1 {
                 group += 1;
             }
-            table_map.push(group);
+            // Julian ignores the error of excessive selector_count. Only push maps that can be used
+            if selector_count <= block_size as u32 * 100000 / 50 {
+                table_map.push(group);
+            }
             group = 0;
         }
+        // Julian ignores the error of excessive selector_count, and just adjusts the selector_count
+        if selector_count > block_size as u32 * 100000 / 50 {
+            warn!("Found {} selector were reported, but the maximum is {}. Adjust the selector count down.", selector_count, block_size as u32 * 100000 / 50);
+            selector_count = block_size as u32 * 100000 / 50;
+        }
+
         warn!("Time after reading selectors is {:?}.", start.elapsed());
 
         // Decode selectors from MTF values for the selectors
-        // create an index from 0 to table_count long, incrementing each value
-        let mut table_idx = vec![];
-        for v in 0..table_count {
-            table_idx.push(v);
-        }
+        // Create an index vec for the number of tables we need
+        let mut table_idx: Vec<usize> = (0..table_count as usize).collect();
 
-        // then undo the move to front
+        // Now undo the move to front for the selectors
         let table_map = table_map
             .iter()
             .fold((Vec::new(), table_idx), |(mut o, mut s), x| {
@@ -196,10 +202,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Build the Huffman decoding maps as a vec of hashmaps. Like before, include the length
         // as part of the hashmap key (8 bits length, 24 bits code). Value is the symbol value.
-        let mut hm_vec: Vec<HashMap<u32, u16>> = vec![]; // will be a vec of the hashmaps
-        for map in &maps {
-            // create a blank hashmap
-            let mut hm = HashMap::new();
+        let mut hm_vec: Vec<HashMap<u32, u16>> = vec![HashMap::new(); maps.len()];
+        for (idx, map) in maps.iter().enumerate() {
             // Get the minimum length in use so we can create the "last code" used
             // Lastcode contains the 32bit length and a 32 bit code with the embedded length.
             let mut last_code: (u32, u32) = (map[0].1, 0);
@@ -208,18 +212,17 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                     last_code.1 <<= len - last_code.0;
                     last_code.0 = *len;
                 }
-                hm.insert(len << 24 | last_code.1, *sym);
+                hm_vec[idx].insert(len << 24 | last_code.1, *sym);
                 last_code.1 += 1;
             }
-            hm_vec.push(hm);
         }
         warn!(
-            "Time after getting huffman maps ready is {:?}.",
+            "Time after building huffman hash maps is {:?}.",
             start.elapsed()
         );
 
         // Read the data and turn it into a Vec ready for RLE2 decoding
-        let mut out = vec![];
+        let mut out = Vec::with_capacity(block_size as usize * 100000);
 
         // Next comes looping through data and writing it out.
         // First, prepare to write the data.
@@ -230,32 +233,37 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             .write(true)
             .create(true)
             .append(true)
-            .open(&fname)?;
+            .open(&fname)
+            .expect("Can't open file for writing.");
 
-        warn!("Time so far is {:?}.", start.elapsed());
+        warn!("---Time so far is {:?}.", start.elapsed());
 
         // Now read chunks of 50 symbols with the huffman tree selected by the selector vec
         // read the min_len of bits, then a bit at a time more until we get a symbol
         //let mut tmp = br.read8(min_len).unwrap() as u32;
         let mut block_byte_count = 0;
 
-        for &selector in table_map.iter().take(selector_count as usize) {
+        //for &selector in table_map.iter().take(selector_count as usize) {
+        //  (Already solved the excess selctor count above, hence this shorter for statement)
+        for selector in table_map {
             let mut chunk_byte_count = 0;
-            let idx = selector as usize;
             let mut bit_count: u32 = 0;
             let mut bits = 0;
-            // last symbol in the symbol map is eob
-            let eob = (hm_vec[idx].len() - 1) as u16;
-            //let mut debug_loc;
+            // last symbol in the symbol map marks the end of block (eob)
+            let eob = (hm_vec[selector].len() - 1) as u16;
 
-            // loop through the data in 50 byte groups
+            // loop through the data in 50 byte groups trying to find valid symbols in the bit stream
             while chunk_byte_count < 50 {
+                // make room to get the next bit and tack it on to what we have
                 bits <<= 1;
+                // get it
                 bits |= br.read8(1).unwrap() as u32;
+                // update how many bits we have now
                 bit_count += 1;
-                // check if we have found a valid symbol code yet
-                if let Some(sym) = hm_vec[idx].get(&(bit_count << 24 | bits)) {
-                    // Push the symbol out
+                // check if we have found a valid symbol code yet (and if not, loop again)
+                if let Some(sym) = hm_vec[selector].get(&(bit_count << 24 | bits)) {
+                    // If so, push the symbol out
+                    // HOW CAN WE SPEED THIS UP? BUFFERED WRITING? INDEXED VEC?
                     out.push(*sym);
                     if sym != &eob {
                         // Reset bit counters
@@ -327,5 +335,5 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
     info!("Wrote the decompressed file.\n");
 
-    Ok(())
+    Result::Ok(())
 }

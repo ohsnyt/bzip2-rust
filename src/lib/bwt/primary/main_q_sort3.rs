@@ -176,7 +176,7 @@ fn mmed3(mut a: u16, mut b: u16, c: u16) -> u32 {
 
 //  ds. This version 15% faster than previous while loop version
 /// Swap n pointers starting a lo/lo_2
-pub fn mvswap(bwt_ptr: &mut Vec<u32>, lo: i32, lo_2: i32, n: i32) {
+pub fn mvswap(bwt_ptr: &mut [u32], lo: i32, lo_2: i32, n: i32) {
     for i in 0..n {
         bwt_ptr.swap((lo + i) as usize, (lo_2 + i) as usize)
     }

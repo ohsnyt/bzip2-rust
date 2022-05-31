@@ -13,7 +13,7 @@ pub fn improve_code_len_from_weights<'a>(
     // Using indexing instead of pushing for speed.
     let mut weight: Vec<(u32, u16)> = vec![(0, 0); eob as usize + 2];
     for (i, f) in sym_weight.iter().enumerate().take(eob as usize + 1) {
-        weight[i + 1] = ((if f == &0 { 256 } else { f << 8 }, i as u16));
+        weight[i + 1] = (if f == &0 { 256 } else { f << 8 }, i as u16);
         // Do a Julian style approximate fast 'sort'. (sort_unstable doesn't work as well)
         push_big_down(&mut weight, i);
     }
@@ -94,11 +94,10 @@ fn add_weights(a: u32, b: u32) -> u32 {
 }
 
 ///  Julian slide sort. Gets things in the right direction but not fully sorted.
-pub fn push_big_down<T: std::cmp::PartialOrd + Clone>(vec: &mut Vec<T>, mut idx: usize) {
+pub fn push_big_down<T: std::cmp::PartialOrd + Clone>(vec: &mut [T], mut idx: usize) {
     if idx == 0 {
         return;
     }
-    idx;
     let tmp = vec[idx].clone();
     while vec[idx] < vec[idx >> 1] {
         vec.swap(idx, idx >> 1);

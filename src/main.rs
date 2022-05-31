@@ -35,8 +35,8 @@ fn main() -> io::Result<()> {
         lib::options::Mode::Zip => compress(&mut options),
         lib::options::Mode::Unzip => decompress(&options),
         lib::options::Mode::Test => {
-           // test();
-            Ok(())
+            // test();
+            Result::Ok(())
         }
     }
 }
@@ -45,8 +45,8 @@ fn main() -> io::Result<()> {
 /*--- public structs, enums and functions for the library   ---*/
 
 use crate::lib::bwt_ds::bwt_decode;
-use lib::rle1::rle1_decode;
 use crate::lib::mtf::{mtf_decode, mtf_encode};
+use lib::rle1::rle1_decode;
 
 /* fn test() {
     // Prepare to read the data.
@@ -64,7 +64,7 @@ use crate::lib::mtf::{mtf_decode, mtf_encode};
         .read_to_end(&mut test_data)
         .expect("Couldn't read test file.");
 
-        
+
         // FOR TESTING
         let start = 475;
         for i in start..10000 {

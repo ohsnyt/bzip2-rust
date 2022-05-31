@@ -22,19 +22,30 @@ pub fn encode_sym_map(symbols: &VecDeque<u8>) -> Vec<u16> {
     sym_vec
 }
 
-/// Similar to ???
 /// Takes the unique bzip2 symbol map and returns a sorted vec of all
-/// symbols used in the input as u8s
+/// u8s used in the input.
 pub fn decode_sym_map(maps: &[u16]) -> Vec<u8> {
+    /*
+    maps[0] is a map of the presense/absense of blocks of u8s in the input data.
+    For example, if the first bit of maps[0] is a zero, then none of the u8s from 0-15 were
+    present in the input file, AND there would be no u16 needed to mark any of those.
+    If the second bit of maps[0] is a one, then at least one u8 from the range of 16-23 was present
+    in the input. That means the next u16 would be a bit map for this block of u8s with 1s and 0s 
+    indicating the presence / absense of those u8s. Etc.
+    */
+    // Get the block map.
     let map_l1: u16 = maps[0];
-
-    let mut result: Vec<u8> = vec![];
+    // 
+    let mut result: Vec<u8> = Vec::with_capacity(map_l1.count_ones() as usize);
+    // offset lets us get the correct u16 in the maps vec.
     let mut offset = 1;
-    for mult in 0..16 {
+    for mult in 0..16_u8 {
+        // Check if any u8 in this block of u8s was present in the input 
         if map_l1 >> (15 - mult) & 0x0001 == 1 {
-            for idx in 0..16 {
+            // If so, iterate through the next u16 to find which u8s were present, and push them on the vec.
+            for idx in 0..16_u8 {
                 if maps[offset] >> (15 - idx) & 0x0001 == 1 {
-                    result.push((mult) as u8 * 16 + idx as u8)
+                    result.push(mult * 16 + idx)
                 };
             }
             offset += 1;

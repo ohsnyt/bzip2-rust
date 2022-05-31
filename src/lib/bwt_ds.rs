@@ -52,20 +52,18 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
  
 /// Decode a Burrows-Wheeler-Transform
 pub fn bwt_decode(key: u32, btw_in: &[u8]) -> Vec<u8> {
-    //first get a freq count of symbols
-    let mut freq = [0; 256];
+    // First get a freq count of symbols
+    let mut freq = [0_usize; 256];
     for i in 0..btw_in.len() {
         freq[btw_in[i] as usize] += 1;
     }
-    //then build a cumulative count of frequency counts (necessary??)
-    let mut sum = 0;
-    let mut sum_freq = [0; 256];
-    for i in 0..256 {
-        sum_freq[i] = sum;
-        sum += freq[i];
-    }
-    //zero out the freq count of symbols to recount frequencies in the transformation vector
-    let mut freq = [0; 256];
+    // Then create  a cumulative count of frequency counts 
+    let mut sum = 0_usize;
+    let mut sum_freq = freq.iter().enumerate().fold(vec![0; 256], |mut v, (idx, &f)| {v[idx] = sum; sum += f; v});
+
+    // Now create vec to count frequencies in the transformation vector
+    let mut freq = [0_usize; 256];
+
     //Build the transformation vector to find the next character in the original data
     let mut t_vec = vec![0; btw_in.len()];
     for (i, &s) in btw_in.iter().enumerate() {
@@ -73,11 +71,12 @@ pub fn bwt_decode(key: u32, btw_in: &[u8]) -> Vec<u8> {
         freq[s as usize] += 1
     }
     // Transform the data
-    let mut orig = Vec::new();
+    let mut orig = vec![0; btw_in.len()];
     let mut key = t_vec[key as usize];
 
-    for _ in 0..btw_in.len() {
-        orig.push(btw_in[key]);
+    //for i in 0..btw_in.len() {
+    for item in orig.iter_mut().take(btw_in.len()) { 
+        *item = btw_in[key];
         key = t_vec[key]
     }
     orig

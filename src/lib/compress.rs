@@ -56,13 +56,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // NOTE: All writes append with out deleting existing files!!
 
     // Initialize stuff to read the file
-    let _input = match data_in::init(opts) {
-        Err(e) => {
-            opts.status = Status::NoData;
-            return Err(e);
-        }
-        Ok(input) => input,
-    };
+    let input =  data_in::init(opts)?;
 
     // Prepare to read the data.
     let fname = opts.file.as_ref().unwrap().clone();

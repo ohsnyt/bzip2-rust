@@ -60,7 +60,7 @@ impl BitReader {
         }
 
         // Start by grabbing bits from the current queue byte position
-        let mut byte = self.buf[self.byte_index%self.buf_size];
+        let mut byte = self.buf[self.byte_index % self.buf_size];
 
         // Left shift it to get rid of bits we may have already have used
         byte <<= self.bit_index;
@@ -80,13 +80,13 @@ impl BitReader {
         }
 
         // Did we get enough bits? If so, return the data (right shifted).
-        if length-bits_read == 0 {
-            return Some(byte >> ((8 - length) % 8));
+        if length - bits_read == 0 {
+            Some(byte >> ((8 - length) % 8))
         } else {
             // We need more bits. Get a new byte, shifted right by the number of bits
             // we already got so we don't clobber that info.  Then OR the new bits
             // onto the bits we already have.
-            byte |= (self.buf[self.byte_index%self.buf_size] >> bits_read);
+            byte |= (self.buf[self.byte_index % self.buf_size] >> bits_read);
 
             // Then right shift to get rid of any bits we don't need
             if length < 8 {
@@ -94,7 +94,7 @@ impl BitReader {
             }
 
             // Update how many bits we have used (this will always be less than 8)
-            self.bit_index = length-bits_read;
+            self.bit_index = length - bits_read;
 
             // Return the new byte
             Some(byte)
@@ -104,9 +104,10 @@ impl BitReader {
     /// Read more than 8 bits and return it in a Vec<u8> with trailing padding (0s), not leading
     pub fn read8plus(&mut self, length: usize) -> Result<Vec<u8>, ReadError> {
         let mut out: Vec<u8> = vec![0; length as usize / 8];
-        for i in 0..(length as usize / 8) {
-            if let Some(byte) = self.read8(8) {
-                out[i] = byte
+        //for i in 0..(length as usize / 8) {
+        for item in out.iter_mut().take(length as usize / 8) {
+                if let Some(byte) = self.read8(8) {
+                *item = byte
             };
         }
         if length % 8 > 0 {

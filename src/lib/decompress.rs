@@ -203,6 +203,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Build the Huffman decoding maps as a vec of hashmaps. Like before, include the length
         // as part of the hashmap key (8 bits length, 24 bits code). Value is the symbol value.
         let mut hm_vec: Vec<HashMap<u32, u16>> = vec![HashMap::new(); maps.len()];
+
         for (idx, map) in maps.iter().enumerate() {
             // Get the minimum length in use so we can create the "last code" used
             // Lastcode contains the 32bit length and a 32 bit code with the embedded length.
@@ -250,6 +251,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             let mut bit_count: u32 = 0;
             let mut bits = 0;
             // last symbol in the symbol map marks the end of block (eob)
+            // NOTE: IT *might* BE FASTER TO DO A VEC LOOKUP FOR ITEMS OF THE MINIMUM LENGTH
             let eob = (hm_vec[selector].len() - 1) as u16;
 
             // loop through the data in 50 byte groups trying to find valid symbols in the bit stream

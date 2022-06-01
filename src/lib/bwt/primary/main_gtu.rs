@@ -64,12 +64,8 @@ pub fn main_gtu(
 
         // Wrap around the end of the block.
         // (Note: the block_data and quadrant are extened past end.)
-        if a > qs.end {
-            a -= qs.end
-        }
-        if b > qs.end {
-            b -= qs.end
-        }
+        a %= qs.end;
+        b %= qs.end;
         k -= 8;
         qs.budget -= 1;
     }

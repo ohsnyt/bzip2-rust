@@ -38,9 +38,10 @@ pub fn mtf_encode(raw: &[u8]) -> (Vec<u8>, Vec<u16>) {
 /// Decoding requires a sorted symbol map index.
 pub fn mtf_decode(raw: &[u8], index: Vec<u8>) -> Vec<u8> {
     raw.iter()
-        .fold((Vec::new(), index), |(mut mtf_v, mut s), x| {
-            mtf_v.push(s[*x as usize]);
-            let tmp = s.remove(*x as usize);
+        .enumerate()
+        .fold((vec![0; raw.len()], index), |(mut mtf_v, mut s), (idx, &x)| {
+            mtf_v[idx] = s[x as usize];
+            let tmp = s.remove(x as usize);
             s.insert(0, tmp);
             (mtf_v, s)
         })
@@ -49,14 +50,27 @@ pub fn mtf_decode(raw: &[u8], index: Vec<u8>) -> Vec<u8> {
         .map(|c| c as u8)
         .collect::<Vec<u8>>()
 }
+// pub fn mtf_decode(raw: &[u8], index: Vec<u8>) -> Vec<u8> {
+//     raw.iter()
+//         .fold((Vec::new(), index), |(mut mtf_v, mut s), x| {
+//             mtf_v.push(s[*x as usize]);
+//             let tmp = s.remove(*x as usize);
+//             s.insert(0, tmp);
+//             (mtf_v, s)
+//         })
+//         .0
+//         .into_iter()
+//         .map(|c| c as u8)
+//         .collect::<Vec<u8>>()
+// }
 
-#[test]
-fn simple_encode() {
-    let input = "Baa baa".to_string().as_bytes().to_vec();
-    let output = &[1, 2, 0, 2, 3, 2, 0];
-    let (x, _) = mtf_encode(&input);
-    assert_eq!(x, output);
-}
+// #[test]
+// fn simple_encode() {
+//     let input = "Baa baa".to_string().as_bytes().to_vec();
+//     let output = &[1, 2, 0, 2, 3, 2, 0];
+//     let (x, _) = mtf_encode(&input);
+//     assert_eq!(x, output);
+// }
 
 #[test]
 fn mtf_encode_with_key() {

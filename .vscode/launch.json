@@ -42,6 +42,7 @@
                 //"src/Peter.txt",
                 "9",
                 //"sais",
+                "radix",
             ],
             "cwd": "${workspaceFolder}"
         },

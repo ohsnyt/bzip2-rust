@@ -11,6 +11,8 @@ pub enum Algorithms {
     SAIS,
     /// Use simple Burrow Wheeler Transform algorithm when compressing
     Simple,
+        /// Radix - uses voracious_radix_sort crate when compressing
+    Radix,
 }
 
 /// Command Line Interpretation - uses external CLAP crate.

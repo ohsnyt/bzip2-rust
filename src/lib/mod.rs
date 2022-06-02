@@ -2,6 +2,7 @@ pub mod bitreader;
 pub mod bitwriter;
 //pub mod bwt_rib;
 pub mod bwt_ds;
+pub mod bwt_ds_2;
 pub mod bwt_ribzip;
 pub mod compress;
 pub mod compress_block;

@@ -35,7 +35,6 @@ pub fn compress_block(
     // Remember the data length for reporting later
     let block_length = data.len();
 
-
     let (key, bwt_data) = match algorithm {
         // Using simple DS algorithm
         crate::lib::cli::Algorithms::Simple => {
@@ -44,10 +43,15 @@ pub fn compress_block(
         }
         // Using SAIS algorithm from ribzip2
         crate::lib::cli::Algorithms::SAIS => {
-                info!("Using SAIS algorithm.");
-                //block_sort(data, 30);   
+            info!("Using SAIS algorithm.");
+            //block_sort(data, 30);
             crate::lib::bwt_ribzip::bwt_internal::bwt(data)
-        },
+        }
+        // Using voracious_radix_sort and DS algorithm
+        crate::lib::cli::Algorithms::Radix => {
+            info!("Using DS radix algorithm.");
+            crate::lib::bwt_ds_2::bwt_encode(data)
+        }
 
         // Using julians algorithm
         crate::lib::cli::Algorithms::Julian => {

@@ -1,4 +1,4 @@
-use log::error;
+/* use log::error;
 use std::{
     cmp::{min, Ordering},
     iter::Enumerate,
@@ -289,3 +289,4 @@ fn get_bucket_length(slice: &[BWTData]) -> usize {
         .position(|&x| x != slice[0])
         .unwrap_or_else(|| slice.len())
 }
+ */

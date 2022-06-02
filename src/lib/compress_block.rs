@@ -47,11 +47,11 @@ pub fn compress_block(
             //block_sort(data, 30);
             crate::lib::bwt_ribzip::bwt_internal::bwt(data)
         }
-        // Using voracious_radix_sort and DS algorithm
+        /* // Using voracious_radix_sort and DS algorithm
         crate::lib::cli::Algorithms::Radix => {
             info!("Using DS radix algorithm.");
             crate::lib::bwt_ds_2::bwt_encode(data)
-        }
+        } */
 
         // Using julians algorithm
         crate::lib::cli::Algorithms::Julian => {

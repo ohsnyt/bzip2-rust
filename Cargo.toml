@@ -12,7 +12,7 @@ log = {version = "0.4.14", features = ["release_max_level_warn"]}
 simplelog = { version = "0.12.0", features = ["paris"] }
 rustc-hash = { version = "1.1.0"}
 voracious_radix_sort = { version = "1.1.0", features = ["voracious_multithread"] }
-
+tikv-jemallocator = "0.5.0"
 #cargo-instruments = "0.4.5"
 #rdxsort =2 "0.3.0"
 #criterion = "0.3.5"

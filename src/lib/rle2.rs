@@ -48,7 +48,7 @@ pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
             // We didn't find a zero. So If we have any pending zeros to put out
             if zeros > 0 {
                 // write out the pending zeros using the special bzip2 coding
-                out.append(&mut rle2_encode_runs(zeros, &mut freq_out));
+                out.extend(rle2_encode_runs(zeros, &mut freq_out).iter());
                 // and reset the zeros counter
                 zeros = 0;
             }
@@ -63,7 +63,7 @@ pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
             eob = eob.max(tmp);
         }
     }
-    out.append(&mut rle2_encode_runs(zeros, &mut freq_out));
+    out.extend(rle2_encode_runs(zeros, &mut freq_out).iter());
     // Increment the eob symbol to be one more than the largest symbol we found.
     eob += 1;
     // Write out the EOB to the stream.

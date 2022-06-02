@@ -133,7 +133,7 @@ pub fn huf_encode(
 
         // Initialized counters for how many selectors we will have, a vec to store them,
         selector_count = 0;
-        selectors = vec![];
+        selectors.clear();
 
         // Initilalize the total cost for this iteration (used only in reporting)
         let mut total_cost = 0;

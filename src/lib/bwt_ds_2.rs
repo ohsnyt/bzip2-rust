@@ -80,7 +80,7 @@ pub fn bwt_encode(bytes: &[u8]) -> (usize, Vec<u8>) {
 
     // Add space for the context
     let mut b: Vec<u8> = bytes.to_vec();
-    b.append(&mut bytes[0..8].to_vec());
+    b.extend(bytes[0..8].iter());
 
     // Create a vec with context, pointer and sort status information.
     // (Iter below is faster than older fold version)

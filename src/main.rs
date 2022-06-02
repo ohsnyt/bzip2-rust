@@ -1,6 +1,7 @@
 //Enable more cargo lint tests
 #![warn(rust_2018_idioms)]
 #![allow(unused)]
+#![warn(clippy::disallowed_types)]
 //#![warn(missing_docs)]
 //#![warn(missing_debug_implementations)]
 //#![allow(unused_variables)]

@@ -18,8 +18,8 @@ pub enum Algorithms {
 /// Needs to be reworked. This is barely working.
 #[derive(Parser, Debug)]
 #[clap(
-    author = "Micah D. Snyder <zzz@gmail.com>",
-    version = "version 2.0",
+    author = "David M. Snyder <david.snyder@stillwaiting.org>",
+    version = "version 0.2.0",
     about = "A fast, robust compression/decompression tool",
     long_about = None)]
 pub struct Args {

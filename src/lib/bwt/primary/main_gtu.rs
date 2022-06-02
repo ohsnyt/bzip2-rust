@@ -4,8 +4,8 @@ use super::main_sort::QsortData;
 
 /// Revised C version - Rust iterated versions were slower
 pub fn main_gtu(
-    i1: i32,
-    i2: i32,
+    mut i1: i32,
+    mut i2: i32,
     qs: &mut QsortData,
 ) -> bool {
     if i1 == i2 {

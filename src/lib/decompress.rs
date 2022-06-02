@@ -1,6 +1,8 @@
 use log::{debug, error, info, warn};
 
 use crate::lib::crc::{do_crc, do_stream_crc};
+use rustc_hash::FxHashMap;
+
 
 use super::{
     bitreader::BitReader,
@@ -14,7 +16,7 @@ use super::{
 };
 
 use std::{
-    collections::HashMap,
+    //collections::HashMap,
     fs::{File, OpenOptions},
     io::{self, Error, Write},
     time::Instant,
@@ -202,7 +204,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Build the Huffman decoding maps as a vec of hashmaps. Like before, include the length
         // as part of the hashmap key (8 bits length, 24 bits code). Value is the symbol value.
-        let mut hm_vec: Vec<HashMap<u32, u16>> = vec![HashMap::new(); maps.len()];
+        let mut hm_vec: Vec<FxHashMap<u32, u16>> = vec![FxHashMap::default(); maps.len()];
 
         for (idx, map) in maps.iter().enumerate() {
             // Get the minimum length in use so we can create the "last code" used

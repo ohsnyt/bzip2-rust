@@ -98,13 +98,13 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
             // Subtract what we got from what we wanted, safely (must be done before append!)
             bytes_desired = bytes_desired.saturating_sub(new_data.len());
 
-            // Append the data into
-            block_data.append(&mut new_data);
+            // Add the data to block
+            block_data.extend(new_data.iter());
+
             // Do CRC on what we got
             block.block_crc = do_crc(block.block_crc, &buf[0..processed]);
 
-
-            // Drain what we used
+            // Drain what we used from the buffer
             buf.drain(0..processed);
             bytes_left -= processed;
             if bytes_left == 0 {

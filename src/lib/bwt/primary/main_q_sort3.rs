@@ -44,7 +44,7 @@ pub(crate) fn main_q_sort3(
 
         loop {
             // Sort the bucket based on lt_lo and un_lo
-            // This indexed versio is marginally faster than a .get() version.
+            // This indexed version is marginally faster than a .get() version.
             while un_hi >= un_lo {
                 let n =
                     qs.block_data[qs.bwt_ptr[un_lo as usize] as usize + d as usize] as i32 - med as i32;

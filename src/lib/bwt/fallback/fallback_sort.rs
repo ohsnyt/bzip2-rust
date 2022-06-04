@@ -1,32 +1,32 @@
 
 use log::info;
+use crate::lib::compress::Block;
+
 use super::fallback_q_sort3::fallback_q_sort3;
 
 /// Sort function for blocks of less than 10k size and highly repetitive data.
-pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
-    // Define the length of the block data
-    let end = block_data8.len();
+pub fn fallback_sort(block: &mut Block)  {
 
     // This algorithm actually needs to use 257 distinct symbols, so we need to convert
     // the input to a u16 format.
-    let mut block_data = block_data8.iter().map(|b| *b as u16).collect::<Vec<u16>>();
+    let mut block_data = block.data.iter().map(|b| *b as u16).collect::<Vec<u16>>();
 
     // Create and initialize vecs for the transformed data and frequency tables
-    let mut bhtab: Vec<u32> = vec![0_u32; 4 + (end / 32)];
-    let mut freq_map = vec![0_u32; end];
+    let mut bhtab: Vec<u32> = vec![0_u32; 4 + (block.end / 32)];
+    let mut freq_map = vec![0_u32; block.end];
 
     /*
     bhtab sets the bucket tables for the radix sorting algorithm.
 
     The 5 bit shift does this: We can multilple store "sentinels" (bucket edges) in each u32.
     There are 256 different u8 symbols. Each u32 here allows for defining 32 of those symbols.
-    This means we should at max see 8 entries in this table. Julian says we can have 2+end/32, or
+    This means we should at max see 8 entries in this table. Julian says we can have 2+block.end/32, or
     a max of 10 entries.
 
     These are built in three places:
     1: from the sum_freq table
-    2: to set sentinel bits for block-end detection (together with clear_bh)
-        for i in 0..32 { set_bh!(end + 2 * i); clear_bh!(end + 2 * i + 1); }
+    2: to set sentinel bits for block-block.end detection (together with clear_bh)
+        for i in 0..32 { set_bh!(block.end + 2 * i); clear_bh!(block.end + 2 * i + 1); }
     3: to scan each processed bucket and generate header bits that will indicate every time
         within a bucket when a new sort group is found
 
@@ -99,11 +99,11 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
     }
 
     /*--
-    Set sentinel bits (bh = header bits / bit headers) for block-end detection.
+    Set sentinel bits (bh = header bits / bit headers) for block-block.end detection.
     (This sets a sequence of marks and space bits (101010...) in bhtab 3, 4 and 5.) --*/
     for i in 0..32 {
-        set_bh!(end + 2 * i);
-        clear_bh!(end + 2 * i + 1);
+        set_bh!(block.end + 2 * i);
+        clear_bh!(block.end + 2 * i + 1);
     }
 
     /*--
@@ -120,7 +120,7 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
         let mut j = 0;
 
         // Iterate through every byte of the input data and update the input data
-        for i in 0..end {
+        for i in 0..block.end {
             // If a count-change marker is set for this index number, note this index number
             if is_set_bh!(i) {
                 j = i
@@ -130,9 +130,9 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
             What this should do is point to the byte previous to this byte (previous by the loop level)
             */
             let mut offset = freq_map[i as usize] as i32 - depth;
-            // if this offset is less than zero, wrap around the end of the input string
+            // if this offset is less than zero, wrap around the block.end of the input string
             if offset < 0 {
-                offset += end as i32;
+                offset += block.end as i32;
             };
             /*
             Update the input data at the offset we calculated to be equal to the bucket transition index
@@ -171,7 +171,7 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
 
             // Set the "left" boundary of the bucket to sort
             let left = bndry - 1;
-            if left >= end as i32 {
+            if left >= block.end as i32 {
                 break;
             };
             // Look for the right boundary of the bucket. If we are not at a boundary and we
@@ -189,7 +189,7 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
             }
             // Set the right boundary for the bucket
             right = bndry - 1;
-            if right >= end as i32 {
+            if right >= block.end as i32 {
                 break;
             }
 
@@ -229,22 +229,24 @@ pub fn fallback_sort(block_data8: &[u8]) -> (usize, Vec<u8>) {
         );
 
         depth *= 2;
-        if depth > end as i32 || not_done_count == 0 {
+        if depth > block.end as i32 || not_done_count == 0 {
             break;
         };
     }
 
     // Generate the burrow-wheeler data.
     info!("        building burrow-wheeler-transform data ...\n");
-    let mut bwt_data = vec![0; end];
-    let mut key = 0;
-    for i in 0..end as usize {
+    let mut bwt_data = vec![0; block.end];
+    for i in 0..block.end as usize {
         if freq_map[i] == 0 {
-            key = i;
-            bwt_data[i] = block_data8[end - 1] as u8;
+            block.key = i;
+            bwt_data[i] = block.data[block.end - 1] as u8;
         } else {
-            bwt_data[i] = block_data8[freq_map[i] as usize - 1] as u8
+            bwt_data[i] = block.data[freq_map[i] as usize - 1] as u8
         }
     }
-    (key, bwt_data)
+        // Shift ownership of bwt_data to block.data
+    block.data.clear();
+    block.data = bwt_data;
+
 }

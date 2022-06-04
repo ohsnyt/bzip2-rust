@@ -1,52 +1,47 @@
 use log::{debug, info};
 
-use super::primary::main_sort::main_sort;
+use crate::lib::compress::Block;
+
 use super::fallback::fallback_sort::fallback_sort;
+use super::primary::main_sort::{main_sort, QsortData};
 
-/// Primary entry into Julian's BWT sorting system. This receives a ref to the block,  and the work factor. 
+/// Primary entry into Julian's BWT sorting system. This receives a ref to the block,  and the work factor.
 /// It returns the key (usize) and data.
-pub fn block_sort (block_data: &[u8], mut work_factor: u32) -> (usize, Vec<u8>) {
-    let end = block_data.len();
-
+pub fn block_sort(block: & mut Block, qs: & mut QsortData) {
     // If the size of the block us under 10k, use the fallbackSort function.
-    let (key, bwt_data) = if end < 10000 {
-        fallback_sort(block_data)
+    if block.end < 10000 {
+        fallback_sort(block)
     } else {
         /* Julian note:
-           (work_factor-1) / 3 puts the default-factor-30
+           (block.budget-1) / 3 puts the default-factor-30
            transition point at very roughly the same place as
            with v0.1 and v0.9.0.
            Not that it particularly matters any more, since the
            resulting compressed stream is now the same regardless
            of whether or not we use the main sort or fallback sort.
         */
-        if work_factor < 1 {
-            work_factor = 1
+        if block.budget < 1 {
+            block.budget = 1
         };
-        if work_factor > 100 {
-            work_factor = 100
+        if block.budget > 100 {
+            block.budget = 100
         };
 
         // budget_init(ial) is used to provide user statistics below
-        let budget_init: i32 = end as i32 * ((work_factor as i32 - 1) / 3);
-        let budget = budget_init;
+        block.budget = block.end as i32 * ((block.budget as i32 - 1) / 3);
+        let budget_init = block.budget;
 
-        let result = main_sort(block_data, budget);
-        let (budget, key, bwt_data) = result;
+        main_sort(block, qs);
+
         info!(
             " {} work, {} block, ratio {}",
-            budget_init - budget,
-            end,
-            (budget_init - budget) / (end as i32).min(1)
+            budget_init - block.budget,
+            block.end,
+            (budget_init - block.budget) / (block.end as i32).min(1)
         );
-        if budget < 0 {
+        if block.budget < 0 {
             debug!("    too repetitive; using fallback sorting algorithm");
-            let result = fallback_sort(block_data);
-            let (key, bwt_data) = result;
-            return (key, bwt_data.to_vec())
+            fallback_sort(block);
         }
-        (key, bwt_data)
     };
-
-    (key, bwt_data.to_vec())
 }

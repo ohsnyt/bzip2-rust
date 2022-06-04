@@ -1,5 +1,7 @@
 use log::{debug, error, info};
 
+use crate::lib::compress::Block;
+
 use super::main_q_sort3::main_q_sort3;
 
 // initialize key constants
@@ -24,7 +26,7 @@ pub struct QsortData {
 }
 
 impl QsortData {
-    fn new(end: usize, budget: i32) -> Self {
+    pub fn new(end: usize, budget: i32) -> Self {
         Self {
             block_data: vec![0; end + OVERSHOOT],
             quadrant: vec![0; end + OVERSHOOT],
@@ -36,21 +38,21 @@ impl QsortData {
     }
 }
 
-pub fn main_sort(block_data8: &[u8], mut initial_budget: i32) -> (i32, usize, Vec<u8>) {
+pub fn main_sort(block: &mut Block, qs: & mut QsortData) {
     info!("Main sort initialize.");
 
     // initialize key variables and structs
-    let mut qs = QsortData::new(block_data8.len(), initial_budget);
+    //let mut qs = QsortData::new(block.end, block.budget);
 
     // Initialize vecs for buckets
     let mut copy_start = vec![0_i32; 256];
     let mut copy_end = vec![0_i32; 256];
 
     // We need to convert the input to a u16 format
-    qs.block_data = block_data8.iter().map(|b| *b as u16).collect::<Vec<u16>>();
+    qs.block_data = block.data.iter().map(|b| *b as u16).collect::<Vec<u16>>();
     // And wrap the beginning data around OVERSHOOT length at the end.
     qs.block_data.extend(
-        block_data8[0..OVERSHOOT]
+        block.data[0..OVERSHOOT]
             .iter()
             .map(|b| *b as u16)
             .collect::<Vec<u16>>(),
@@ -59,8 +61,9 @@ pub fn main_sort(block_data8: &[u8], mut initial_budget: i32) -> (i32, usize, Ve
     // Build the two-byte freq_tab table
     // NOTE, Julian does this in blocks of 4 because loops are slower than sequential code.
     // Rust optimizes this automatically. Iter_mut is slightly faster than either for loop.
-    let mut j = (block_data8[0] as u16) << 8;
-    let mut freq_tab = block_data8
+    let mut j = (block.data[0] as u16) << 8;
+    let mut freq_tab = block
+        .data
         .iter()
         .rev()
         .fold(vec![0_u32; 65536 + 1], |mut vec, byte| {
@@ -148,7 +151,7 @@ pub fn main_sort(block_data8: &[u8], mut initial_budget: i32) -> (i32, usize, Ve
                 // First time through, freq_tab has nothing in the upper byte, so this
                 // will call main_q_sort3 every time that freq_tab[sb+1] > freq_tab[sb].
                 let sb = ((ss as u32) << 8) + j as u32;
-                if (freq_tab[sb as usize] & SETMASK) == 0{
+                if (freq_tab[sb as usize] & SETMASK) == 0 {
                     let lo = (freq_tab[sb as usize] & CLEARMASK) as i32;
                     let hi = (freq_tab[sb as usize + 1] & CLEARMASK) as i32 - 1;
                     if hi > lo {
@@ -163,27 +166,14 @@ pub fn main_sort(block_data8: &[u8], mut initial_budget: i32) -> (i32, usize, Ve
                             hi - lo + 1
                         );
                         // Then sort the bucket
-                        main_q_sort3(
-                             &mut qs,
-                        );
+                        main_q_sort3( qs);
                         // Update our count of rows that are now sorted
                         num_q_sorted += hi - lo + 1;
 
                         // if the sorting was too "expensive", we fail out and try the fallback method
                         if qs.budget < 0 {
-                            // let mut bwt_data: Vec<u8> = vec![0; end];
-                            // let mut key = 0;
-                            // for i in 0..end as usize {
-                            //     if bwt_ptr[i] == 0 {
-                            //         bwt_data[i] = block_data8[end - 1] as u8;
-                            //         key = i;
-                            //     } else {
-                            //         bwt_data[i] = block_data8[bwt_ptr[i] as usize - 1] as u8
-                            //     }
-                            // }
-                            let bwt_data: Vec<u8> = vec![];
-                            let key = 0;
-                            return (qs.budget, key, bwt_data);
+                            block.budget = qs.budget;
+                            return
                         };
                     }
                 }
@@ -325,16 +315,22 @@ pub fn main_sort(block_data8: &[u8], mut initial_budget: i32) -> (i32, usize, Ve
 
     info!("        building burrow-wheeler-transform data ...\n");
     let mut bwt_data = vec![0; qs.end];
-    let mut key = 0;
     for i in 0..qs.end as usize {
         if qs.bwt_ptr[i] == 0 {
-            key = i;
-            bwt_data[i] = block_data8[qs.end - 1] as u8;
+            block.key = i;
+            bwt_data[i] = block.data[qs.end - 1] as u8;
         } else {
-            bwt_data[i] = block_data8[qs.bwt_ptr[i] as usize - 1] as u8
+            bwt_data[i] = block.data[qs.bwt_ptr[i] as usize - 1] as u8
         }
     }
-    (qs.budget, key, bwt_data)
+    // Shift ownership of bwt_data to block.data
+    block.data.clear();
+    block.data = bwt_data;
+    // Clear out qs data
+    // qs.block_data.clear();
+    // qs.quadrant.clear();
+    // qs.bwt_ptr.clear();
+    // qs.stack.clear();
 }
 
 /// Return the difference between freq_tab[(n+1)<<8] and freq_tab[n<<8].

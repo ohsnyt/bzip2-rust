@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 use super::{compress::Block, symbol_map::encode_sym_map};
 
 /// Encode data using Move To Front transform. Could bring RLE2 into here.
-/// Believe major improvements could happen here.
 pub fn mtf_encode(block: &mut Block) {
     // Create a custom index of the input.
     // Note: ds: This is 10 times faster than sort/dedup of a vec
@@ -30,20 +29,6 @@ pub fn mtf_encode(block: &mut Block) {
             index.push_front(byte);
         }
     }
-
-    // let mtf = block.data
-    //     .iter()
-    //     .fold(
-    //         (Vec::with_capacity(block.data.len()), index),
-    //         |(mut mtf_v, mut idx), x| {
-    //             let i = idx.iter().position(|c| c == x).unwrap();
-    //             let _ = idx.remove(i);
-    //             idx.push_front(*x);
-    //             mtf_v.push(i as u8);
-    //             (mtf_v, idx)
-    //         },
-    //     )
-    //     .0;
 }
 
 /// Decode data using Move To Front transform. Could bring RLE2 into here.

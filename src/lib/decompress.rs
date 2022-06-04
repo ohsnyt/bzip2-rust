@@ -71,7 +71,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             break 'block;
         }
         if header_footer != vec![0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59] {
-            return Err(Error::new(io::ErrorKind::Other, "Invalid block header"));
+            return Err(Error::new(io::ErrorKind::Other, "Invalid block footer"));
         }
         debug!("Found a valid header for block {}.", block_counter);
 

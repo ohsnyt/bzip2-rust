@@ -8,9 +8,7 @@ const MAIN_QSORT_SMALL_THRESH: i32 = 20;
 const MAIN_QSORT_DEPTH_THRESH: i32 = 14;
 //const OVERSHOOT: usize = 34;
 
-pub(crate) fn main_q_sort3(
-    qs: &mut QsortData,
-) {
+pub(crate) fn main_q_sort3(mut qs: &mut QsortData) {
     while !qs.stack.is_empty() {
         if qs.stack.len() >= MAIN_QSORT_STACK_SIZE - 2 {
             error!("Excessive stack size in main_q_sort3.")
@@ -21,12 +19,18 @@ pub(crate) fn main_q_sort3(
 
         // Use main_simple_sort if the context is simple (small, not deep)
         if ((hi - lo) < MAIN_QSORT_SMALL_THRESH) || (d > MAIN_QSORT_DEPTH_THRESH) {
+            // Save and reset budget every time we call this function
+            let budget = qs.budget;
             main_simple_sort(qs, lo, hi, d);
             // If sorting took too long, go use the fallback sorting algorithm
             if qs.budget < 0 {
-                info!("Falling back to secondary sort algorithm");
+                warn!("Falling back to secondary sort algorithm");
+                // Reset budget.
+                qs.budget = budget;
                 return;
             };
+            // Reset budget.
+            qs.budget = budget;
             continue;
         }
         // Get the approximate median value from the block data in this bucket
@@ -46,8 +50,8 @@ pub(crate) fn main_q_sort3(
             // Sort the bucket based on lt_lo and un_lo
             // This indexed version is marginally faster than a .get() version.
             while un_hi >= un_lo {
-                let n =
-                    qs.block_data[qs.bwt_ptr[un_lo as usize] as usize + d as usize] as i32 - med as i32;
+                let n = qs.block_data[qs.bwt_ptr[un_lo as usize] as usize + d as usize] as i32
+                    - med as i32;
                 if n == 0 {
                     qs.bwt_ptr.swap(un_lo as usize, lt_lo as usize);
                     lt_lo += 1;
@@ -81,8 +85,8 @@ pub(crate) fn main_q_sort3(
                 if un_hi == 0 {
                     error!("main_q_sort3 line 64: un_hi == {}", un_hi);
                 }
-                let n =
-                    (qs.block_data[qs.bwt_ptr[un_hi as usize] as usize + d as usize]) as i32 - med as i32;
+                let n = (qs.block_data[qs.bwt_ptr[un_hi as usize] as usize + d as usize]) as i32
+                    - med as i32;
                 if n == 0 {
                     qs.bwt_ptr.swap(un_hi as usize, gt_hi as usize);
                     gt_hi -= 1;
@@ -116,10 +120,20 @@ pub(crate) fn main_q_sort3(
         }
 
         let mut n = (lt_lo as i32 - lo).min(un_lo as i32 - lt_lo as i32);
-        mvswap(&mut qs.bwt_ptr, lo as i32, un_lo as i32 - n as i32, n as i32);
+        mvswap(
+            &mut qs.bwt_ptr,
+            lo as i32,
+            un_lo as i32 - n as i32,
+            n as i32,
+        );
 
         let mut m = (hi - gt_hi as i32).min(gt_hi as i32 - un_hi as i32);
-        mvswap(&mut qs.bwt_ptr, un_lo as i32, hi as i32 - m as i32 + 1, m as i32);
+        mvswap(
+            &mut qs.bwt_ptr,
+            un_lo as i32,
+            hi as i32 - m as i32 + 1,
+            m as i32,
+        );
 
         n = lo + un_lo as i32 - lt_lo as i32 - 1;
         m = hi - (gt_hi as i32 - un_hi as i32) + 1;

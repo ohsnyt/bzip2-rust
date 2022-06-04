@@ -3,36 +3,32 @@ use log::{error, warn};
 use super::main_sort::QsortData;
 
 /// Revised C version - Rust iterated versions were slower
-pub fn main_gtu(
-    mut i1: i32,
-    mut i2: i32,
-    qs: &mut QsortData,
-) -> bool {
-    if i1 == i2 {
+pub fn main_gtu(mut a: usize, mut b: usize, qs: &mut QsortData) -> bool {
+    if a == b {
         error!("mainGtU error")
     }
-    let mut a = i1 as usize;
-    let mut b = i2 as usize;
 
+    // Could I do this by slice faster? Maybe qs.block[a..a+12] != qs.block[b..b+12]? No. It is slower.
     macro_rules! check_bd {
         () => {
-            if let Some(result) = check_data(&qs.block_data, a, b) {
-                return result;
+            if &qs.block_data[a] != &qs.block_data[b] {
+                return &qs.block_data[a] > &qs.block_data[b];
+            } else {
+                a += 1;
+                b += 1;
             }
-            a += 1;
-            b += 1;
         };
     }
     macro_rules! check_bdq {
         () => {
-            if let Some(result) = check_data(&qs.block_data, a, b) {
-                return result;
+            if &qs.block_data[a] != &qs.block_data[b] {
+                return &qs.block_data[a] > &qs.block_data[b];
+            } else if &qs.quadrant[a] != &qs.quadrant[b] {
+                return &qs.quadrant[a] > &qs.quadrant[b];
+            } else {
+                a += 1;
+                b += 1;
             }
-            if let Some(result) = check_data(&qs.quadrant, a, b) {
-                return result;
-            }
-            a += 1;
-            b += 1;
         };
     }
 
@@ -63,7 +59,7 @@ pub fn main_gtu(
         check_bdq!();
 
         // Wrap around the end of the block.
-        // (Note: the block_data and quadrant are extened past end.)
+        // (Note: the block_data and quadrant are extended past end.)
         a %= qs.end;
         b %= qs.end;
         k -= 8;
@@ -72,11 +68,3 @@ pub fn main_gtu(
     false
 }
 
-#[inline(always)]
-fn check_data(data: &[u16], a: usize, b: usize) -> Option<bool> {
-    if data[a] != data[b] {
-        Some(data[a] > data[b])
-    } else {
-        None
-    }
-}

@@ -22,14 +22,15 @@ hopes of signficant speed advantages of direct indexing instead of searches.)
 
 use log::error;
 
+use super::compress::Block;
+
 pub(crate) const RUNA: u16 = 0;
 pub(crate) const RUNB: u16 = 1;
 
-/// Does run-length-encoding only on byte 0_u8. Output is encoded in a unique Bzip2 way.
-pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
+/// Does run-length-encoding only on byte 0_u8. Output (a Vec<u16>) is encoded in a unique Bzip2 way 
+/// and placed in temp_vec within Block
+pub fn rle2_encode(block: &mut Block) {
     let mut zeros: u32 = 0;
-    // Rarely will rle2 expand the mtf data, so assume the same output size.
-    let mut out: Vec<u16> = Vec::with_capacity(v.len());
     // we will need an End Of Block byte to be one larger than the last byte recorded.
     let mut eob = 0;
     // we will need a frequency count of all symbols
@@ -38,7 +39,7 @@ pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
     // iterate through the input, turning runs of 1+ zeros into RUNA/RUNB sequences
     // shift all other indexes up one
     // count frequencies
-    for &el in v.iter() {
+    for &el in block.data.iter() {
         // if we find a zero
         if el == 0 {
             // increment the counter, even if we only find one of them
@@ -48,7 +49,7 @@ pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
             // We didn't find a zero. So If we have any pending zeros to put out
             if zeros > 0 {
                 // write out the pending zeros using the special bzip2 coding
-                out.extend(rle2_encode_runs(zeros, &mut freq_out).iter());
+                block.temp_vec.extend(rle2_encode_runs(zeros, &mut freq_out).iter());
                 // and reset the zeros counter
                 zeros = 0;
             }
@@ -56,20 +57,18 @@ pub fn rle2_encode(v: &[u8]) -> (Vec<u16>, [u32; 258], u16) {
             // This requires us to move from u8 to u16 (at least)
             let tmp = el as u16 + 1;
             //Write out the pending character with the value incremented by 1
-            out.push(tmp);
+            block.temp_vec.push(tmp);
             // Increment the frequency counts
             freq_out[tmp as usize] += 1;
             // Alway look for the largest value so we can mark the eob as +1
-            eob = eob.max(tmp);
+            block.eob = block.eob.max(tmp);
         }
     }
-    out.extend(rle2_encode_runs(zeros, &mut freq_out).iter());
+    block.temp_vec.extend(rle2_encode_runs(zeros, &mut freq_out).iter());
     // Increment the eob symbol to be one more than the largest symbol we found.
-    eob += 1;
+    block.eob += 1;
     // Write out the EOB to the stream.
-    out.push(eob);
-    // return the bits we need
-    (out, freq_out, eob)
+    block.temp_vec.push(block.eob);
 }
 
 /// Unique encoding for any run of 0_u8

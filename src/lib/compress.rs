@@ -8,6 +8,7 @@ use log::{info, warn};
 use crate::lib::crc::{do_crc, do_stream_crc};
 
 use super::bitwriter::BitWriter;
+use super::bwt::primary::main_sort::QsortData;
 use super::compress_block::compress_block;
 use super::options::Status;
 use super::rle1::rle_encode;
@@ -27,11 +28,18 @@ use super::{data_in, options::BzOpts};
 */
 
 pub struct Block {
-    //pub data: &'a [u8],
-    pub block_size: usize,
+    // Add in block data, sym_map, index, temp vec for data work???
+    pub data: Vec<u8>,
+    pub temp_vec: Vec<u16>,
+    pub end: usize,
+    pub key: usize,
+    pub freqs: Vec<u32>,
+    pub sym_map: Vec<u16>,
+    pub eob: u16,
     pub seq: u32,
     pub block_crc: u32,
     pub stream_crc: u32,
+    pub budget: i32,
     pub is_last: bool,
 }
 
@@ -43,20 +51,35 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
 
     /* Julian took 19 off the block size.
      */
+    // Initialize the block struct used by every block
     let mut block = Block {
-        block_size: opts.block_size as usize * 100000 - 19,
+        data: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
+        temp_vec: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
+        end: opts.block_size as usize * 100000 - 19,
+        key: 0,
+        freqs: vec![0; 256],
+        sym_map: Vec::with_capacity(17),
+        eob: 0,
         seq: 0,
         block_crc: 0,
         stream_crc: 0,
+        budget: 30,
         is_last: false,
     };
+
+    // Initialize the struct for Julian's main sorting algorithm, cutting back vec sizes if not needed
+    let mut temp_end = block.end;
+    if opts.algorithm != crate::lib::cli::Algorithms::Julian {
+        temp_end = 0;
+    }
+    let mut qs = QsortData::new(temp_end, block.budget);
 
     // THE ROUTINES BELOW FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE
     // FILE METADATA AND ALL I/O ERRORS.
     // NOTE: All writes append with out deleting existing files!!
 
     // Initialize stuff to read the file
-    let input =  data_in::init(opts)?;
+    let input = data_in::init(opts)?;
 
     // Prepare to read the data.
     let fname = opts.file.as_ref().unwrap().clone();
@@ -79,17 +102,20 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     let mut buf = vec![];
 
     while bytes_left > 0 {
+        block.data.clear();
+        block.temp_vec.clear();
+
         // Calculate how much data we need for this next block.
         //   We can't exceed the input file size, though.
-        let mut bytes_desired = block.block_size;
+        let mut bytes_desired = block.end;
         // Create an empty vec for the next block (reduced if not much data available).
-        let mut block_data = Vec::with_capacity((bytes_desired + 19).min(bytes_left*5/4));
+        //let mut block_data = Vec::with_capacity((bytes_desired + 19).min(bytes_left*5/4));
 
         // Get data and do the RLE. We may need more than one read
         while bytes_desired > 0 && bytes_left > 0 {
             if buf.is_empty() {
                 //   Read 20% more than we need, if we have enough data left.
-                buf = vec![0; (block.block_size * 5 / 4).min(bytes_left)];
+                buf = vec![0; (block.end * 5 / 4).min(bytes_left)];
                 fin.read_exact(&mut buf);
             }
             // Do the rle on a glob of data - hopefully more than we need
@@ -99,7 +125,10 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
             bytes_desired = bytes_desired.saturating_sub(new_data.len());
 
             // Add the data to block
-            block_data.extend(new_data.iter());
+            block.data.extend(new_data.iter());
+
+            // mark the end of the block
+            block.end = block.data.len();
 
             // Do CRC on what we got
             block.block_crc = do_crc(block.block_crc, &buf[0..processed]);
@@ -125,11 +154,11 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
 
         // Do the compression, allowing choice between sorting algorithms for the BWTransform
         compress_block(
-            &block_data,
             &mut bw,
-            &block,
+            &mut block,
             opts.block_size,
             &opts.algorithm,
+            &mut qs,
         );
 
         // Write out what we have so we don't have to hold it all.

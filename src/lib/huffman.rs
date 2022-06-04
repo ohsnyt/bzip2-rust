@@ -1,6 +1,7 @@
 use log::{ error, info};
 
 use super::bitwriter::BitWriter;
+use super::compress::Block;
 use super::huffman_code_from_weights::improve_code_len_from_weights;
 use std::cmp::Ordering;
 use std::io::Error;
@@ -38,13 +39,12 @@ impl PartialOrd for Node {
 /// the bwt key, crc, the symbol map, and eob symbol (last symbol).
 pub fn huf_encode(
     bw: &mut BitWriter,
-    block_input: &[u16],
-    freq_out: &[u32; 258],
-    symbol_map: Vec<u16>,
-    eob: u16,
+    block: &mut Block,
 ) -> Result<(), Error> {
+    // Get the length of this RLE2 compressed block
+    let vec_end = block.temp_vec.len();
     // We can have 2-6 coding tables depending on how much data we have coming in.
-    let table_count = match block_input.len() {
+    let table_count = match vec_end {
         0..=199 => 2,
         200..=599 => 3,
         600..=1199 => 4,
@@ -52,12 +52,18 @@ pub fn huf_encode(
         _ => 6,
     };
 
+    // We need a frequency count for the RLE2 data
+    let mut freq = vec![0_u32; 258];
+    for i in 0..vec_end {
+        freq[block.temp_vec[i] as usize] += 1;
+    }
+
     // Initialize the tables to weights of 15. Since Rust requires compile time array
     // sizing, let's just make 6 even though we might need less.
     let mut tables = [[15_u32; 258]; 6];
 
     // Then set the soft limits to divide the data out to the tables.
-    let portion_limit: u32 = block_input.len() as u32 / table_count;
+    let portion_limit: u32 = vec_end as u32 / table_count;
     /* How this works is a bit weird.
     We initially make tables based on the frequency of the symbols. For example, say we
     have enough data for six tables. Some symbols will have greater frequency than other
@@ -82,7 +88,7 @@ pub fn huf_encode(
     // just shy of the limit rather than just over the limit. If we did not do this,
     // we may not get enough symbols in the last tables.
 
-    // First set our table index to table 0, and the portion sum to 0.
+    // First set our table index to the last table we need, and the portion sum to 0.
     let mut table_index = table_count as usize - 1;
     let mut portion = 0;
     // For each symbol add the frequency to portion and set the weight value for this
@@ -90,7 +96,7 @@ pub fn huf_encode(
     // (based on how many groups we have, and remembering the special limits for
     // tables 2 and 4) increment the table index to point to the next table and
     // reset the portion sum to 0. Keep going through all the symbols.
-    for (i, freq) in freq_out.iter().enumerate().take(eob as usize + 1) {
+    for (i, freq) in freq.iter().enumerate().take(block.eob as usize + 1) {
         let f = freq;
         if portion + f > portion_limit && (table_index == 2 || table_index == 4) {
             table_index = table_index.saturating_sub(1);
@@ -152,7 +158,7 @@ pub fn huf_encode(
 
         // initialize chunk counters
         let mut start: usize = 0;
-        let the_end = block_input.len();
+        let the_end = vec_end;
 
         while start < the_end {
             let end = (start + 50).min(the_end);
@@ -162,7 +168,7 @@ pub fn huf_encode(
 
             // Read through the next chunk of 50 symbols (of input) to find the best
             // table for these 50 symbols
-            for &byte in block_input.iter().take(end as usize).skip(start) {
+            for &byte in block.temp_vec.iter().take(end as usize).skip(start) {
                 // For each table...
                 for t in 0..table_count as usize {
                     // increment the appropriate cost array with the weight of the symbol
@@ -192,7 +198,7 @@ pub fn huf_encode(
             // Now that we know the best table, go get the frequency counts for
             // the symbols in this group of 50 bytes and store the freq counts into rfreq.
             // as we go through an iteration, this becomes cumulative.
-            for &symbol in block_input.iter().take(end as usize).skip(start) {
+            for &symbol in block.temp_vec.iter().take(end as usize).skip(start) {
                 rfreq[bt as usize][symbol as usize] += 1;
             }
 
@@ -210,7 +216,7 @@ pub fn huf_encode(
         // This makes actual node trees based off our weighting. This will put the
         // improved weights into the weight arrays. As mentioned, we do this 4 times.
         for t in 0..table_count as usize {
-            improve_code_len_from_weights(&mut tables[t], &rfreq[t], eob);
+            improve_code_len_from_weights(&mut tables[t], &rfreq[t], block.eob);
         }
     }
     /*
@@ -220,8 +226,8 @@ pub fn huf_encode(
     */
 
     // Next are the symbol maps, 16 bit L1 + 0-16 words of 16 bit L2 maps.
-    for word in symbol_map {
-        bw.out16(word);
+    for word in &block.sym_map {
+        bw.out16(*word);
     }
 
     // Symbol maps are followed by a 3 bit number of Huffman trees that exist
@@ -295,7 +301,7 @@ pub fn huf_encode(
         let mut out_codes = vec![];
         // ... and create a vec of the symbols actually used
         let mut len_sym: Vec<(u32, u16)> = vec![];
-        for (i, &t) in table.iter().enumerate().take(eob as usize + 1) {
+        for (i, &t) in table.iter().enumerate().take(block.eob as usize + 1) {
             len_sym.push((t, i as u16));
         }
         // ... and sort that vec
@@ -409,23 +415,17 @@ pub fn huf_encode(
     // and a table index that we can change every 50 symbols as needed.
     let mut table_idx = 0;
 
-    for (progress, symbol) in block_input.iter().enumerate() {
+    for (progress, symbol) in block.temp_vec.iter().enumerate() {
         // Switch the tables based on how many groups of 50 symbols we have done
         // Be sure to use the NON-MTF TABLES!
         if progress % 50 == 0 {
             table_idx = selectors[progress / 50];
         }
-        if symbol == &eob {
-        }
+        //if symbol == &block.eob {
+        //}
         bw.out24(out_code_tables[table_idx][*symbol as usize].1);
     }
 
     // All done
     Ok(())
-}
-
-#[test]
-fn huf_encode_decode_simple() {
-    //let input = "Goofy test".as_bytes();
-    //assert_eq!(huf_decode(&huf_encode(input).unwrap()), input)
 }

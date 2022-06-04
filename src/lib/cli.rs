@@ -3,7 +3,7 @@ use clap::Parser;
 use log::info;
 use log::warn;
 
-#[derive(Debug, clap::Subcommand)]
+#[derive(Debug, PartialEq, Eq, clap::Subcommand)]
 pub enum Algorithms {
     /// Use original Bzip2 Burrow Wheeler Transform algorithm when compressing
     Julian,

@@ -2,8 +2,8 @@
 #![warn(rust_2018_idioms)]
 #![allow(unused)]
 #![warn(clippy::disallowed_types)]
-#[global_allocator]
-static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+//#[global_allocator]
+//static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 //#![warn(missing_docs)]
 //#![warn(missing_debug_implementations)]

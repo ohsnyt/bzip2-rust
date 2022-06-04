@@ -13,12 +13,14 @@ pub fn encode_sym_map(symbols: &VecDeque<u8>) -> Vec<u16> {
         map_l2[l1 as usize] |= 0x8000 >> (byte % 16); //index to the set and set the mask there
     }
     // Get ready to return only those vecs that have bits set.
-    let mut sym_vec: Vec<u16> = vec![map_l1];
+    let mut sym_vec = Vec::with_capacity(9);
+    sym_vec.push(map_l1);
     for map in map_l2 {
         if map > 0 {
             sym_vec.push(map)
         }
     }
+    sym_vec.shrink_to_fit();
     sym_vec
 }
 

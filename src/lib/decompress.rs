@@ -3,9 +3,8 @@ use log::{debug, error, info, warn};
 use crate::lib::crc::{do_crc, do_stream_crc};
 use rustc_hash::FxHashMap;
 
-
 use super::{
-    bitreader::BitReader,
+    bitty::BitReader,
     //bwt_ds::bwt_decode,
     //bwt_inverse::inverse_bwt,
     mtf::mtf_decode,
@@ -23,6 +22,7 @@ use std::{
 };
 
 const BUFFER_SIZE: usize = 50000;
+const EOF_MESSAGE: &str = "Unexpected End Of File";
 
 /// Decompress the file given in the command line
 pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
@@ -41,113 +41,115 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         f = opts.file.as_ref().unwrap().to_string()
     }
 
-    let file = File::open(&f)?;
-    let metadata = std::fs::metadata(&f)?;
+    //let file = File::open(&f)?;
+    //let metadata = std::fs::metadata(&f)?;
 
-    let mut br = BitReader::new(file, metadata.len() as usize, BUFFER_SIZE);
-    debug!("Starting decompression at {}", br.loc());
+    let mut br = BitReader::new(File::open(&f)?);
+    //debug!("Starting decompression at {}", br.loc());
 
-    // Look for a valid signature. Checking u8s is a bit faster than checking a vec.
-    let signature = br.read8plus(24).unwrap();
-    if signature != "BZh".as_bytes() {
+    // Look for a valid signature.
+    if  "BZh".as_bytes() == br.bytes(3).expect(EOF_MESSAGE){
         info!("Found a valid bzip2 signature.");
     }
 
     // Use the block size to validate the max number of selectors.
-    let block_size_raw = br.read8(8).unwrap();
-    if !(0x30..=0x39).contains(&block_size_raw) {
+    let mut block_size = br.byte().expect(EOF_MESSAGE);
+    if !(0x30..=0x39).contains(&block_size) {
         return Err(Error::new(io::ErrorKind::Other, "Invalid block size"));
     }
-    let block_size = block_size_raw - 0x30;
+    // Convert block_size to an integer for later use
+    block_size -= 0x30;
 
+    // Good so far. Prepare to write the data.
+    let mut fname = opts.file.as_ref().unwrap().clone();
+    fname = fname.split(".bz2").map(|s| s.to_string()).collect(); // strip off the .bz2
+    fname.push_str(".txt"); // for my testing purposes.
+    let mut f_out = OpenOptions::new()
+        .write(true)
+        .create(true)
+        //.append(true)
+        .open(&fname)
+        .expect("Can't open file for writing.");
+
+    // Block_counter is for reporting purposes
     let mut block_counter = 0;
     'block: loop {
         block_counter += 1;
 
         // Block header (or footer) should come next.
-        let header_footer = br.read8plus(48).unwrap();
-        //check for footer first
-        if header_footer == vec![0x17, 0x72, 0x45, 0x38, 0x50, 0x90] {
-            break 'block;
-        }
-        if header_footer != vec![0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59] {
-            return Err(Error::new(io::ErrorKind::Other, "Invalid block footer"));
-        }
-        debug!("Found a valid header for block {}.", block_counter);
+        if let Some(header_footer) = br.bytes(6) {
+            //check for footer first
+            if header_footer == vec![0x17, 0x72, 0x45, 0x38, 0x50, 0x90] {
+                break 'block;
+            }
+            // Then create an error if this is not a block header
+            if header_footer != vec![0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59] {
+                return Err(Error::new(io::ErrorKind::Other, "Invalid block footer"));
+            }
+        };
+        info!("Found a valid header for block {}.", block_counter);
 
         // Get crc
-        let block_crc = u32::from_be_bytes(br.read8plus(32).unwrap().try_into().unwrap());
+        let block_crc = br.bint(32).expect(EOF_MESSAGE);
         info!("CRC is {}.", block_crc);
 
         // Get randomize bit - should almost always be zero
-        let rand = br.read8(1).unwrap(); // Get the randomized flag
+        let rand = br.bit().expect(EOF_MESSAGE); // Get the randomized flag
         debug!("Randomized is set to {}.", rand);
 
         // Get key (origin pointer)
-        let debug_loc = br.loc();
-        let key_vec: Vec<u8> = br.read8plus(24).unwrap();
-        let key = (key_vec[0] as u32) << 16 | (key_vec[1] as u32) << 8 | key_vec[2] as u32;
-        debug!("Read key ({})  at {}", key, debug_loc);
+        let key = br.bint(24).expect(EOF_MESSAGE);
+        debug!("Found BWTransform key ({})", key);
         if key > block_size as u32 * 100000 + 10 {
             return Err(Error::new(io::ErrorKind::Other, "Invalid key pointer"));
         }
         info!("Key is {}.", key);
-        drop(key_vec);
 
-        // Read the Symbol Map
-        let debug_loc = br.loc();
-        let sym_map1: u16 = u16::from_be_bytes(br.read8plus(16).unwrap().try_into().unwrap());
-        let mut sym_map: Vec<u16> = vec![sym_map1];
-        for _ in 0..sym_map1.count_ones() {
-            sym_map.push(u16::from_be_bytes(
-                br.read8plus(16).unwrap().try_into().unwrap(),
-            ));
+        // Get the symbol set (dropping the temporary vec used to grab the data)
+        let symbol_set: Vec<u8>;
+        {
+            // First get the map "index" and save it as the first entry in the map
+            let mut sym_map: Vec<u16> = vec![br.bint(16).expect(EOF_MESSAGE) as u16];
+            // Then get each 16-symbol map as indicated by the set bits in the "index"
+            for _ in 0..sym_map[0].count_ones() {
+                sym_map.push(br.bint(16).expect(EOF_MESSAGE) as u16);
+            }
+
+            // Then decode the symbol map and save it
+            symbol_set = decode_sym_map(&sym_map);
         }
-
-        // Decode the symbol map
-        let symbol_set = decode_sym_map(&sym_map);
-        //  and count how many symbols are in the symbol map. The +2 adds in RUNA and RUNB.
+        //  Count how many symbols are in the symbol map. The +2 adds in RUNA and RUNB.
         let symbols = symbol_set.len() + 2;
         info!("Found {} symbols for block {}.", symbols, block_counter);
-        info!("Read {} symbols at {}", symbols, debug_loc);
 
         // Read NumTrees
-        let debug_loc = br.loc();
-        let table_count = br.read8(3).unwrap();
+        let table_count = br.bint(3).expect(EOF_MESSAGE);
         if !(2..=6).contains(&table_count) {
             return Err(Error::new(io::ErrorKind::Other, "Invalid table count"));
         }
-        info!("{} tables in use.", table_count);
 
-        // Read Selector_count (NumSels)
-        let debug_loc = br.loc();
-        let tmp = br.read8plus(15).unwrap();
-        let mut selector_count: u32 = ((tmp[0] as u32) << 8 | tmp[1] as u32) >> 1;
-        debug!(
-            "Found {} selectors for block {} at {}.",
-            selector_count, block_counter, debug_loc,
-        );
+        // Read Selector_count (NumSels in Julian speak) (mutable, because we may need to adjust it)
+        let mut selector_count = br.bint(15).expect(EOF_MESSAGE);
         warn!("Time ready to read selectors is {:?}.", start.elapsed());
 
         // Read Selectors based on the actual number of selectors reported
         let mut table_map = Vec::with_capacity(selector_count as usize);
         let mut group: u8 = 0;
         for _ in 0..selector_count {
-            while br.read8(1).unwrap() == 1 {
+            while br.bit().expect(EOF_MESSAGE) {
                 group += 1;
             }
-            // Julian ignores the error of excessive selector_count. Only push maps that can be used
+            // Since Julian ignores the error of excessive selector_count, only push maps that can be used
             if selector_count <= block_size as u32 * 100000 / 50 {
                 table_map.push(group);
             }
             group = 0;
         }
-        // Julian ignores the error of excessive selector_count, and just adjusts the selector_count
+        // Adjust the selector_count if needed
         if selector_count > block_size as u32 * 100000 / 50 {
             warn!("Found {} selector were reported, but the maximum is {}. Adjust the selector count down.", selector_count, block_size as u32 * 100000 / 50);
             selector_count = block_size as u32 * 100000 / 50;
         }
-
         warn!("Time after reading selectors is {:?}.", start.elapsed());
 
         // Decode selectors from MTF values for the selectors
@@ -164,36 +166,34 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 (o, s)
             })
             .0;
-
         info!(
-            "Decoded the {} selectors for the {} tables.",
-            selector_count, table_count
+            "Decoded the {} selectors for the {} tables in block {}.",
+            selector_count, table_count, block_counter
         );
         warn!("Time after decoding selectors is {:?}.", start.elapsed());
 
         // Read the Huffman symbol length maps
-        let mut maps: Vec<Vec<(u16, u32)>> = Vec::new();
-        let mut diff: i32 = 0;
+        let mut maps: Vec<Vec<(u16, u32)>> = Vec::with_capacity(table_count as usize);
         for _ in 0..table_count {
-            let mut map: Vec<(u16, u32)> = Vec::new();
-            //let debug_loc = br.loc();
-            let mut l: i32 = br.read8(5).unwrap() as i32;
+            let mut map: Vec<(u16, u32)> = vec![(0_u16, 0_u32); symbols];
+            let mut l: i32 = br.bint(5).expect(EOF_MESSAGE) as i32;
 
             for symbol in 0..symbols as u16 {
+                let mut diff: i32 = 0;
                 loop {
-                    let bit = br.read8(1).unwrap();
-                    if bit == 0 {
-                        map.push((symbol, (l + diff) as u32));
-                        l += diff;
-                        diff = 0;
-                        break;
-                    } else {
-                        let bit = br.read8(1).unwrap();
-                        if bit == 0 {
-                            diff += 1
-                        } else {
+                    if br.bit().expect(EOF_MESSAGE) {
+                        if br.bit().expect(EOF_MESSAGE) {
                             diff -= 1
-                        };
+                        } else {
+                            diff += 1
+                        }
+                    } else {
+                        map[symbol as usize] = (symbol, (l + diff) as u32);
+                        if l + diff > 17 {
+                            warn!("Symbol length of {} exceeds max for sym {} in table {}", l + diff, symbol, table_count)
+                        }
+                        l += diff;
+                        break;
                     }
                 }
             }
@@ -212,6 +212,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             let mut last_code: (u32, u32) = (map[0].1, 0);
             for (sym, len) in map {
                 if *len != last_code.0 {
+                    //info!("Sym:{}, len:{}, last_code.0:{}, last_code.1:{}", sym, len, last_code.0, last_code.1);
                     last_code.1 <<= len - last_code.0;
                     last_code.0 = *len;
                 }
@@ -224,31 +225,22 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             start.elapsed()
         );
 
-        // Read the data and turn it into a Vec ready for RLE2 decoding
-        let mut out = Vec::with_capacity(block_size as usize * 100000);
+        // We are now ready to read the data and decode it.
+        // Set aside a vec to store the data we decode (size based on the table count)
+        let mut out = vec![
+            0_u16;
+            match table_count {
+                2 => 200,
+                3 => 600,
+                4 => 1200,
+                5 => 2400,
+                _ => (block_size as usize * 100000) + 19,
+            }
+        ];
 
-        // Next comes looping through data and writing it out.
-        // First, prepare to write the data.
-        let mut fname = opts.file.as_ref().unwrap().clone();
-        fname = fname.split(".bz2").map(|s| s.to_string()).collect(); // strip off the .bz2
-        fname.push_str(".txt"); // for my testing purposes.
-        let mut f_out = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .append(true)
-            .open(&fname)
-            .expect("Can't open file for writing.");
-
-        warn!("---Time so far is {:?}.", start.elapsed());
-
-        // Now read chunks of 50 symbols with the huffman tree selected by the selector vec
-        // read the min_len of bits, then a bit at a time more until we get a symbol
-        //let mut tmp = br.read8(min_len).unwrap() as u32;
-        let mut block_byte_count = 0;
-
-        //for &selector in table_map.iter().take(selector_count as usize) {
-        //  (Already solved the excess selctor count above, hence this shorter for statement)
-        for selector in table_map {
+        // Now read the blocks in chunks of 50 symbols with the huffman tree selected by the selector vec
+        let mut block_index = 0;
+        'data: for selector in table_map {
             let mut chunk_byte_count = 0;
             let mut bit_count: u32 = 0;
             let mut bits = 0;
@@ -256,78 +248,83 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             // NOTE: IT *might* BE FASTER TO DO A VEC LOOKUP FOR ITEMS OF THE MINIMUM LENGTH
             let eob = (hm_vec[selector].len() - 1) as u16;
 
-            // loop through the data in 50 byte groups trying to find valid symbols in the bit stream
+            // Loop through the data in 50 byte groups trying to find valid symbols in the bit stream
             while chunk_byte_count < 50 {
-                // make room to get the next bit and tack it on to what we have
+                // Left shift any bits thereby adding in one more bit
                 bits <<= 1;
-                // get it
-                bits |= br.read8(1).unwrap() as u32;
-                // update how many bits we have now
+                // Set this new bit if needed
+                if br.bit().expect(EOF_MESSAGE) {
+                    bits |= 1;
+                }
+                // Update how many bits we have now
                 bit_count += 1;
-                // check if we have found a valid symbol code yet (and if not, loop again)
+                // Check if we have found a valid symbol code yet (and if not, loop again)
+                // IS HASHMAP THE FASTEST WAY TO DO THIS? PERHAPS USE a double vec lookup -
+                //   the first with the byte count and the second with the bits???
                 if let Some(sym) = hm_vec[selector].get(&(bit_count << 24 | bits)) {
                     // If so, push the symbol out
-                    // HOW CAN WE SPEED THIS UP? BUFFERED WRITING? INDEXED VEC?
-                    out.push(*sym);
+                    // If we found a valid symbol, push it out.
+                    out[block_index] = *sym;
+                    // And update the index
+                    block_index += 1;
+
+                    // Check if we have reached the end of block
                     if sym != &eob {
-                        // Reset bit counters
+                        // If not, reset variables for the next byte
                         bits = 0;
                         bit_count = 0;
                         chunk_byte_count += 1;
-                        block_byte_count += 1; // for trace debugging
-                                               //debug_loc = br.loc();
                     } else {
-                        // FOUND EOB
-                        if block_byte_count / 50 < selector_count - 1 {
-                            error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_byte_count/50, selector_count)
+                        // Check if we are at the end of the block too early
+                        if block_index / 50 < selector_count as usize - 1 {
+                            error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_index/50, selector_count)
                         }
                         warn!("Time Huffman decoding is done  is {:?}.", start.elapsed());
-
-                        // Undo the RLE2
-                        let rle2_v = rle2_decode(&out);
-                        warn!("Time RLE2 is done  is {:?}.", start.elapsed());
-
-                        // Undo the MTF.
-                        let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
-                        warn!("Time MTF is done  is {:?}.", start.elapsed());
-
-                        // Undo the BWTransform
-                        let btw_v = crate::lib::bwt_ds::bwt_decode(key, &mtf_v); //, &symbol_set);
-                        warn!("Time BTW is done  is {:?}.", start.elapsed());
-
-                        // Undo the initial RLE1
-                        let rle1_v = rle1_decode(&btw_v);
-                        warn!("Time RLE1 is done  is {:?}.", start.elapsed());
-
-                        // Compute the CRC
-                        let this_block_crc = do_crc(0, &rle1_v);
-                        stream_crc = do_stream_crc(stream_crc, this_block_crc);
-
-                        if block_crc == this_block_crc {
-                            info!("Block {} CRCs matched.", block_counter);
-                        } else {
-                            error!(
-                                "Block {} CRC failed!!! Found {} looking for {}. (Continuing...)",
-                                block_counter, this_block_crc, block_crc
-                            );
-                        }
-
-                        // Done!! Write the data
-                        let result = f_out.write(&rle1_v);
-                        info!("Wrote a block of data with {} bytes.", result.unwrap());
-                        warn!("Time at this point is {:?}.", start.elapsed());
-
-                        // break out of while loop
-                        break;
+                        // Adjust the vec length to the block_index
+                        out.truncate(block_index);
+                        break 'data;
                     }
                 }
             }
         }
-        warn!("Time at the end is {:?}.", start.elapsed());
+
+        // Undo the RLE2, converting to u8 in the process
+        let rle2_v = rle2_decode(&out);
+        warn!("Time RLE2 is done  is {:?}.", start.elapsed());
+
+        // Undo the MTF.
+        let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
+        warn!("Time MTF is done  is {:?}.", start.elapsed());
+
+        // Undo the BWTransform
+        let btw_v = crate::lib::bwt_ds::bwt_decode(key, &mtf_v); //, &symbol_set);
+        warn!("Time BTW is done  is {:?}.", start.elapsed());
+
+        // Undo the initial RLE1
+        let rle1_v = rle1_decode(&btw_v);
+        warn!("Time RLE1 is done  is {:?}.", start.elapsed());
+
+        // Compute the CRC
+        let this_block_crc = do_crc(0, &rle1_v);
+        stream_crc = do_stream_crc(stream_crc, this_block_crc);
+
+        if block_crc == this_block_crc {
+            info!("Block {} CRCs matched.", block_counter);
+        } else {
+            error!(
+                "Block {} CRC failed!!! Found {} looking for {}. (Continuing...)",
+                block_counter, this_block_crc, block_crc
+            );
+        }
+
+        // Done!! Write the data
+        let result = f_out.write(&rle1_v);
+        info!("Wrote a block of data with {} bytes.", result.unwrap());
     }
 
-    debug!("Looking for final crc at {}", br.loc());
-    let final_crc = u32::from_be_bytes(br.read8plus(32).unwrap().try_into().unwrap());
+    warn!("Time at the end is {:?}.", start.elapsed());
+
+    let final_crc = br.bint(32).expect(EOF_MESSAGE);
     if final_crc == stream_crc {
         info!("Stream CRCs matched: {}.", final_crc);
     } else {

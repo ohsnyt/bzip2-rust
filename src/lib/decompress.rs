@@ -1,6 +1,9 @@
 use log::{debug, error, info, warn};
 
-use crate::lib::crc::{do_crc, do_stream_crc};
+use crate::lib::{
+    bwt_decode_2x1::bwt_decode_2x1,
+    crc::{do_crc, do_stream_crc},
+};
 use rustc_hash::FxHashMap;
 
 use super::{
@@ -18,17 +21,77 @@ use std::{
     //collections::HashMap,
     fs::{File, OpenOptions},
     io::{self, Error, Write},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 const BUFFER_SIZE: usize = 50000;
 const EOF_MESSAGE: &str = "Unexpected End Of File";
 
+struct Timer {
+    setup: Duration,
+    huffman: Duration,
+    rle2: Duration,
+    mtf: Duration,
+    btw: Duration,
+    rle1: Duration,
+    cleanup: Duration,
+    total: Duration,
+    time: Instant,
+}
+impl Timer {
+    fn new() -> Self {
+        Self {
+            setup: Duration::new(0, 0),
+            huffman: Duration::new(0, 0),
+            rle2: Duration::new(0, 0),
+            mtf: Duration::new(0, 0),
+            btw: Duration::new(0, 0),
+            rle1: Duration::new(0, 0),
+            cleanup: Duration::new(0, 0),
+            total: Duration::new(0, 0),
+            time: Instant::now(),
+        }
+    }
+    fn mark(&mut self, item: &str) {
+        let dur = self.time.elapsed();
+        self.time = Instant::now();
+        match item {
+            "setup" => {
+                self.setup += dur;
+                self.total += dur
+            }
+            "huffman" => {
+                self.huffman += dur;
+                self.total += dur
+            }
+            "rle2" => {
+                self.rle2 += dur;
+                self.total += dur
+            }
+            "mtf" => {
+                self.mtf += dur;
+                self.total += dur
+            }
+            "btw" => {
+                self.btw += dur;
+                self.total += dur
+            }
+            "rle1" => {
+                self.rle1 += dur;
+                self.total += dur
+            }
+            _ => {
+                self.cleanup += dur;
+                self.total += dur
+            }
+        }
+    }
+}
+
 /// Decompress the file given in the command line
 pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
-    // DEBUG timer
-    let start = Instant::now();
-    warn!("Time at the start is {:?}.", start.elapsed());
+    // TESTING: Mark time
+    let mut timer = Timer::new();
 
     // Initialize steam CRC value
     let mut stream_crc = 0;
@@ -48,7 +111,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     //debug!("Starting decompression at {}", br.loc());
 
     // Look for a valid signature.
-    if  "BZh".as_bytes() == br.bytes(3).expect(EOF_MESSAGE){
+    if "BZh".as_bytes() == br.bytes(3).expect(EOF_MESSAGE) {
         info!("Found a valid bzip2 signature.");
     }
 
@@ -130,7 +193,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Read Selector_count (NumSels in Julian speak) (mutable, because we may need to adjust it)
         let mut selector_count = br.bint(15).expect(EOF_MESSAGE);
-        warn!("Time ready to read selectors is {:?}.", start.elapsed());
 
         // Read Selectors based on the actual number of selectors reported
         let mut table_map = Vec::with_capacity(selector_count as usize);
@@ -150,7 +212,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             warn!("Found {} selector were reported, but the maximum is {}. Adjust the selector count down.", selector_count, block_size as u32 * 100000 / 50);
             selector_count = block_size as u32 * 100000 / 50;
         }
-        warn!("Time after reading selectors is {:?}.", start.elapsed());
 
         // Decode selectors from MTF values for the selectors
         // Create an index vec for the number of tables we need
@@ -170,7 +231,9 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             "Decoded the {} selectors for the {} tables in block {}.",
             selector_count, table_count, block_counter
         );
-        warn!("Time after decoding selectors is {:?}.", start.elapsed());
+
+        // TESTING: Mark time
+        timer.mark("setup");
 
         // Read the Huffman symbol length maps
         let mut maps: Vec<Vec<(u16, u32)>> = Vec::with_capacity(table_count as usize);
@@ -190,7 +253,12 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                     } else {
                         map[symbol as usize] = (symbol, (l + diff) as u32);
                         if l + diff > 17 {
-                            warn!("Symbol length of {} exceeds max for sym {} in table {}", l + diff, symbol, table_count)
+                            warn!(
+                                "Symbol length of {} exceeds max for sym {} in table {}",
+                                l + diff,
+                                symbol,
+                                table_count
+                            )
                         }
                         l += diff;
                         break;
@@ -220,10 +288,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 last_code.1 += 1;
             }
         }
-        warn!(
-            "Time after building huffman hash maps is {:?}.",
-            start.elapsed()
-        );
 
         // We are now ready to read the data and decode it.
         // Set aside a vec to store the data we decode (size based on the table count)
@@ -279,7 +343,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         if block_index / 50 < selector_count as usize - 1 {
                             error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_index/50, selector_count)
                         }
-                        warn!("Time Huffman decoding is done  is {:?}.", start.elapsed());
                         // Adjust the vec length to the block_index
                         out.truncate(block_index);
                         break 'data;
@@ -288,21 +351,52 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             }
         }
 
+        // TESTING: Mark time
+        timer.mark("huffman");
+
         // Undo the RLE2, converting to u8 in the process
         let rle2_v = rle2_decode(&out);
-        warn!("Time RLE2 is done  is {:?}.", start.elapsed());
+
+        // TESTING: Mark time
+        timer.mark("rle2");
 
         // Undo the MTF.
         let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
-        warn!("Time MTF is done  is {:?}.", start.elapsed());
 
+        // TESTING: Mark time
+        timer.mark("mtf");
+
+        /*
+        // Undo the MTF - Original version
+        let start = Instant::now();
+        let bwt_v3 = crate::lib::bwt_ds::bwt_decode_orig(key, &mtf_v);
+        warn!("BWTransform original: {:?}", start.elapsed());
+
+        // Undo the MTF - MTL version
+        let start = Instant::now();
+        let bwt_v4 = crate::lib::bwt_ds::bwt_decode_mtl(key, &mtf_v);
+        warn!("BWTransform MLT: {:?}", start.elapsed());
+
+        */
         // Undo the BWTransform
-        let btw_v = crate::lib::bwt_ds::bwt_decode(key, &mtf_v); //, &symbol_set);
-        warn!("Time BTW is done  is {:?}.", start.elapsed());
+        let start = Instant::now();
+        let bwt_v = crate::lib::bwt_ds::bwt_decode(key, &mtf_v); //, &symbol_set);
+
+        // TESTING: Mark time
+        timer.mark("btw");
+
+        //println!("New Peter: {}", std::str::from_utf8(&bwt_v[0..26]).unwrap());
+
+        // test
+        //let start = Instant::now();
+        //let bwt_v2 = bwt_decode_2x1(key, &mtf_v);
+        //warn!("BWTransform 2x1: {:?}", start.elapsed());
 
         // Undo the initial RLE1
-        let rle1_v = rle1_decode(&btw_v);
-        warn!("Time RLE1 is done  is {:?}.", start.elapsed());
+        let rle1_v = rle1_decode(&bwt_v);
+
+        // TESTING: Mark time
+        timer.mark("rle1");
 
         // Compute the CRC
         let this_block_crc = do_crc(0, &rle1_v);
@@ -322,8 +416,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         info!("Wrote a block of data with {} bytes.", result.unwrap());
     }
 
-    warn!("Time at the end is {:?}.", start.elapsed());
-
     let final_crc = br.bint(32).expect(EOF_MESSAGE);
     if final_crc == stream_crc {
         info!("Stream CRCs matched: {}.", final_crc);
@@ -335,6 +427,19 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     }
 
     info!("Wrote the decompressed file.\n");
+
+    // TESTING: Mark time
+    timer.mark("total");
+    println!("--------------------------");
+    println!("setup\t{:?}", timer.setup);
+    println!("huffman\t{:?}", timer.huffman);
+    println!("rle2\t{:?}", timer.rle2);
+    println!("mtf\t{:?}", timer.mtf);
+    println!("btw\t{:?}", timer.btw);
+    println!("rle1\t{:?}", timer.rle1);
+    println!("cleanup\t{:?}", timer.cleanup);
+    println!("total\t{:?}", timer.total);
+    println!("--------------------------");
 
     Result::Ok(())
 }

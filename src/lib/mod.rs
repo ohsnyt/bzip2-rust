@@ -19,3 +19,4 @@ pub mod options;
 pub mod rle1;
 pub mod rle2;
 pub mod symbol_map;
+pub mod bwt_decode_2x1;

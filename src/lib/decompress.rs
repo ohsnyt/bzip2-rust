@@ -91,7 +91,7 @@ impl Timer {
 /// Decompress the file given in the command line
 pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     // TESTING: Mark time
-    let mut timer = Timer::new();
+    //let mut timer = Timer::new();
 
     // Initialize steam CRC value
     let mut stream_crc = 0;
@@ -233,7 +233,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         );
 
         // TESTING: Mark time
-        timer.mark("setup");
+        //timer.mark("setup");
 
         // Read the Huffman symbol length maps
         let mut maps: Vec<Vec<(u16, u32)>> = Vec::with_capacity(table_count as usize);
@@ -352,19 +352,19 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         }
 
         // TESTING: Mark time
-        timer.mark("huffman");
+        //timer.mark("huffman");
 
         // Undo the RLE2, converting to u8 in the process
         let rle2_v = rle2_decode(&out);
 
         // TESTING: Mark time
-        timer.mark("rle2");
+        //timer.mark("rle2");
 
         // Undo the MTF.
         let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
 
         // TESTING: Mark time
-        timer.mark("mtf");
+        //timer.mark("mtf");
 
         /*
         // Undo the MTF - Original version
@@ -383,7 +383,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let bwt_v = crate::lib::bwt_ds::bwt_decode(key, &mtf_v); //, &symbol_set);
 
         // TESTING: Mark time
-        timer.mark("btw");
+        //timer.mark("btw");
 
         //println!("New Peter: {}", std::str::from_utf8(&bwt_v[0..26]).unwrap());
 
@@ -396,7 +396,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let rle1_v = rle1_decode(&bwt_v);
 
         // TESTING: Mark time
-        timer.mark("rle1");
+        //timer.mark("rle1");
 
         // Compute the CRC
         let this_block_crc = do_crc(0, &rle1_v);
@@ -429,17 +429,17 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     info!("Wrote the decompressed file.\n");
 
     // TESTING: Mark time
-    timer.mark("total");
-    println!("--------------------------");
-    println!("setup\t{:?}", timer.setup);
-    println!("huffman\t{:?}", timer.huffman);
-    println!("rle2\t{:?}", timer.rle2);
-    println!("mtf\t{:?}", timer.mtf);
-    println!("btw\t{:?}", timer.btw);
-    println!("rle1\t{:?}", timer.rle1);
-    println!("cleanup\t{:?}", timer.cleanup);
-    println!("total\t{:?}", timer.total);
-    println!("--------------------------");
+    // //timer.mark("total");
+    // println!("--------------------------");
+    // println!("setup\t{:?}", timer.setup);
+    // println!("huffman\t{:?}", timer.huffman);
+    // println!("rle2\t{:?}", timer.rle2);
+    // println!("mtf\t{:?}", timer.mtf);
+    // println!("btw\t{:?}", timer.btw);
+    // println!("rle1\t{:?}", timer.rle1);
+    // println!("cleanup\t{:?}", timer.cleanup);
+    // println!("total\t{:?}", timer.total);
+    // println!("--------------------------");
 
     Result::Ok(())
 }

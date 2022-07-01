@@ -13,7 +13,7 @@ const QUEUE_SIZE: usize = 1048;
 /// BitReader accepts input from files or slices &[u8] and returns bits, bytes and u32 values as requested.
 #[derive(Debug)]
 pub struct BitReader<R> {
-    reader: BufReader<R>,
+    reader: BufReader<R>, 
     queue: Vec<u8>,
     byte_index: usize,
     bit_index: usize,

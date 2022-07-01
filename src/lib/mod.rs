@@ -1,5 +1,5 @@
-//pub mod bitreader;
-pub mod bitty;
+pub mod bitreader;
+//pub mod bitty;
 pub mod bitwriter;
 //pub mod bwt_rib;
 pub mod bwt_ds;

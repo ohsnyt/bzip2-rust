@@ -1,120 +1,238 @@
 use std::{fs::File, io::Read};
 
-#[derive(Debug)]
-pub enum ReadError {
-    Size,
-}
+const BUFFER_SIZE: usize = 1024 * 1024;
+const BIT_MASK: u8 = 0xff;
 
 /// Reads a Bzip2 file and allows reading a specified number of bits
 #[derive(Debug)]
-pub struct BitReader {
-    buf: Vec<u8>,
-    buf_size: usize,
-    bytes_left: usize,
+pub struct BitReader<R> {
+    buffer: Vec<u8>,
+    bytes_read: usize,
     byte_index: usize,
     bit_index: usize,
-    file: File,
+    source: R,
 }
 
-impl BitReader {
+impl<R: std::io::Read> BitReader<R> {
     /// Called to create a new bitReader
-    pub fn new(file: File, file_length: usize, buf_size: usize) -> Self {
+    pub fn new(source: R) -> Self {
         Self {
-            buf: vec![0; buf_size],
-            buf_size,
-            bytes_left: 0,
-            byte_index: 0,
+            buffer: vec![0; BUFFER_SIZE],
+            bytes_read: 0,
+            byte_index: BUFFER_SIZE,
             bit_index: 0,
-            file,
+            source,
         }
     }
 
-    /// Internal bitstream read function that tries to keep the read buffer in good shape
-    /// NOTE: Reading is not done in buffered chunks properly
-    fn check_stream(&mut self) -> bool {
-        if self.bytes_left == 0 && self.bit_index == 0 {
-            self.bytes_left = self
-                .file
-                .read(&mut self.buf)
-                .expect("Oops, can't read more bytes"); // needs better error msg!
-            if self.bytes_left == 0 {
+    /// Check (and refill) buffer - true if we have data, false if there is no more
+    fn have_data(&mut self) -> bool {
+        if self.is_empty() {
+            let size = self
+                .source
+                .read(&mut self.buffer)
+                .expect("Unble to read source data");
+            if size == 0 {
                 return false;
+            } else {
+                self.buffer.truncate(size);
+                self.bytes_read += size;
+                self.byte_index = 0;
+                self.bit_index = 0;
+                return true;
             }
         }
         true
     }
 
+    /// Function to indicate buffer is empty (not necessarily the source)
+    fn is_empty(&self) -> bool {
+        (self.byte_index > self.buffer.len() - 1) || (self.byte_index == self.buffer.len() && self.bit_index == 0)
+    }
+
+    /// Return one bit
+    pub fn bit(&mut self) -> Option<usize> {
+        // Return None if we have no data
+        if !self.have_data() {
+            return None;
+        } else {
+            let bit =
+                (self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> 7 - self.bit_index;
+            self.bit_index += 1;
+            self.bit_index %= 8;
+            if self.bit_index == 0 {
+                self.byte_index += 1;
+            }
+            return Some(bit as usize);
+        }
+    }
+
+    /// Return Option<Bool> *true* if the next bit is 1, *false* if 0
+    pub fn bool_bit(&mut self) -> Option<bool> {
+        match self.bit() {
+            None => None,
+            Some(bit) => Some(bit == 1),
+        }
+    }
+
+    /// Return Option<usize> of the next n bits
+    pub fn bint(&mut self, mut n: usize) -> Option<usize> {
+        /*
+        This is optimized to read as many bits as possible for each read.
+        First, look to see if we have less than 8 bits in the current byte. If so, get
+        those. Then get full bytes as needed to fulfill the request. Lastly, get a
+        partial byte to complete the request.
+        */
+        // See if we have data to start with
+        if !self.have_data() {
+            return None;
+        } else {
+            // Prepare the usize for returning
+            let mut result = 0_usize;
+
+            // Test if we have a partial byte of data next
+            if self.bit_index > 0 {
+                // Set up to read the minimum of the partial byte and what we need to read
+                let needed = n.min(8-self.bit_index);
+
+                // Get what we need/can from this partial byte
+                result =
+                    ((self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> 8 - self.bit_index - needed) as usize;
+                self.bit_index += needed;
+                if self.bit_index / 8 > 0 {
+                    self.byte_index += 1;
+                }
+                self.bit_index %= 8;
+
+                // See if we got all we needed
+                if n == needed {
+                    return Some(result);
+                } else {
+                    n -= needed;
+                }
+            }
+            // If we are here, we need more data. Get as many full bytes as we need.
+            while n >= 8 {
+                // Checking always for data
+                if !self.have_data() {
+                    return None;
+                }
+                result = result << 8 | (self.buffer[self.byte_index]) as usize;
+                self.byte_index += 1;
+                n -= 8;
+            }
+            // If we need more data, get whatever bits we still need.
+            if n > 0 {
+                // Checking always for data
+                if !self.have_data() {
+                    return None;
+                }
+                // Get the remaining bits
+                result = result << n | (self.buffer[self.byte_index] >> 8 - n) as usize;
+                // Adjust indecies
+                self.bit_index += n;
+                if self.bit_index / 8 > 1 {
+                    self.byte_index += 1;
+                }
+                self.bit_index %= 8;
+            }
+            Some(result)
+        }
+    }
+
+    /// Read and return a bytes as an Option<u8>
+    pub fn byte(&mut self) -> Option<u8> {
+        match self.bint(8) {
+            None => None,
+            Some(byte) => Some(byte as u8),
+        }
+    }
+
+    /// Read and return a vec of n bytes as an Option<Vec<u8>>
+    pub fn bytes(&mut self, mut n: usize) -> Option<Vec<u8>> {
+        let mut result: Vec<u8> = Vec::with_capacity(n);
+
+        while n > 0 {
+            if let Some(byte) = self.byte() {
+                result.push(byte);
+                n -= 1;
+            }
+        }
+        Some(result)
+    }
+
     /// Debugging function. Report current position.
-    pub fn loc(&mut self) -> String {
+    pub fn loc(&self) -> String {
         format!("[{}.{}]", self.byte_index, self.bit_index)
     }
+}
 
-    /// Read 8 or less bits and return it in a u8 with leading zeros, or None if there is no data
-    pub fn read8(&mut self, mut length: usize) -> Option<u8> {
-        // Return no more than 8 bits
-        length = length.min(8);
+impl<R> Iterator for BitReader<R>
+where
+    R: Read,
+{
+    type Item = usize;
+    fn next(&mut self) -> Option<usize> {
+        self.bit()
+    }
+}
 
-        // Aways check to see if we have data
-        if !self.check_stream() {
-            return None;
-        }
+#[cfg(test)]
+mod test {
+    use super::BitReader;
 
-        // Start by grabbing bits from the current queue byte position
-        let mut byte = self.buf[self.byte_index % self.buf_size];
-
-        // Left shift it to get rid of bits we may have already have used
-        byte <<= self.bit_index;
-
-        // Adjust the bit index by the number of bits we were able to read
-        let bits_read = match self.bit_index {
-            0 => 8.min(length),
-            _ => (8 - self.bit_index).min(length),
-        };
-        self.bit_index += bits_read;
-
-        // Adjust the byte index (and reset the bit index) if we used up the current byte
-        if self.bit_index == 8 {
-            self.byte_index += 1;
-            self.bytes_left -= 1;
-            self.bit_index = 0;
-        }
-
-        // Did we get enough bits? If so, return the data (right shifted).
-        if length - bits_read == 0 {
-            Some(byte >> ((8 - length) % 8))
-        } else {
-            // We need more bits. Get a new byte, shifted right by the number of bits
-            // we already got so we don't clobber that info.  Then OR the new bits
-            // onto the bits we already have.
-            byte |= (self.buf[self.byte_index % self.buf_size] >> bits_read);
-
-            // Then right shift to get rid of any bits we don't need
-            if length < 8 {
-                byte >>= 8 - (length);
-            }
-
-            // Update how many bits we have used (this will always be less than 8)
-            self.bit_index = length - bits_read;
-
-            // Return the new byte
-            Some(byte)
-        }
+    #[test]
+    fn basic_test() {
+        let x = [0b10000001_u8].as_slice();
+        let mut br = BitReader::new(x);
+        assert_eq!(br.bit(), Some(1));
+        assert_eq!(br.bit(), Some(0));
+        assert_eq!(br.bit(), Some(0));
+        assert_eq!(br.bit(), Some(0));
+        assert_eq!(br.bit(), Some(0));
+        assert_eq!(br.bit(), Some(0));
+        assert_eq!(br.bit(), Some(0));
+        assert_eq!(br.bit(), Some(1));
+        assert_eq!(br.bit(), None);
     }
 
-    /// Read more than 8 bits and return it in a Vec<u8> with trailing padding (0s), not leading
-    pub fn read8plus(&mut self, length: usize) -> Result<Vec<u8>, ReadError> {
-        let mut out: Vec<u8> = vec![0; length as usize / 8];
-        //for i in 0..(length as usize / 8) {
-        for item in out.iter_mut().take(length as usize / 8) {
-                if let Some(byte) = self.read8(8) {
-                *item = byte
-            };
-        }
-        if length % 8 > 0 {
-            if let Some(byte) = self.read8(length % 8) {
-                out.push(byte << (8 - (length % 8)))
-            };
-        }
-        Ok(out)
+    #[test]
+    fn iter_test() {
+        let x = [0b1000_0001_u8, 0b0100_1000].as_slice();
+        let mut br = BitReader::new(x);
+        assert_eq!(br.next(), Some(1));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(1));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(1));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(1));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), Some(0));
+        assert_eq!(br.next(), None);
+    }
+    #[test]
+    fn bint_test() {
+        let x = [0b00011011].as_slice();
+        let mut br = BitReader::new(x);
+        assert_eq!(br.bint(5), Some(3));
+        assert_eq!(br.bint(1), Some(0));
+        assert_eq!(br.bint(2), Some(3));
+    }
+    #[test]
+    fn byte_test() {
+        let x = "Hello, world!".as_bytes();
+        let mut br = BitReader::new(x);
+        assert_eq!(br.byte(), Some('H' as u8));
+        assert_eq!(br.byte(), Some('e' as u8));
+        assert_eq!(br.byte(), Some('l' as u8));
+        assert_eq!(br.byte(), Some('l' as u8));
     }
 }

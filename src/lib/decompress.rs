@@ -18,8 +18,60 @@ use std::{
     //collections::HashMap,
     fs::{File, OpenOptions},
     io::{self, Error, Write},
-    time::Instant,
+    time::{Duration, Instant},
 };
+
+struct Timer {
+    setup: Duration,
+    huffman: Duration,
+    rle_mtf: Duration,
+    bwt: Duration,
+    rle_cleanup: Duration,
+    total: Duration,
+    time: Instant,
+}
+impl Timer {
+    fn new() -> Self {
+        Self {
+            setup: Duration::new(0, 0),
+            huffman: Duration::new(0, 0),
+            rle_mtf: Duration::new(0, 0),
+            bwt: Duration::new(0, 0),
+            rle_cleanup: Duration::new(0, 0),
+            total: Duration::new(0, 0),
+            time: Instant::now(),
+        }
+    }
+    fn mark(&mut self, area: &str) {
+        match area {
+            "setup" => {
+                self.setup += self.time.elapsed();
+                self.total += self.time.elapsed();
+                self.time = Instant::now();
+            }
+            "huffman" => {
+                self.huffman += self.time.elapsed();
+                self.total += self.time.elapsed();
+                self.time = Instant::now();
+            }
+            "rle_mtf" => {
+                self.rle_mtf += self.time.elapsed();
+                self.total += self.time.elapsed();
+                self.time = Instant::now();
+            }
+            "bwt" => {
+                self.bwt += self.time.elapsed();
+                self.total += self.time.elapsed();
+                self.time = Instant::now();
+            }
+            _ => {
+                self.rle_cleanup += self.time.elapsed();
+                self.total += self.time.elapsed();
+                self.time = Instant::now();
+            }
+        }
+    }
+}
 
 const BUFFER_SIZE: usize = 100000;
 const EOF_MESSAGE: &str = "Unexpected End Of File";
@@ -28,8 +80,7 @@ const CHUNK_SIZE: usize = 50; // Bzip2 chunk size
 /// Decompress the file given in the command line
 pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     // DEBUG timer
-    let start = Instant::now();
-    warn!("Time at the start is {:?}.", start.elapsed());
+    let mut time = Timer::new();
 
     // Initialize steam CRC value
     let mut stream_crc = 0;
@@ -131,7 +182,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Read Selector_count (NumSels in Julian speak) (mutable, because we may need to adjust it)
         let mut selector_count = br.bint(15).expect(EOF_MESSAGE);
-        warn!("Time ready to read selectors is {:?}.", start.elapsed());
 
         // Read Selectors based on the actual number of selectors reported
         let mut decode_map_selectors = Vec::with_capacity(selector_count as usize);
@@ -151,7 +201,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             warn!("Found {} selector were reported, but the maximum is {}. Adjust the selector count down.", selector_count, block_size as u32 * 100000 / 50);
             selector_count = block_size as usize * 100000 / 50;
         }
-        warn!("Time after reading selectors is {:?}.", start.elapsed());
 
         // Decode selectors from MTF values for the selectors
         // Create an index vec for the number of tables we need
@@ -171,7 +220,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             "Decoded the {} selectors for the {} tables in block {}.",
             selector_count, table_count, block_counter
         );
-        warn!("Time after decoding selectors is {:?}.", start.elapsed());
+
+        time.mark("setup");
 
         // Read the Huffman symbol length maps and create decode maps which have level info and a vec of the symbols
         let mut huf_decode_maps: Vec<(Vec<Level>, Vec<u16>)> =
@@ -293,21 +343,23 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             }
         }
 
+        time.mark("huffman");
+
         // Undo the RLE2, converting to u8 in the process
         let rle2_v = rle2_decode(&out);
-        warn!("Time RLE2 is done  is {:?}.", start.elapsed());
 
         // Undo the MTF.
         let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
-        warn!("Time MTF is done  is {:?}.", start.elapsed());
+
+        time.mark("rle_mtf");
 
         // Undo the BWTransform
         let btw_v = crate::lib::bwt_ds::bwt_decode(key as u32, &mtf_v); //, &symbol_set);
-        warn!("Time BTW is done  is {:?}.", start.elapsed());
+
+        time.mark("bwt");
 
         // Undo the initial RLE1
         let rle1_v = rle1_decode(&btw_v);
-        warn!("Time RLE1 is done  is {:?}.", start.elapsed());
 
         // Compute the CRC
         let this_block_crc = do_crc(0, &rle1_v);
@@ -325,9 +377,9 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Done!! Write the data
         let result = f_out.write(&rle1_v);
         info!("Wrote a block of data with {} bytes.", result.unwrap());
-    }
 
-    warn!("Time at the end is {:?}.", start.elapsed());
+        time.mark("rle_cleanup");
+    }
 
     let final_crc = br.bint(32).expect(EOF_MESSAGE);
     if final_crc == stream_crc as usize {
@@ -340,6 +392,14 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     }
 
     info!("Wrote the decompressed file.\n");
+
+    time.mark("rle_cleanup");
+    println!("Setup:\t\t{:?}", time.setup);
+    println!("Huffman:\t{:?}", time.huffman);
+    println!("RLE/MTF:\t{:?}", time.rle_mtf);
+    println!("BTW:\t\t{:?}", time.bwt);
+    println!("RLE/Cleanup:\t{:?}", time.rle_cleanup);
+    println!("Total:\t\t{:?}", time.total);
 
     Result::Ok(())
 }

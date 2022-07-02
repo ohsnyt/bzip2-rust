@@ -111,6 +111,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     }
     // Convert block_size to an integer for later use
     block_size -= 0x30;
+    // Save space for the symbol set for later use
+    let mut symbol_set: Vec<u8>;
 
     // Good so far. Prepare to write the data.
     let mut fname = opts.file.as_ref().unwrap().clone();
@@ -158,7 +160,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         info!("Key is {}.", key);
 
         // Get the symbol set (dropping the temporary vec used to grab the data)
-        let symbol_set: Vec<u8>;
         {
             // First get the map "index" and save it as the first entry in the map
             let mut sym_map: Vec<u16> = vec![br.bint(16).expect(EOF_MESSAGE) as u16];
@@ -345,16 +346,24 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         time.mark("huffman");
 
-        // Undo the RLE2, converting to u8 in the process
-        let rle2_v = rle2_decode(&out);
-
-        // Undo the MTF.
-        let mtf_v = mtf_decode(&rle2_v, symbol_set.clone());
+        // Undo the RLE2 and MTF, converting to u8 in the process
+        // Set aside a vec to store the data we decode (size based on the table count)
+        let mut mtf_out: Vec<u8> = vec![
+            0_u8;
+            match table_count {
+                2 => 200,
+                3 => 600,
+                4 => 1200,
+                5 => 2400,
+                _ => (block_size as usize * 100000) + 19,
+            }
+        ];
+        let mtf_v = rle2_mtf_decode(&out, &mut mtf_out, &mut symbol_set);
 
         time.mark("rle_mtf");
 
         // Undo the BWTransform
-        let btw_v = crate::lib::bwt_ds::bwt_decode(key as u32, &mtf_v); //, &symbol_set);
+        let btw_v = crate::lib::bwt_ds::bwt_decode(key as u32, &mtf_out); //, &symbol_set);
 
         time.mark("bwt");
 
@@ -482,4 +491,65 @@ fn decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
     result.push(level);
 
     result
+}
+
+const RUNA: u16 = 0;
+const RUNB: u16 = 1;
+
+/// Does run-length-decoding from rle2_encode.
+pub fn rle2_mtf_decode(v: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut Vec<u8>) {
+    // Initialize counters
+    let mut zeros = 0_usize;
+    let mut bit_multiplier = 1;
+    let mut index = 0_usize;
+
+    // Add (bogus) eob symbol to the mtf_index (symbol set)
+    mtf_index.push(0);
+
+    // Create the mtf index
+    //let mut mtf_index: Vec<u8> = (0_u8..(symbol_set.len()) as u8).map(|n| n).collect();
+
+    // iterate through the input, doing the conversion as we find RUNA/RUNB sequences
+    for mtf in v {
+        // Blow up if the run is too big - this should be more elegant in the future
+        if zeros > 2 * 1024 * 1024 {
+            error!("Run of zeros exceeded a million - probably input bomb.");
+            std::process::exit(100)
+        }
+        match *mtf {
+            // If we found RUNA, do magic to calculate how many zeros we need
+            RUNA => {
+                zeros += bit_multiplier;
+                bit_multiplier *= 2;
+            }
+            // If we found RUNB, do magic to calculate how many zeros we need
+            RUNB => {
+                zeros += 2 * bit_multiplier;
+                bit_multiplier *= 2;
+            }
+            // Anything else, first output any pending run of zeros as mtf[0].
+            n => {
+                if zeros > 0 {
+                    for i in index..=index + zeros {
+                        out[i] = mtf_index[0]
+                    }
+                    // Adjust the counters
+                    index += zeros;
+                    bit_multiplier = 1;
+                    zeros = 0;
+                }
+                // Then output the symbol (one less than n)
+                out[index] = mtf_index[n as usize - 1];
+
+                // Increment the index
+                index += 1;
+
+                // And adjust the mtf_index for the next symbol
+                let sym = mtf_index.remove(n as usize - 1);
+                mtf_index.insert(0, sym as u8);
+            }
+        }
+    }
+    // Truncate the vec to the actual data, removing the eob marker.
+    out.truncate(index - 1);
 }

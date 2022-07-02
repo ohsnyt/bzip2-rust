@@ -173,8 +173,10 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         );
         warn!("Time after decoding selectors is {:?}.", start.elapsed());
 
-        // Read the Huffman symbol length maps and create decode maps
-        let mut huf_decode_maps: Vec<Vec<Level>> = vec![vec![]; table_count];
+        // Read the Huffman symbol length maps and create decode maps which have level info and a vec of the symbols
+        let mut huf_decode_maps: Vec<(Vec<Level>, Vec<u16>)> =
+            vec![(Vec::new(), Vec::with_capacity(symbols)); table_count];
+
         for idx in 0..table_count {
             let mut map: Vec<(u16, u32)> = vec![(0_u16, 0_u32); symbols];
             let mut l: i32 = br.bint(5).expect(EOF_MESSAGE) as i32;
@@ -205,8 +207,10 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             }
             // Maps must be sorted by length for the next step.
             map.sort_by(|a, b| a.1.cmp(&b.1));
+            // Create a symbol list for decoding
+            let symbol_index = map.iter().map(|(s, _)| *s).collect::<Vec<u16>>();
             // Build the decode map and store it.
-            huf_decode_maps[idx] = decode_map(&map);
+            huf_decode_maps[idx] = (decode_map(&map), symbol_index);
         }
 
         // We are now ready to read the data and decode it.
@@ -233,8 +237,12 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let mut depth = 0;
 
         // Get reference to the current level variables
-        let mut level = &huf_decode_maps[decode_map_selectors[0]];
+        //let mut level: &Vec<Level>;
+        //let mut symbol_index: &Vec<u16>;
 
+        let (l, s) = &huf_decode_maps[decode_map_selectors[block_index]];
+        let mut level = l;
+        let mut symbol_index = s;
         // Loop through the data in chunks trying to find valid symbols in the bit stream
         loop {
             // Left shift any bits so we can add in one more bit
@@ -246,23 +254,25 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             }
 
             // If the code is bigger than the end code at this level, try the next level
-            let x = level[depth].end_code;
             if code >= level[depth].end_code {
                 depth += 1;
                 continue;
             } else {
                 // We found a code in this level. Calculate the offset and grab the symbol
-                let offset = code as usize - level[depth].start_code as usize;
-                let sym = level[depth].symbols[code as usize - level[depth].start_code as usize];
+                let sym =
+                    symbol_index[(level[depth].offset + code - level[depth].start_code) as usize];
 
                 // Put it into the output vec.
                 out[block_index] = sym;
 
                 // Update the block index
                 block_index += 1;
+
                 // Update the level variables if we are in a new chunk.
                 if block_index % CHUNK_SIZE == 0 {
-                    level = &huf_decode_maps[decode_map_selectors[block_index / 50]]
+                    let (l, s) = &huf_decode_maps[decode_map_selectors[block_index / 50]];
+                    level = l;
+                    symbol_index = s;
                 }
 
                 // Reset the depth index and code.
@@ -337,17 +347,17 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 #[derive(Debug, Clone)]
 struct Level {
     bits: u32,
+    offset: u32,
     start_code: u32,
     end_code: u32,
-    symbols: Vec<u16>,
 }
 impl Level {
     fn new() -> Self {
         Self {
             bits: 0,
+            offset: 0,
             start_code: 0,
             end_code: 0,
-            symbols: vec![],
         }
     }
 }
@@ -380,14 +390,9 @@ fn decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
             let mut level = Level::new();
 
             level.bits = bits_to_add;
+            level.offset = last_count;
             level.start_code = current_code;
             level.end_code = (current_code + count - 1) as u32;
-            level.symbols = map
-                .iter()
-                .skip(last_count as usize)
-                .take(count as usize - 1)
-                .map(|(symbol, _)| *symbol)
-                .collect();
             result.push(level);
 
             // Calculate the number of bits needed to get to the next level
@@ -411,14 +416,9 @@ fn decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
     let symbol = map[map.len() - 1].0;
 
     level.bits = bits_to_add;
+    level.offset = last_count;
     level.start_code = current_code;
     level.end_code = current_code + count as u32;
-    level.symbols = map
-        .iter()
-        .skip(last_count as usize)
-        .take(count as usize)
-        .map(|(symbol, _)| *symbol)
-        .collect();
     result.push(level);
 
     result

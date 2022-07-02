@@ -1,4 +1,3 @@
-
 ///Burrows-Wheeler-Transform - based on https://github.com/aufdj
 /// receives reference to incoming block of data and
 /// returns key for final data decomcpression. Key is u32.
@@ -49,40 +48,131 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
     }
     result
 }
- 
-/// Decode a Burrows-Wheeler-Transform
-pub fn bwt_decode(key: u32, btw_in: &[u8]) -> Vec<u8> {
-    // First get a freq count of symbols
-    let mut freq = [0_usize; 256];
-    for i in 0..btw_in.len() {
-        freq[btw_in[i] as usize] += 1;
-    }
-    // Then create  a cumulative count of frequency counts 
-    let mut sum = 0_usize;
-    let mut sum_freq = freq.iter().enumerate().fold(vec![0; 256], |mut v, (idx, &f)| {v[idx] = sum; sum += f; v});
 
-    // Now create vec to count frequencies in the transformation vector
-    let mut freq = [0_usize; 256];
+/// Decode a Burrows-Wheeler-Transform
+pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
+    // Use u32 instead of usize to keep memory needs down.
+    // First get a freq count of symbols. 
+    let mut freq = vec![0_u32; 256];
+    for i in 0..bwt_in.len() {
+        freq[bwt_in[i] as usize] += 1;
+    }
+    let mut sum = 0;
+
+    // This is slightly faster than iter_mut().for_each
+    for i in 0..256 {
+        let tmp = freq[i];
+        freq[i] = sum;
+        sum += tmp;
+    }
 
     //Build the transformation vector to find the next character in the original data
-    let mut t_vec = vec![0; btw_in.len()];
-    for (i, &s) in btw_in.iter().enumerate() {
-        t_vec[freq[s as usize] + sum_freq[s as usize]] = i;
+    // Using an array instead of a vec saves about 4 ms
+    let mut t_vec = [0_u32; 900024];
+    for (i, &s) in bwt_in.iter().enumerate() {
+        t_vec[freq[s as usize] as usize] = i as u32;
+
         freq[s as usize] += 1
     }
+
     // Transform the data
-    let mut orig = vec![0; btw_in.len()];
+    let mut orig = vec![0; bwt_in.len()];
     let mut key = t_vec[key as usize];
 
-    //for i in 0..btw_in.len() {
-    for item in orig.iter_mut().take(btw_in.len()) { 
-        *item = btw_in[key];
+    for i in 0..bwt_in.len() {
+        orig[i] = bwt_in[key as usize];
+        key = t_vec[key as usize]
+    }
+    orig
+}
+
+/// Decode a Burrows-Wheeler-Transform
+
+pub fn bwt_decode(key: u32, bwt_in: &[u8]) -> Vec<u8> {
+    // First get a freq count of symbols
+    let mut freq = vec![0_usize; 256];
+    for i in 0..bwt_in.len() {
+        freq[bwt_in[i] as usize] += 1;
+    }
+    let mut sum = 0;
+
+    // This is slightly faster than iter_mut().for_each
+    for i in 0..256 {
+        let tmp = freq[i];
+        freq[i] = sum;
+        sum += tmp;
+    }
+
+    //Build the transformation vector to find the next character in the original data
+    let mut t_vec = vec![0; bwt_in.len()];
+    for (i, &s) in bwt_in.iter().enumerate() {
+        t_vec[freq[s as usize]] = i;
+
+        freq[s as usize] += 1
+    }
+
+    // Transform the data
+    let mut orig = vec![0; bwt_in.len()];
+    let mut key = t_vec[key as usize];
+
+    for i in 0..bwt_in.len() {
+        orig[i] = bwt_in[key];
         key = t_vec[key]
     }
     orig
 }
 
+/// Decode a Burrows-Wheeler-Transform, cache interleaved (oddly slower)
+pub fn bwt_decode_new(key: u32, bwt_in: &[u8]) -> Vec<u8> {
+    // First get a freq count of symbols
+    let mut freq = vec![0_usize; 256];
+    for i in 0..bwt_in.len() {
+        freq[bwt_in[i] as usize] += 1;
+    }
+    let mut sum = 0;
 
+    // This is slightly faster than iter_mut().for_each
+    for i in 0..256 {
+        let tmp = freq[i];
+        freq[i] = sum;
+        sum += tmp;
+    }
+
+    //Build the last-first vector
+    let mut lf = vec![0; bwt_in.len()];
+    for i in 0..lf.len() {
+        lf[freq[bwt_in[i] as usize]] = i;
+        freq[bwt_in[i] as usize] += 1;
+    }
+
+    // Build the last-last vector
+    let mut ll = vec![0; bwt_in.len() * 2];
+    for i in 0..bwt_in.len() {
+        ll[2 * i] = bwt_in[i];
+        ll[2 * i + 1] = bwt_in[lf[i]];
+    }
+
+    // Build the lf2 vector
+    let mut lf2 = vec![0; bwt_in.len()];
+    for i in 0..lf2.len() {
+        lf2[i] = lf[lf[i]];
+    }
+
+    // Fix the first key 
+    let mut key = key as usize;
+
+    // Transform the data
+    let mut original = vec![0; bwt_in.len()];
+    let mut i = 0;
+    while i < original.len() {
+        original[i] = ll[(2 * key)];
+        if i + 1 < original.len() {
+        original[i + 1] = ll[(2 * key + 1)]}
+        key = lf2[key];
+        i += 2;
+    }
+    original
+}
 #[test]
 fn bwt_simple_decode() {
     let input = "gTowtr ?WB n hnpsceitHiyecup  or".as_bytes().to_vec();

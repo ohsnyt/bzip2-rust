@@ -26,7 +26,8 @@ struct Timer {
     huffman: Duration,
     rle_mtf: Duration,
     bwt: Duration,
-    rle_cleanup: Duration,
+    rle1: Duration,
+    cleanup: Duration,
     total: Duration,
     time: Instant,
 }
@@ -37,7 +38,8 @@ impl Timer {
             huffman: Duration::new(0, 0),
             rle_mtf: Duration::new(0, 0),
             bwt: Duration::new(0, 0),
-            rle_cleanup: Duration::new(0, 0),
+            rle1: Duration::new(0, 0),
+            cleanup: Duration::new(0, 0),
             total: Duration::new(0, 0),
             time: Instant::now(),
         }
@@ -64,8 +66,13 @@ impl Timer {
                 self.total += self.time.elapsed();
                 self.time = Instant::now();
             }
+            "rle1" => {
+                self.rle1 += self.time.elapsed();
+                self.total += self.time.elapsed();
+                self.time = Instant::now();
+            }
             _ => {
-                self.rle_cleanup += self.time.elapsed();
+                self.cleanup += self.time.elapsed();
                 self.total += self.time.elapsed();
                 self.time = Instant::now();
             }
@@ -363,12 +370,17 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         time.mark("rle_mtf");
 
         // Undo the BWTransform
-        let btw_v = crate::lib::bwt_ds::bwt_decode(key as u32, &mtf_out); //, &symbol_set);
+        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_small(key as u32, &mtf_out); //, &symbol_set);
+        let first_byte = bwt_v[0];
+        //bwt_v.remove((0));
+        //bwt_v.push(first_byte);
 
         time.mark("bwt");
 
         // Undo the initial RLE1
-        let rle1_v = rle1_decode(&btw_v);
+        let rle1_v = rle1_decode(&bwt_v);
+
+        time.mark("rle1");
 
         // Compute the CRC
         let this_block_crc = do_crc(0, &rle1_v);
@@ -387,7 +399,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let result = f_out.write(&rle1_v);
         info!("Wrote a block of data with {} bytes.", result.unwrap());
 
-        time.mark("rle_cleanup");
+        time.mark("cleanup");
     }
 
     let final_crc = br.bint(32).expect(EOF_MESSAGE);
@@ -406,8 +418,9 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     println!("Setup:\t\t{:?}", time.setup);
     println!("Huffman:\t{:?}", time.huffman);
     println!("RLE/MTF:\t{:?}", time.rle_mtf);
-    println!("BTW:\t\t{:?}", time.bwt);
-    println!("RLE/Cleanup:\t{:?}", time.rle_cleanup);
+    println!("BWT\t\t{:?}", time.bwt);
+    println!("RLE1:\t\t{:?}", time.rle1);
+    println!("Cleanup:\t{:?}", time.cleanup);
     println!("Total:\t\t{:?}", time.total);
 
     Result::Ok(())

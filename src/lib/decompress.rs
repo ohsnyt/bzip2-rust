@@ -83,6 +83,8 @@ impl Timer {
 const BUFFER_SIZE: usize = 100000;
 const EOF_MESSAGE: &str = "Unexpected End Of File";
 const CHUNK_SIZE: usize = 50; // Bzip2 chunk size
+const FOOTER: [u8; 6] = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
+const HEADER: [u8; 6] = [0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59];
 
 /// Decompress the file given in the command line
 pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
@@ -140,11 +142,11 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Block header (or footer) should come next.
         if let Some(header_footer) = br.bytes(6) {
             //check for footer first
-            if header_footer == vec![0x17, 0x72, 0x45, 0x38, 0x50, 0x90] {
+            if header_footer == FOOTER {
                 break 'block;
             }
             // Then create an error if this is not a block header
-            if header_footer != vec![0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59] {
+            if header_footer != HEADER {
                 return Err(Error::new(io::ErrorKind::Other, "Invalid block footer"));
             }
         };
@@ -154,13 +156,12 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let block_crc = br.bint(32).expect(EOF_MESSAGE);
         info!("CRC is {}.", block_crc);
 
-        // Get randomize bit - should almost always be zero
-        let rand = br.bool_bit().expect(EOF_MESSAGE); // Get the randomized flag
+        // Get randomize flag - should almost always be zero
+        let rand = br.bool_bit().expect(EOF_MESSAGE);
         debug!("Randomized is {:?}.", rand);
 
         // Get key (origin pointer)
         let key = br.bint(24).expect(EOF_MESSAGE);
-        debug!("Found BWTransform key ({})", key);
         if key > block_size as usize * 100000 + 10 {
             return Err(Error::new(io::ErrorKind::Other, "Invalid key pointer"));
         }
@@ -169,11 +170,14 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Get the symbol set (dropping the temporary vec used to grab the data)
         {
             // First get the map "index" and save it as the first entry in the map
-            let mut sym_map: Vec<u16> = vec![br.bint(16).expect(EOF_MESSAGE) as u16];
-            // Then get each 16-symbol map as indicated by the set bits in the "index"
-            for _ in 0..sym_map[0].count_ones() {
-                sym_map.push(br.bint(16).expect(EOF_MESSAGE) as u16);
+            let mut sym_map: Vec<u16> = vec![0_u16; 17];
+            sym_map[0] = br.bint(16).expect(EOF_MESSAGE) as u16;
+            // Then get as many 16-symbol maps as indicated by the set bits in the "index"
+            for i in 1..sym_map[0].count_ones() as usize {
+                sym_map[i] = br.bint(16).expect(EOF_MESSAGE) as u16;
             }
+            // Reduce sym_map down to the valid entries
+            sym_map.truncate((sym_map[0].count_ones() as usize + 1));
 
             // Then decode the symbol map and save it
             symbol_set = decode_sym_map(&sym_map);
@@ -365,7 +369,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 _ => (block_size as usize * 100000) + 19,
             }
         ];
-        let mtf_v = rle2_mtf_decode(&out, &mut mtf_out, &mut symbol_set);
+        rle2_mtf_decode(&out, &mut mtf_out, &mut symbol_set);
 
         time.mark("rle_mtf");
 
@@ -510,7 +514,7 @@ const RUNA: u16 = 0;
 const RUNB: u16 = 1;
 
 /// Does run-length-decoding from rle2_encode.
-pub fn rle2_mtf_decode(v: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut Vec<u8>) {
+pub fn rle2_mtf_decode(data_in: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut Vec<u8>) {
     // Initialize counters
     let mut zeros = 0_usize;
     let mut bit_multiplier = 1;
@@ -523,7 +527,7 @@ pub fn rle2_mtf_decode(v: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut Vec<u8>
     //let mut mtf_index: Vec<u8> = (0_u8..(symbol_set.len()) as u8).map(|n| n).collect();
 
     // iterate through the input, doing the conversion as we find RUNA/RUNB sequences
-    for mtf in v {
+    for mtf in data_in {
         // Blow up if the run is too big - this should be more elegant in the future
         if zeros > 2 * 1024 * 1024 {
             error!("Run of zeros exceeded a million - probably input bomb.");
@@ -560,6 +564,12 @@ pub fn rle2_mtf_decode(v: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut Vec<u8>
                 // And adjust the mtf_index for the next symbol
                 let sym = mtf_index.remove(n as usize - 1);
                 mtf_index.insert(0, sym as u8);
+                //Alternately adjust the mtf_index for the next symbol
+                // let end = n as usize - 1;
+
+                // for i in 0..end {
+                //     unsafe { mtf_index.swap_unchecked(i, end) }
+                // }
             }
         }
     }

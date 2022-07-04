@@ -27,7 +27,8 @@ impl<R: std::io::Read> BitReader<R> {
 
     /// Check (and refill) buffer - true if we have data, false if there is no more
     fn have_data(&mut self) -> bool {
-        if self.is_empty() {
+        // first time...
+        if self.bytes_read == 0 {
             let size = self
                 .source
                 .read(&mut self.buffer)
@@ -39,7 +40,21 @@ impl<R: std::io::Read> BitReader<R> {
                 self.bytes_read += size;
                 self.byte_index = 0;
                 self.bit_index = 0;
-                return true;
+            }
+        } else {
+            if self.is_empty() {
+                let size = self
+                    .source
+                    .read(&mut self.buffer)
+                    .expect("Unble to read source data");
+                if size == 0 {
+                    return false;
+                } else {
+                    self.buffer.truncate(size);
+                    self.bytes_read += size;
+                    self.byte_index = 0;
+                    self.bit_index = 0;
+                }
             }
         }
         true
@@ -47,7 +62,8 @@ impl<R: std::io::Read> BitReader<R> {
 
     /// Function to indicate buffer is empty (not necessarily the source)
     fn is_empty(&self) -> bool {
-        (self.byte_index > self.buffer.len() - 1) || (self.byte_index == self.buffer.len() && self.bit_index == 0)
+    (self.byte_index > self.buffer.len() - 1)
+            || (self.byte_index == self.buffer.len() && self.bit_index == 0)
     }
 
     /// Return one bit
@@ -93,11 +109,11 @@ impl<R: std::io::Read> BitReader<R> {
             // Test if we have a partial byte of data next
             if self.bit_index > 0 {
                 // Set up to read the minimum of the partial byte and what we need to read
-                let needed = n.min(8-self.bit_index);
+                let needed = n.min(8 - self.bit_index);
 
                 // Get what we need/can from this partial byte
-                result =
-                    ((self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> 8 - self.bit_index - needed) as usize;
+                result = ((self.buffer[self.byte_index] & BIT_MASK >> self.bit_index)
+                    >> 8 - self.bit_index - needed) as usize;
                 self.bit_index += needed;
                 if self.bit_index / 8 > 0 {
                     self.byte_index += 1;

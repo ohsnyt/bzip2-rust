@@ -1,4 +1,5 @@
 //Enable more cargo lint tests
+//#![feature(slice_swap_unchecked)]
 #![warn(rust_2018_idioms)]
 #![allow(unused)]
 #![warn(clippy::disallowed_types)]

@@ -114,14 +114,11 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     }
 
     // Use the block size to validate the max number of selectors.
-    let mut block_size = br.byte().expect(EOF_MESSAGE);
-    if !(0x30..=0x39).contains(&block_size) {
+    // (Use saturating_sub in case there is a data error - to prevent underflow)
+    let block_size = br.byte().expect(EOF_MESSAGE).saturating_sub(0x30);
+    if !(1..=9).contains(&block_size) {
         return Err(Error::new(io::ErrorKind::Other, "Invalid block size"));
     }
-    // Convert block_size to an integer for later use
-    block_size -= 0x30;
-    // Save space for the symbol set for later use
-    let mut symbol_set: Vec<u8>;
 
     // Good so far. Prepare to write the data.
     let mut fname = opts.file.as_ref().unwrap().clone();
@@ -136,6 +133,9 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
     // Block_counter is for reporting purposes
     let mut block_counter = 0;
+    // Save space for the symbol set
+    let mut symbol_set: Vec<u8>;
+
     'block: loop {
         block_counter += 1;
 
@@ -169,17 +169,17 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Get the symbol set (dropping the temporary vec used to grab the data)
         {
-            // First get the map "index" and save it as the first entry in the map
-            let mut sym_map: Vec<u16> = vec![0_u16; 17];
-            sym_map[0] = br.bint(16).expect(EOF_MESSAGE) as u16;
-            // Then get as many 16-symbol maps as indicated by the set bits in the "index"
-            for i in 1..sym_map[0].count_ones() as usize {
-                sym_map[i] = br.bint(16).expect(EOF_MESSAGE) as u16;
-            }
-            // Reduce sym_map down to the valid entries
-            sym_map.truncate((sym_map[0].count_ones() as usize + 1));
+            // First set up the map vec
+            let mut sym_map: Vec<u16> = vec![];
+            // Then get the map "index" and save it as the first entry in the map
+            sym_map.push(br.bint(16).expect(EOF_MESSAGE) as u16);
 
-            // Then decode the symbol map and save it
+            // Now get as many 16-symbol maps as indicated by the set bits in the "index"
+            for i in 0..sym_map[0].count_ones() as usize {
+                sym_map.push(br.bint(16).expect(EOF_MESSAGE) as u16);
+            }
+
+            // Finally decode the symbol map and save it
             symbol_set = decode_sym_map(&sym_map);
         }
         //  Count how many symbols are in the symbol map. The +2 adds in RUNA and RUNB.
@@ -196,27 +196,30 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let mut selector_count = br.bint(15).expect(EOF_MESSAGE);
 
         // Read Selectors based on the actual number of selectors reported
+        // (But only save the ones we can use! Hence max_selectors.)
+        let max_selectors = block_size as usize * 100000 / 50;
         let mut decode_map_selectors = Vec::with_capacity(selector_count as usize);
         let mut group: u8 = 0;
         for _ in 0..selector_count {
             while br.bool_bit().expect(EOF_MESSAGE) {
                 group += 1;
             }
-            // Since Julian ignores the error of excessive selector_count, only push maps that can be used
-            if selector_count <= block_size as usize * 100000 / 50 {
+            // Like Julian, ignore  excessive selectors, only push maps that can be used.
+            if selector_count <= max_selectors {
                 decode_map_selectors.push(group);
             }
             group = 0;
         }
+
         // Adjust the selector_count if needed
-        if selector_count > block_size as usize * 100000 / 50 {
-            warn!("Found {} selector were reported, but the maximum is {}. Adjust the selector count down.", selector_count, block_size as u32 * 100000 / 50);
-            selector_count = block_size as usize * 100000 / 50;
+        if selector_count > max_selectors {
+            warn!("Found {} selectors were reported, but the maximum is {}. Adjust the selector count down.", selector_count, max_selectors);
+            selector_count = max_selectors;
         }
 
         // Decode selectors from MTF values for the selectors
         // Create an index vec for the number of tables we need
-        let mut table_idx: Vec<usize> = (0..table_count as usize).collect();
+        let table_idx: Vec<usize> = (0..table_count as usize).collect();
 
         // Now undo the move to front for the selectors
         let decode_map_selectors = decode_map_selectors

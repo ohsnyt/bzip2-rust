@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 
 const BIT_MASK: u16 = 0x8000;
 
-/// Similar to makeMaps_e
 /// Takes a sorted deduped vec of all symbols used in the input and
 /// creates the unique bzip2 symbol map of symbols encoded as u16s
 pub fn encode_sym_map(symbols: &VecDeque<u8>) -> Vec<u16> {
@@ -41,14 +40,14 @@ pub fn decode_sym_map(symbol_map: &[u16]) -> Vec<u8> {
     for block in 0..16 {
         // Check the index to see if the next bit has a block of bytes
         if (symbol_map[0] & (BIT_MASK >> block)) > 0 {
+            map_idx += 1;
             // If so, iterate through the next u16 to find which bytes were present
             for byte_idx in 0..16_u8 {
-                if (symbol_map[map_idx + 1] & (BIT_MASK >> byte_idx)) > 0 {
+                if (symbol_map[map_idx] & (BIT_MASK >> byte_idx)) > 0 {
                     // Store this symbol on the vec. (block * 16 + byte_idx = u8 value we found)
                     result.push((block << 4) + byte_idx);
                 };
             }
-            map_idx += 1;
         }
     }
     result
@@ -56,11 +55,12 @@ pub fn decode_sym_map(symbol_map: &[u16]) -> Vec<u8> {
 
 #[test]
 fn encode_symbol_map_test() {
-    let mut x = "Making a silly test.".as_bytes().to_vec();
+    let mut x = "If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?".as_bytes().to_vec();
+    x.push(0x1);
     x.sort_unstable();
     x.dedup();
     let x = VecDeque::from(x);
-    let idx = vec![11008, 32770, 4, 17754, 6208];
+    let idx = vec![48896, 16384, 33032, 1, 64, 32768, 24281, 47360];
     assert_eq!(idx, encode_sym_map(&x))
 }
 #[test]

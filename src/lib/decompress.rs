@@ -548,6 +548,7 @@ fn decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
 
 const RUNA: u16 = 0;
 const RUNB: u16 = 1;
+const ZERO_BOMB: usize = 2 * 1024 * 1024;
 
 /// Does run-length-decoding from rle2_encode.
 pub fn rle2_mtf_decode(data_in: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut Vec<u8>) {
@@ -559,17 +560,14 @@ pub fn rle2_mtf_decode(data_in: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut V
     // Add (bogus) eob symbol to the mtf_index (symbol set)
     mtf_index.push(0);
 
-    // Create the mtf index
-    //let mut mtf_index: Vec<u8> = (0_u8..(symbol_set.len()) as u8).map(|n| n).collect();
-
     // iterate through the input, doing the conversion as we find RUNA/RUNB sequences
-    for mtf in data_in {
+    for symbol in data_in {
         // Blow up if the run is too big - this should be more elegant in the future
-        if zeros > 2 * 1024 * 1024 {
+        if zeros > ZERO_BOMB {
             error!("Run of zeros exceeded a million - probably input bomb.");
             std::process::exit(100)
         }
-        match *mtf {
+        match *symbol {
             // If we found RUNA, do magic to calculate how many zeros we need
             RUNA => {
                 zeros += bit_multiplier;

@@ -1,7 +1,6 @@
-///Burrows-Wheeler-Transform - based on https://github.com/aufdj
-/// receives reference to incoming block of data and
-/// returns key for final data decomcpression. Key is u32.
-pub fn bwt_encode(orig: &[u8]) -> (usize, Vec<u8>) {
+///Burrows-Wheeler-Transform
+/// Transforms a u8 slice using bwt. The key is u32.
+pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
     //let ext = orig.len();
     //let mut index: Vec<(u8, usize)> = orig.iter().enumerate().map(|(i, &s)| (s, i)).collect();
@@ -13,16 +12,16 @@ pub fn bwt_encode(orig: &[u8]) -> (usize, Vec<u8>) {
     }
     // Sort index
     index[..].sort_by(|a, b| block_compare(*a as usize, *b as usize, orig));
-    // Try radix sort
+    // Tried radix sort, but it was slower
     //rdxsort::RdxSort::rdxsort(&mut index);
     //info!("Known good index: {:?}", index);
 
     // Get key and BWT output (assumes u32 is 4 bytes)
-    let mut key: usize = 0;
+    let mut key = 0_u32;
     let mut bwt = vec![0; orig.len()];
     for i in 0..bwt.len() {
         if index[i] == 0 {
-            key = i as usize;
+            key = i as u32;
         }
         if index[i] == 0 {
             bwt[i] = orig[orig.len() - 1];
@@ -49,10 +48,10 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
     result
 }
 
-/// Decode a Burrows-Wheeler-Transform
+/// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
 pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     // Use u32 instead of usize to keep memory needs down.
-    // First get a freq count of symbols. 
+    // First get a freq count of symbols.
     let mut freq = vec![0_u32; 256];
     for i in 0..bwt_in.len() {
         freq[bwt_in[i] as usize] += 1;
@@ -67,7 +66,7 @@ pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     }
 
     //Build the transformation vector to find the next character in the original data
-    // Using an array instead of a vec saves about 4 ms
+    // Using an array instead of a vec saves about 4 ms.
     let mut t_vec = [0_u32; 900024];
     for (i, &s) in bwt_in.iter().enumerate() {
         t_vec[freq[s as usize] as usize] = i as u32;
@@ -158,7 +157,7 @@ pub fn bwt_decode_new(key: u32, bwt_in: &[u8]) -> Vec<u8> {
         lf2[i] = lf[lf[i]];
     }
 
-    // Fix the first key 
+    // Fix the first key
     let mut key = key as usize;
 
     // Transform the data
@@ -167,12 +166,14 @@ pub fn bwt_decode_new(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     while i < original.len() {
         original[i] = ll[(2 * key)];
         if i + 1 < original.len() {
-        original[i + 1] = ll[(2 * key + 1)]}
+            original[i + 1] = ll[(2 * key + 1)]
+        }
         key = lf2[key];
         i += 2;
     }
     original
 }
+
 #[test]
 fn bwt_simple_decode() {
     let input = "gTowtr ?WB n hnpsceitHiyecup  or".as_bytes().to_vec();

@@ -21,9 +21,9 @@ pub fn mtf_encode(block: &mut Block) {
 
     // ...then do the transform (VecDeque saves a tiny bit of time over a vec)
     for i in 0..block.end {
-        let byte = block.data[i];
+        let byte = block.data[i as usize];
         let idx = index.iter_mut().position(|c| c == &byte).unwrap() as u8;
-        block.data[i] = idx;
+        block.data[i as usize] = idx;
         if idx != 0 {
             let _ = index.remove(idx as usize);
             index.push_front(byte);

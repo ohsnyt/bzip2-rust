@@ -31,8 +31,8 @@ pub struct Block {
     // Add in block data, sym_map, index, temp vec for data work???
     pub data: Vec<u8>,
     pub temp_vec: Vec<u16>,
-    pub end: usize,
-    pub key: usize,
+    pub end: u32,
+    pub key: u32,
     pub freqs: Vec<u32>,
     pub sym_map: Vec<u16>,
     pub eob: u16,
@@ -55,7 +55,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     let mut block = Block {
         data: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
         temp_vec: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
-        end: opts.block_size as usize * 100000 - 19,
+        end: opts.block_size as u32 * 100000 - 19,
         key: 0,
         freqs: vec![0; 256],
         sym_map: Vec::with_capacity(17),
@@ -68,7 +68,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     };
 
     // Initialize the struct for Julian's main sorting algorithm, cutting back vec sizes if not needed
-    let mut temp_end = block.end;
+    let mut temp_end = block.end as usize;
     if opts.algorithm != crate::lib::cli::Algorithms::Julian {
         temp_end = 0;
     }
@@ -115,27 +115,27 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
         while bytes_desired > 0 && bytes_left > 0 {
             if buf.is_empty() {
                 //   Read 20% more than we need, if we have enough data left.
-                buf = vec![0; (block.end * 5 / 4).min(bytes_left)];
+                buf = vec![0; (block.end as usize * 5 / 4).min(bytes_left)];
                 fin.read_exact(&mut buf);
             }
             // Do the rle on a glob of data - hopefully more than we need
             let (processed, mut new_data) = rle_encode(&buf, bytes_desired);
 
             // Subtract what we got from what we wanted, safely (must be done before append!)
-            bytes_desired = bytes_desired.saturating_sub(new_data.len());
+            bytes_desired = bytes_desired.saturating_sub(new_data.len() as u32);
 
             // Add the data to block
             block.data.extend(new_data.iter());
 
             // mark the end of the block
-            block.end = block.data.len();
+            block.end = block.data.len() as u32;
 
             // Do CRC on what we got
-            block.block_crc = do_crc(block.block_crc, &buf[0..processed]);
+            block.block_crc = do_crc(block.block_crc, &buf[0..processed as usize]);
 
             // Drain what we used from the buffer
-            buf.drain(0..processed);
-            bytes_left -= processed;
+            buf.drain(0..processed as usize);
+            bytes_left -= processed as usize;
             if bytes_left == 0 {
                 block.is_last = true;
             }

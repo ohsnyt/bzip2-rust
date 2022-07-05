@@ -10,9 +10,9 @@ be faster than counting pairs in a loop.) When you find a duplicate sequence, ou
 do 260 at a time, hence the divide and mod math), then adjust the index and start location.*/
 
 /// Encode runs of for our more identical bytes, pre-BWT. Returns number of bytes consumed and the RLE1 data. 
-pub fn rle_encode(v: &[u8], size: usize) -> (usize, Vec<u8>) {
+pub fn rle_encode(v: &[u8], size: u32) -> (u32, Vec<u8>) {
     if v.len() < 4 || size < 4 {
-        return (v.len().min(size), v.to_vec());
+        return (v.len().min(size as usize) as u32, v.to_vec());
     }
     let mut skip_start: usize = 0;
     let mut idx = 0;
@@ -23,7 +23,7 @@ pub fn rle_encode(v: &[u8], size: usize) -> (usize, Vec<u8>) {
     let mut idx = 0;
 
     while idx < data_end  {
-        if out.len() + (idx - skip_start) >= size  {
+        if out.len() + (idx - skip_start) >= size as usize  {
             break
         }
         if v[idx] == v[idx + 1] && v[idx] == v[idx + 2] && v[idx] == v[idx + 3] {
@@ -47,7 +47,7 @@ pub fn rle_encode(v: &[u8], size: usize) -> (usize, Vec<u8>) {
     if skip_start < v.len() {
         out.extend_from_slice(&v[skip_start..idx]);
     }
-    (idx, out)
+    (idx as u32, out)
 }
 
 /// Helper function for rel1_encode to count how many duplicate bytes occur.

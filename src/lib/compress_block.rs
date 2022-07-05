@@ -17,7 +17,7 @@ pub fn compress_block(
     qs: &mut QsortData,
 ) {
     // Adjust qs fields
-    qs.end = block.end;
+    qs.end = block.end as usize;
     qs.budget = block.budget;
     
     // If this is the first block, write the stream header

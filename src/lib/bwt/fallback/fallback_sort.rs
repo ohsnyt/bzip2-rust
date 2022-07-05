@@ -12,8 +12,8 @@ pub fn fallback_sort(block: &mut Block)  {
     let mut block_data = block.data.iter().map(|b| *b as u16).collect::<Vec<u16>>();
 
     // Create and initialize vecs for the transformed data and frequency tables
-    let mut bhtab: Vec<u32> = vec![0_u32; 4 + (block.end / 32)];
-    let mut freq_map = vec![0_u32; block.end];
+    let mut bhtab: Vec<u32> = vec![0_u32; 4 + (block.end as usize / 32)];
+    let mut freq_map = vec![0_u32; block.end as usize];
 
     /*
     bhtab sets the bucket tables for the radix sorting algorithm.
@@ -236,11 +236,11 @@ pub fn fallback_sort(block: &mut Block)  {
 
     // Generate the burrow-wheeler data.
     info!("        building burrow-wheeler-transform data ...\n");
-    let mut bwt_data = vec![0; block.end];
+    let mut bwt_data = vec![0; block.end as usize];
     for i in 0..block.end as usize {
         if freq_map[i] == 0 {
-            block.key = i;
-            bwt_data[i] = block.data[block.end - 1] as u8;
+            block.key = i as u32;
+            bwt_data[i] = block.data[block.end as usize - 1] as u8;
         } else {
             bwt_data[i] = block.data[freq_map[i] as usize - 1] as u8
         }

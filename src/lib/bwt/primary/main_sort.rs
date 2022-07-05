@@ -317,7 +317,7 @@ pub fn main_sort(block: &mut Block, qs: & mut QsortData) {
     let mut bwt_data = vec![0; qs.end];
     for i in 0..qs.end as usize {
         if qs.bwt_ptr[i] == 0 {
-            block.key = i;
+            block.key = i as u32;
             bwt_data[i] = block.data[qs.end - 1] as u8;
         } else {
             bwt_data[i] = block.data[qs.bwt_ptr[i] as usize - 1] as u8

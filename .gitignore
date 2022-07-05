@@ -10,11 +10,7 @@ image.*
 src/unused/*
 src/timeseries_export2.csv
 target/.rustc_info.json
-target/.rustc_info.json
 Cargo.lock
-target/.rustc_info.json
 .gitignore
-target/.rustc_info.json
-Cargo.lock
-target/.rustc_info.json
-target/.rustc_info.json
+
+

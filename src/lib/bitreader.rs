@@ -28,7 +28,22 @@ impl<R: std::io::Read> BitReader<R> {
     /// Check (and refill) buffer - true if we have data, false if there is no more
     fn have_data(&mut self) -> bool {
         // first time...
-        if self.bytes_read == 0 {
+        // if self.bytes_read == 0 {
+        //     let size = self
+        //         .source
+        //         .read(&mut self.buffer)
+        //         .expect("Unble to read source data");
+        //     if size == 0 {
+        //         return false;
+        //     } else {
+        //         self.buffer.truncate(size);
+        //         self.bytes_read += size;
+        //         self.byte_index = 0;
+        //         self.bit_index = 0;
+        //     }
+        // } else {
+        if self.bytes_read == 0 || self.byte_index == self.buffer.len() {
+            //if self.is_empty() {
             let size = self
                 .source
                 .read(&mut self.buffer)
@@ -41,46 +56,32 @@ impl<R: std::io::Read> BitReader<R> {
                 self.byte_index = 0;
                 self.bit_index = 0;
             }
-        } else {
-            if self.is_empty() {
-                let size = self
-                    .source
-                    .read(&mut self.buffer)
-                    .expect("Unble to read source data");
-                if size == 0 {
-                    return false;
-                } else {
-                    self.buffer.truncate(size);
-                    self.bytes_read += size;
-                    self.byte_index = 0;
-                    self.bit_index = 0;
-                }
-            }
         }
+        //}
         true
     }
 
     /// Function to indicate buffer is empty (not necessarily the source)
     fn is_empty(&self) -> bool {
-    (self.byte_index > self.buffer.len() - 1)
+        (self.byte_index > self.buffer.len() - 1)
             || (self.byte_index == self.buffer.len() && self.bit_index == 0)
     }
 
     /// Return one bit
     pub fn bit(&mut self) -> Option<usize> {
-        // Return None if we have no data
-        if !self.have_data() {
-            return None;
-        } else {
-            let bit =
-                (self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> 7 - self.bit_index;
-            self.bit_index += 1;
-            self.bit_index %= 8;
-            if self.bit_index == 0 {
-                self.byte_index += 1;
+        // If bit_index is == 0, check if we have a byte to read. Return None if we have no data
+        if self.bit_index == 0 {
+            if !self.have_data() {
+                return None;
             }
-            return Some(bit as usize);
         }
+        let bit = (self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> 7 - self.bit_index;
+        self.bit_index += 1;
+        self.bit_index %= 8;
+        if self.bit_index == 0 {
+            self.byte_index += 1;
+        }
+        return Some(bit as usize);
     }
 
     /// Return Option<Bool> *true* if the next bit is 1, *false* if 0
@@ -99,61 +100,58 @@ impl<R: std::io::Read> BitReader<R> {
         those. Then get full bytes as needed to fulfill the request. Lastly, get a
         partial byte to complete the request.
         */
-        // See if we have data to start with
-        if !self.have_data() {
-            return None;
-        } else {
-            // Prepare the usize for returning
-            let mut result = 0_usize;
+        // Prepare the usize for returning
+        let mut result = 0_usize;
 
-            // Test if we have a partial byte of data next
-            if self.bit_index > 0 {
-                // Set up to read the minimum of the partial byte and what we need to read
-                let needed = n.min(8 - self.bit_index);
+        // Test if we have a partial byte of data. If we do, read from it.
+        if self.bit_index > 0 {
+            // Set up to read the minimum of the partial byte and what we need to read
+            let needed = n.min(8 - self.bit_index);
 
-                // Get what we need/can from this partial byte
-                result = ((self.buffer[self.byte_index] & BIT_MASK >> self.bit_index)
-                    >> 8 - self.bit_index - needed) as usize;
-                self.bit_index += needed;
-                if self.bit_index / 8 > 0 {
-                    self.byte_index += 1;
-                }
-                self.bit_index %= 8;
-
-                // See if we got all we needed
-                if n == needed {
-                    return Some(result);
-                } else {
-                    n -= needed;
-                }
-            }
-            // If we are here, we need more data. Get as many full bytes as we need.
-            while n >= 8 {
-                // Checking always for data
-                if !self.have_data() {
-                    return None;
-                }
-                result = result << 8 | (self.buffer[self.byte_index]) as usize;
+            // Get what we need/can from this partial byte
+            result = ((self.buffer[self.byte_index] & BIT_MASK >> self.bit_index)
+                >> 8 - self.bit_index - needed) as usize;
+            self.bit_index += needed;
+            if self.bit_index / 8 > 0 {
                 self.byte_index += 1;
-                n -= 8;
             }
-            // If we need more data, get whatever bits we still need.
-            if n > 0 {
-                // Checking always for data
-                if !self.have_data() {
-                    return None;
-                }
-                // Get the remaining bits
-                result = result << n | (self.buffer[self.byte_index] >> 8 - n) as usize;
-                // Adjust indecies
-                self.bit_index += n;
-                if self.bit_index / 8 > 1 {
-                    self.byte_index += 1;
-                }
-                self.bit_index %= 8;
+            self.bit_index %= 8;
+
+            // See if we got all we needed.
+            if n == needed {
+                // Return if so.
+                return Some(result);
+            } else {
+                // Else adjust what we still need and try to read more data.
+                n -= needed;
             }
-            Some(result)
         }
+        // If we are here, we need more data. Get as many full bytes as we need.
+        while n >= 8 {
+            // Checking always for data
+            if !self.have_data() {
+                return None;
+            }
+            result = result << 8 | (self.buffer[self.byte_index]) as usize;
+            self.byte_index += 1;
+            n -= 8;
+        }
+        // If we still need a partial byte, get whatever bits we still need.
+        if n > 0 {
+            // Checking always for data
+            if !self.have_data() {
+                return None;
+            }
+            // Get the remaining bits
+            result = result << n | (self.buffer[self.byte_index] >> 8 - n) as usize;
+            // Adjust indecies
+            self.bit_index += n;
+            if self.bit_index / 8 > 1 {
+                self.byte_index += 1;
+            }
+            self.bit_index %= 8;
+        }
+        Some(result)
     }
 
     /// Read and return a bytes as an Option<u8>
@@ -183,6 +181,7 @@ impl<R: std::io::Read> BitReader<R> {
     }
 }
 
+// Iterator is not currently used, but was tried with alternative factorings that proved slower.
 impl<R> Iterator for BitReader<R>
 where
     R: Read,

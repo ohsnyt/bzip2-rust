@@ -1,7 +1,8 @@
 use log::{debug, error, info, warn};
 
 use crate::lib::crc::{do_crc, do_stream_crc};
-use rustc_hash::FxHashMap;
+
+//use rustc_hash::FxHashMap;
 
 use super::{
     bitreader::BitReader,
@@ -23,10 +24,12 @@ use std::{
 
 struct Timer {
     setup: Duration,
+    h_bitread: Duration,
     huffman: Duration,
     rle_mtf: Duration,
     bwt: Duration,
     rle1: Duration,
+    crcs: Duration,
     cleanup: Duration,
     total: Duration,
     time: Instant,
@@ -35,10 +38,12 @@ impl Timer {
     fn new() -> Self {
         Self {
             setup: Duration::new(0, 0),
+            h_bitread: Duration::new(0, 0),
             huffman: Duration::new(0, 0),
             rle_mtf: Duration::new(0, 0),
             bwt: Duration::new(0, 0),
             rle1: Duration::new(0, 0),
+            crcs: Duration::new(0, 0),
             cleanup: Duration::new(0, 0),
             total: Duration::new(0, 0),
             time: Instant::now(),
@@ -53,6 +58,11 @@ impl Timer {
             }
             "huffman" => {
                 self.huffman += self.time.elapsed();
+                self.total += self.time.elapsed();
+                self.time = Instant::now();
+            }
+            "h_bitread" => {
+                self.h_bitread += self.time.elapsed();
                 self.total += self.time.elapsed();
                 self.time = Instant::now();
             }
@@ -71,6 +81,11 @@ impl Timer {
                 self.total += self.time.elapsed();
                 self.time = Instant::now();
             }
+            "crcs" => {
+                self.crcs += self.time.elapsed();
+                self.total += self.time.elapsed();
+                self.time = Instant::now();
+            }
             _ => {
                 self.cleanup += self.time.elapsed();
                 self.total += self.time.elapsed();
@@ -85,6 +100,18 @@ const EOF_MESSAGE: &str = "Unexpected End Of File";
 const CHUNK_SIZE: usize = 50; // Bzip2 chunk size
 const FOOTER: [u8; 6] = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
 const HEADER: [u8; 6] = [0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59];
+/* NOTES
+The timing of the various parts of decompression are:
+    Huffman:	 98.7 ms - I THINK about 45% of the time is spend in the bitreader
+    BWT		     94.5 ms
+    RLE/MTF:	 42.7 ms
+    CRCs:	     22.5 ms
+    RLE1:		  8.8 ms
+    Setup:		  3.9 ms
+    Cleanup:	  1.7 ms
+    Total:		272.7 ms
+
+*/
 
 /// Decompress the file given in the command line
 pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
@@ -238,7 +265,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         time.mark("setup");
 
-        // Read the Huffman symbol length maps and create decode maps which have level info and a vec of the symbols
+        // Read the Huffman symbol length maps and create decode maps which have level info
+        //  and a level-specific vec of the symbols.
         let mut huf_decode_maps: Vec<(Vec<Level>, Vec<u16>)> =
             vec![(Vec::new(), Vec::with_capacity(symbols)); table_count];
 
@@ -291,32 +319,28 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             }
         ];
 
-        // Set the eob to one more than the symbols in symbol_set.
-        let eob = symbol_set.len() as u16 + 1;
-
         // Now read the blocks in chunks of 50 symbols with the huffman map selected by the selector vec
         // Initialize key variables
         let mut block_index = 0;
         let mut bit_count: u32 = 0;
         let mut code = 0_u32;
         let mut depth = 0;
+        // Set the eob to one more than the symbols in symbol_set.
+        let eob = symbol_set.len() as u16 + 1;
 
-        // Get reference to the current level variables
-        //let mut level: &Vec<Level>;
-        //let mut symbol_index: &Vec<u16>;
-
+        // Get references to the current level variables and symbol set
         let (l, s) = &huf_decode_maps[decode_map_selectors[block_index]];
         let mut level = l;
         let mut symbol_index = s;
         // Loop through the data in chunks trying to find valid symbols in the bit stream
         loop {
-            // Left shift any bits so we can add in one more bit
+            // Left shift any code bits we are currently holding so we can add in the next level of bits
             code <<= level[depth].bits;
 
-            // Get the required bits at this level depth and add them to our bits
-            if let Some(bits) = br.bint(level[depth].bits as usize) {
-                code |= bits as u32
-            }
+            // Get the required bits at this level depth and add them to our code
+            //time.mark("h_bitread");
+            code |= br.bint(level[depth].bits as usize).expect(EOF_MESSAGE) as u32;
+            //time.mark("huffman");
 
             // If the code is bigger than the end code at this level, try the next level
             if code >= level[depth].end_code {
@@ -333,7 +357,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 // Update the block index
                 block_index += 1;
 
-                // Update the level variables if we are in a new chunk.
+                // Update the level variables if we are starting a new chunk.
                 if block_index % CHUNK_SIZE == 0 {
                     let (l, s) = &huf_decode_maps[decode_map_selectors[block_index / 50]];
                     level = l;
@@ -346,13 +370,14 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
                 // Check if we have reached the end of block
                 if sym == eob {
-                    // Check if we are at the end of the block too early
+                    // If we are, check if we are at the end of the block too early
                     if block_index / CHUNK_SIZE < selector_count as usize - 1 {
-                        error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_index/50, selector_count)
+                        error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_index/50, selector_count);
+                        // Probably should terminate the program here.
                     }
                     // Adjust the vec length to the block_index
                     out.truncate(block_index);
-                    // Break/Return with the block data
+                    // All done. Go do the RLE2 and MTF.
                     break;
                 }
             }
@@ -379,8 +404,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Undo the BWTransform
         let mut bwt_v = crate::lib::bwt_ds::bwt_decode_small(key as u32, &mtf_out); //, &symbol_set);
         let first_byte = bwt_v[0];
-        //bwt_v.remove((0));
-        //bwt_v.push(first_byte);
 
         time.mark("bwt");
 
@@ -389,8 +412,9 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         time.mark("rle1");
 
-        // Compute the CRC
+        // Compute and check the CRCs
         let this_block_crc = do_crc(0, &rle1_v);
+        //let this_block_crc = CRC32.checksum(&rle1_v);
         stream_crc = do_stream_crc(stream_crc, this_block_crc);
 
         if block_crc == this_block_crc as usize {
@@ -398,9 +422,13 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         } else {
             error!(
                 "Block {} CRC failed!!! Found {} looking for {}. (Continuing...)",
-                block_counter, this_block_crc, block_crc
+                block_counter,
+                this_block_crc,
+                block_crc // Perhaps this should be a fatal error as the data is corrupt.
             );
         }
+
+        time.mark("crcs");
 
         // Done!! Write the data
         let result = f_out.write(&rle1_v);
@@ -417,18 +445,23 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             "Stream CRC failed!!! Found {} looking for {}. (Data may be corrupt.)",
             stream_crc, final_crc
         );
+        // Perhaps this should be a fatal error as the data is corrupt.
+        // This should never happen unless a block CRC also failed - or unless there is a missing block.
     }
 
-    info!("Wrote the decompressed file.\n");
-
     time.mark("rle_cleanup");
-    println!("Setup:\t\t{:?}", time.setup);
+    println!("");
     println!("Huffman:\t{:?}", time.huffman);
-    println!("RLE/MTF:\t{:?}", time.rle_mtf);
+    //println!("Huffman bitreading:\t{:?}", time.h_bitread);
     println!("BWT\t\t{:?}", time.bwt);
+    println!("RLE/MTF:\t{:?}", time.rle_mtf);
+    println!("CRCs:\t\t{:?}", time.crcs);
     println!("RLE1:\t\t{:?}", time.rle1);
+    println!("Setup:\t\t{:?}", time.setup);
     println!("Cleanup:\t{:?}", time.cleanup);
-    println!("Total:\t\t{:?}", time.total);
+    println!("Total:\t\t{:?}\n", time.total);
+
+    info!("Done.\n");
 
     Result::Ok(())
 }
@@ -567,7 +600,7 @@ pub fn rle2_mtf_decode(data_in: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut V
                 // And adjust the mtf_index for the next symbol
                 let sym = mtf_index.remove(n as usize - 1);
                 mtf_index.insert(0, sym as u8);
-                //Alternately adjust the mtf_index for the next symbol
+                //Alternately adjust the mtf_index for the next symbol - but can't get unsafe to work
                 // let end = n as usize - 1;
 
                 // for i in 0..end {

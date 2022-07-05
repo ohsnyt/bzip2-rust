@@ -50,10 +50,13 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
 
 /// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
 pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
+    // Calculate end once.
+    let end = bwt_in.len();
+
     // Use u32 instead of usize to keep memory needs down.
     // First get a freq count of symbols.
     let mut freq = vec![0_u32; 256];
-    for i in 0..bwt_in.len() {
+    for i in 0..end {
         freq[bwt_in[i] as usize] += 1;
     }
     let mut sum = 0;
@@ -70,17 +73,22 @@ pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     let mut t_vec = [0_u32; 900024];
     for (i, &s) in bwt_in.iter().enumerate() {
         t_vec[freq[s as usize] as usize] = i as u32;
-
         freq[s as usize] += 1
     }
 
-    // Transform the data
-    let mut orig = vec![0; bwt_in.len()];
-    let mut key = t_vec[key as usize];
+    //Build the keys vector to find the next character in the original data
+    let mut keys = vec![0_u32; end];
+    let mut key = key;
+    keys[0] = t_vec[key as usize];
 
+    for i in 1..end {
+        keys[i] = t_vec[keys[i - 1] as usize];
+    }
+
+    // Transform the data
+    let mut orig = vec![0; end];
     for i in 0..bwt_in.len() {
-        orig[i] = bwt_in[key as usize];
-        key = t_vec[key as usize]
+        orig[i] = bwt_in[keys[i] as usize];
     }
     orig
 }

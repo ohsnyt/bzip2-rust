@@ -403,7 +403,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Undo the BWTransform
         let mut bwt_v = crate::lib::bwt_ds::bwt_decode_small(key as u32, &mtf_out); //, &symbol_set);
-        let first_byte = bwt_v[0];
 
         time.mark("bwt");
 

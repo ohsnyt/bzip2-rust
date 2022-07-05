@@ -77,8 +77,11 @@ pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     }
 
     //Build the keys vector to find the next character in the original data
+    // This is the slowest portion of this function - I assume cache misses causes problems
     let mut keys = vec![0_u32; end];
     let mut key = key;
+    
+    // Assign to vec[0] to avoid a temporary assignment below
     keys[0] = t_vec[key as usize];
 
     for i in 1..end {

@@ -450,9 +450,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
     time.mark("rle_cleanup");
     println!("");
-    println!("Huffman:\t{:?}", time.huffman);
-    //println!("Huffman bitreading:\t{:?}", time.h_bitread);
     println!("BWT\t\t{:?}", time.bwt);
+    println!("Huffman:\t{:?}", time.huffman);
     println!("RLE/MTF:\t{:?}", time.rle_mtf);
     println!("CRCs:\t\t{:?}", time.crcs);
     println!("RLE1:\t\t{:?}", time.rle1);

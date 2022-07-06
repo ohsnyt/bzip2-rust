@@ -98,7 +98,7 @@ fn reduce_problem(
         j += 1;
     }
     ReducedProblem {
-        reduced_text: reduced_text.into_iter().map(|x| x).collect::<Vec<_>>(),
+        reduced_text: reduced_text.into_iter().collect::<Vec<_>>(),
         offsets,
         alphabet_size: current_name + 1,
     }

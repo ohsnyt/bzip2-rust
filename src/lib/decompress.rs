@@ -1,14 +1,9 @@
 use log::{debug, error, info, warn};
 
-use crate::lib::crc::{do_crc, do_stream_crc};
-
-//use rustc_hash::FxHashMap;
+use crate::lib::{crc::{do_crc, do_stream_crc}, rle2_mtf_decode::rle2_mtf_decode};
 
 use super::{
     bitreader::BitReader,
-    //bwt_ds::bwt_decode,
-    //bwt_inverse::inverse_bwt,
-    mtf::mtf_decode,
     options::BzOpts,
     rle1::rle1_decode,
     rle2::rle2_decode,
@@ -16,10 +11,9 @@ use super::{
 };
 
 use std::{
-    //collections::HashMap,
     fs::{File, OpenOptions},
     io::{self, Error, Write},
-    time::{Duration, Instant},
+    time::{Duration, Instant}, collections::VecDeque,
 };
 
 struct Timer {
@@ -196,10 +190,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Get the symbol set (dropping the temporary vec used to grab the data)
         {
-            // First set up the map vec
-            let mut sym_map: Vec<u16> = vec![];
-            // Then get the map "index" and save it as the first entry in the map
-            sym_map.push(br.bint(16).expect(EOF_MESSAGE) as u16);
+            // First set up the map vec starting with the map "index".
+            let mut sym_map: Vec<u16> = vec![br.bint(16).expect(EOF_MESSAGE) as u16];
 
             // Now get as many 16-symbol maps as indicated by the set bits in the "index"
             for i in 0..sym_map[0].count_ones() as usize {
@@ -270,7 +262,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         let mut huf_decode_maps: Vec<(Vec<Level>, Vec<u16>)> =
             vec![(Vec::new(), Vec::with_capacity(symbols)); table_count];
 
-        for idx in 0..table_count {
+        for huffman_map in huf_decode_maps.iter_mut().take(table_count) {
             let mut map: Vec<(u16, u32)> = vec![(0_u16, 0_u32); symbols];
             let mut l: i32 = br.bint(5).expect(EOF_MESSAGE) as i32;
 
@@ -303,7 +295,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             // Create a symbol list for decoding
             let symbol_index = map.iter().map(|(s, _)| *s).collect::<Vec<u16>>();
             // Build the decode map and store it.
-            huf_decode_maps[idx] = (decode_map(&map), symbol_index);
+            *huffman_map = (huf_decode_map(&map), symbol_index);
         }
 
         // We are now ready to read the data and decode it.
@@ -402,7 +394,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         time.mark("rle_mtf");
 
         // Undo the BWTransform
-        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_small(key as u32, &mtf_out); //, &symbol_set);
+        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_out); //, &symbol_set);
 
         time.mark("bwt");
 
@@ -449,7 +441,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     }
 
     time.mark("rle_cleanup");
-    println!("");
+    println!();
     println!("BWT\t\t{:?}", time.bwt);
     println!("Huffman:\t{:?}", time.huffman);
     println!("RLE/MTF:\t{:?}", time.rle_mtf);
@@ -482,7 +474,7 @@ impl Level {
     }
 }
 
-fn decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
+fn huf_decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
     // Initialize result vector
     let mut result = Vec::new();
 
@@ -542,69 +534,4 @@ fn decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
     result.push(level);
 
     result
-}
-
-const RUNA: u16 = 0;
-const RUNB: u16 = 1;
-const ZERO_BOMB: usize = 2 * 1024 * 1024;
-
-/// Does run-length-decoding from rle2_encode.
-pub fn rle2_mtf_decode(data_in: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut Vec<u8>) {
-    // Initialize counters
-    let mut zeros = 0_usize;
-    let mut bit_multiplier = 1;
-    let mut index = 0_usize;
-
-    // Add (bogus) eob symbol to the mtf_index (symbol set)
-    mtf_index.push(0);
-
-    // iterate through the input, doing the conversion as we find RUNA/RUNB sequences
-    for symbol in data_in {
-        // Blow up if the run is too big - this should be more elegant in the future
-        if zeros > ZERO_BOMB {
-            error!("Run of zeros exceeded a million - probably input bomb.");
-            std::process::exit(100)
-        }
-        match *symbol {
-            // If we found RUNA, do magic to calculate how many zeros we need
-            RUNA => {
-                zeros += bit_multiplier;
-                bit_multiplier *= 2;
-            }
-            // If we found RUNB, do magic to calculate how many zeros we need
-            RUNB => {
-                zeros += 2 * bit_multiplier;
-                bit_multiplier *= 2;
-            }
-            // Anything else, first output any pending run of zeros as mtf[0].
-            n => {
-                if zeros > 0 {
-                    for i in index..=index + zeros {
-                        out[i] = mtf_index[0]
-                    }
-                    // Adjust the counters
-                    index += zeros;
-                    bit_multiplier = 1;
-                    zeros = 0;
-                }
-                // Then output the symbol (one less than n)
-                out[index] = mtf_index[n as usize - 1];
-
-                // Increment the index
-                index += 1;
-
-                // And adjust the mtf_index for the next symbol
-                let sym = mtf_index.remove(n as usize - 1);
-                mtf_index.insert(0, sym as u8);
-                //Alternately adjust the mtf_index for the next symbol - but can't get unsafe to work
-                // let end = n as usize - 1;
-
-                // for i in 0..end {
-                //     unsafe { mtf_index.swap_unchecked(i, end) }
-                // }
-            }
-        }
-    }
-    // Truncate the vec to the actual data, removing the eob marker.
-    out.truncate(index - 1);
 }

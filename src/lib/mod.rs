@@ -19,3 +19,4 @@ pub mod options;
 pub mod rle1;
 pub mod rle2;
 pub mod symbol_map;
+mod rle2_mtf_decode;

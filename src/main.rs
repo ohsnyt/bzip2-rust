@@ -50,7 +50,7 @@ fn main() -> io::Result<()> {
 /*--- public structs, enums and functions for the library   ---*/
 
 use crate::lib::bwt_ds::bwt_decode;
-use crate::lib::mtf::{mtf_decode, mtf_encode};
+use crate::lib::mtf::mtf_encode;
 use lib::rle1::rle1_decode;
 
 /* fn test() {

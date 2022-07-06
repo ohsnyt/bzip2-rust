@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 const BIT_MASK: u16 = 0x8000;
 
+/// Similar to makeMaps_e
 /// Takes a sorted deduped vec of all symbols used in the input and
 /// creates the unique bzip2 symbol map of symbols encoded as u16s
 pub fn encode_sym_map(symbols: &VecDeque<u8>) -> Vec<u16> {

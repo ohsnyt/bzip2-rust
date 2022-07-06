@@ -70,26 +70,22 @@ impl<R: std::io::Read> BitReader<R> {
     /// Return one bit
     pub fn bit(&mut self) -> Option<usize> {
         // If bit_index is == 0, check if we have a byte to read. Return None if we have no data
-        if self.bit_index == 0 {
-            if !self.have_data() {
-                return None;
-            }
+        if self.bit_index == 0 && !self.have_data() {
+            return None;
         }
-        let bit = (self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> 7 - self.bit_index;
+        let bit =
+            (self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> (7 - self.bit_index);
         self.bit_index += 1;
         self.bit_index %= 8;
         if self.bit_index == 0 {
             self.byte_index += 1;
         }
-        return Some(bit as usize);
+        Some(bit as usize)
     }
 
     /// Return Option<Bool> *true* if the next bit is 1, *false* if 0
     pub fn bool_bit(&mut self) -> Option<bool> {
-        match self.bit() {
-            None => None,
-            Some(bit) => Some(bit == 1),
-        }
+        self.bit().map(|bit| bit == 1)
     }
 
     /// Return Option<usize> of the next n bits
@@ -110,7 +106,7 @@ impl<R: std::io::Read> BitReader<R> {
 
             // Get what we need/can from this partial byte
             result = ((self.buffer[self.byte_index] & BIT_MASK >> self.bit_index)
-                >> 8 - self.bit_index - needed) as usize;
+                >> (8 - self.bit_index - needed)) as usize;
             self.bit_index += needed;
             if self.bit_index / 8 > 0 {
                 self.byte_index += 1;
@@ -143,7 +139,7 @@ impl<R: std::io::Read> BitReader<R> {
                 return None;
             }
             // Get the remaining bits
-            result = result << n | (self.buffer[self.byte_index] >> 8 - n) as usize;
+            result = result << n | (self.buffer[self.byte_index] >> (8 - n)) as usize;
             // Adjust indecies
             self.bit_index += n;
             if self.bit_index / 8 > 1 {
@@ -156,10 +152,7 @@ impl<R: std::io::Read> BitReader<R> {
 
     /// Read and return a bytes as an Option<u8>
     pub fn byte(&mut self) -> Option<u8> {
-        match self.bint(8) {
-            None => None,
-            Some(byte) => Some(byte as u8),
-        }
+        self.bint(8).map(|byte| byte as u8)
     }
 
     /// Read and return a vec of n bytes as an Option<Vec<u8>>

@@ -429,3 +429,83 @@ pub fn huf_encode(
     // All done
     Ok(())
 }
+
+#[derive(Debug, Clone)]
+struct Level {
+    bits: u32,
+    offset: u32,
+    start_code: u32,
+    end_code: u32,
+}
+impl Level {
+    fn new() -> Self {
+        Self {
+            bits: 0,
+            offset: 0,
+            start_code: 0,
+            end_code: 0,
+        }
+    }
+}
+
+fn huf_decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
+    // Initialize result vector
+    let mut result = Vec::new();
+
+    // Current_length is the number of bits sured for the code length at this level
+    let mut current_bit_length = map[0].1;
+
+    // Bits_to_add is the number of bits we need to check codes at this level. (First time
+    // it is also the bit length of the code)
+    let mut bits_to_add = current_bit_length;
+
+    // Current_code is the starting code at this level
+    let mut current_code = 0;
+
+    // Set symbol count variables
+    let mut count = 0_u32;
+    let mut last_count = count;
+
+    // For each bit level (number of bits in the code), get the symbol list
+    for (symbol, bit_length) in map.iter() {
+        count += 1;
+        if *bit_length == current_bit_length {
+            continue;
+        } else {
+            // Done at this level. Record the level.
+            let mut level = Level::new();
+
+            level.bits = bits_to_add;
+            level.offset = last_count;
+            level.start_code = current_code;
+            level.end_code = (current_code + count - 1) as u32;
+            result.push(level);
+
+            // Calculate the number of bits needed to get to the next level
+            bits_to_add = bit_length - current_bit_length;
+
+            // Update current_code for the next iteration before we change count
+            current_code = (current_code + count - 1) << bits_to_add;
+
+            // Update last_count for the next iteration
+            last_count += count - 1;
+
+            // Reset count to 1 (because we counted one already)
+            count = 1;
+
+            // Set current_length for the next level
+            current_bit_length = *bit_length;
+        }
+    }
+    // Done at the last level. Record the level.
+    let mut level = Level::new();
+    let symbol = map[map.len() - 1].0;
+
+    level.bits = bits_to_add;
+    level.offset = last_count;
+    level.start_code = current_code;
+    level.end_code = current_code + count as u32;
+    result.push(level);
+
+    result
+}

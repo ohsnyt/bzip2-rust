@@ -1,5 +1,7 @@
+use std::time::Instant;
+
 ///Burrows-Wheeler-Transform
-/// Transforms a u8 slice using bwt. The key is u32.
+/// Transforms a u8 sli&ce using bwt. The key is u32.
 pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
     //let ext = orig.len();
@@ -49,7 +51,7 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
 }
 
 /// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
-pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
+pub fn bwt_decode_fastest(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     // Calculate end once.
     let end = bwt_in.len();
 
@@ -80,7 +82,7 @@ pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     // This is the slowest portion of this function - I assume cache misses causes problems
     let mut keys = vec![0_u32; end];
     let mut key = key;
-    
+
     // Assign to vec[0] to avoid a temporary assignment below
     keys[0] = t_vec[key as usize];
 
@@ -96,8 +98,88 @@ pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     orig
 }
 
-/// Decode a Burrows-Wheeler-Transform
+/// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
+pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
+    let mut time = Instant::now();
+    // Calculate end once.
+    let end = bwt_in.len();
 
+    // Use u32 instead of usize to keep memory needs down.
+    // First get a freq count of symbols.
+    let mut freq = vec![0_u32; 256];
+
+    for i in 0..end {
+        freq[bwt_in[i] as usize] += 1;
+    }
+    let freqa = time.elapsed().as_micros();
+    println!("Freq a: {} µs", freqa);
+
+    let mut sum = 0;
+    
+    // This is slightly faster than iter_mut().for_each
+    for i in 0..256 {
+        let tmp = freq[i];
+        freq[i] = sum;
+        sum += tmp;
+    }
+    let freqb = time.elapsed().as_micros();
+    println!("Freq b: {} µs", freqb - freqa);
+
+    //Build the transformation vector to find the next character in the original data
+    // Using an array instead of a vec saves about 4 ms.
+    // The t_vec numbers are somewhat grouped
+    let mut t_veca = vec![0_u32; end / 2];
+    let mut t_vecb = vec![0_u32; end - end / 2];
+    for (i, &s) in bwt_in.iter().enumerate() {
+        let tmp = freq[s as usize] as usize;
+        if tmp < (end / 2) {
+            t_veca[tmp] = i as u32;
+        } else {
+            t_vecb[tmp - (end / 2)] = i as u32;
+        }
+        freq[s as usize] += 1
+    }
+    let tvec = time.elapsed().as_micros();
+    println!("t_vec: {} µs", tvec - freqb);
+
+    // Build the keys vector to find the next character in the original data.
+    // (It is faster to do this as a separate step from the transformation.)
+    // Building the keys vec is the slowest portion of this function. The keys are widely
+    // scattered numerically (0-900k). I assume cache misses causes the speed problem here.
+    let mut keys = vec![0_u32; end];
+    let mut key = key;
+
+    // Assign to vec[0] to avoid a temporary assignment below
+    if key < (end as u32) / 2 {
+        keys[0] = t_veca[key as usize]
+    } else {
+        keys[0] = t_vecb[key as usize - end / 2]
+    }
+
+    for i in 1..end {
+        let tmp = keys[i - 1];
+        if key < (end as u32) / 2 {
+            keys[i] = t_veca[key as usize]
+        } else {
+            keys[i] = t_vecb[key as usize - end / 2]
+        }
+    }
+    let key_time = time.elapsed().as_micros();
+    println!("keys: {} µs", key_time - tvec);
+
+    // Transform the data
+    let mut orig = vec![0; end];
+    for i in 0..bwt_in.len() {
+        orig[i] = bwt_in[keys[i] as usize];
+    }
+    let t_time = time.elapsed().as_micros();
+    println!("transform: {} µs", t_time - key_time);
+    println!("Total: {:?}", time.elapsed());
+
+    orig
+}
+
+/// Decode a Burrows-Wheeler-Transform
 pub fn bwt_decode(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     // First get a freq count of symbols
     let mut freq = vec![0_usize; 256];

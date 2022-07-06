@@ -31,22 +31,3 @@ pub fn mtf_encode(block: &mut Block) {
     }
 }
 
-/// Decode data using Move To Front transform. Could bring RLE2 into here.
-/// Decoding requires a sorted symbol map index.
-pub fn mtf_decode(raw: &[u8], index: Vec<u8>) -> Vec<u8> {
-    raw.iter()
-        .enumerate()
-        .fold(
-            (vec![0; raw.len()], index),
-            |(mut mtf_v, mut s), (idx, &x)| {
-                mtf_v[idx] = s[x as usize];
-                let tmp = s.remove(x as usize);
-                s.insert(0, tmp);
-                (mtf_v, s)
-            },
-        )
-        .0
-        .into_iter()
-        .map(|c| c as u8)
-        .collect::<Vec<u8>>()
-}

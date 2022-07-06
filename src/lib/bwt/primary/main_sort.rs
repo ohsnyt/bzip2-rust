@@ -315,12 +315,12 @@ pub fn main_sort(block: &mut Block, qs: & mut QsortData) {
 
     info!("        building burrow-wheeler-transform data ...\n");
     let mut bwt_data = vec![0; qs.end];
-    for i in 0..qs.end as usize {
+    for (i, byte) in bwt_data.iter_mut().enumerate().take(qs.end as usize) {
         if qs.bwt_ptr[i] == 0 {
             block.key = i as u32;
-            bwt_data[i] = block.data[qs.end - 1] as u8;
+            *byte = block.data[qs.end - 1] as u8;
         } else {
-            bwt_data[i] = block.data[qs.bwt_ptr[i] as usize - 1] as u8
+            *byte = block.data[qs.bwt_ptr[i] as usize - 1] as u8
         }
     }
     // Shift ownership of bwt_data to block.data

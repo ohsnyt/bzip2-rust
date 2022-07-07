@@ -1,9 +1,5 @@
 use log::{debug, error, info, warn};
 
-const RUNA: u16 = 0;
-const RUNB: u16 = 1;
-const ZERO_BOMB: usize = 2 * 1024 * 1024;
-
 use crate::lib::{
     crc::{do_crc, do_stream_crc},
     rle2_mtf_decode::rle2_mtf_decode,
@@ -123,22 +119,18 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     // Initialize steam CRC value
     let mut stream_crc = 0;
 
-    let mut br;
     // Initialize stuff to read the file
-    {
-        // (Use block so tempoary variables drop earlier.)
-        let mut f = "test.txt.bz2".to_string();
-        if opts.file.is_none() {
-            warn!("Using >test.txt.bz2< as the input file.");
-        } else {
-            f = opts.file.as_ref().unwrap().to_string()
-        }
+    let mut f = "test.txt.bz2".to_string();
+    if opts.file.is_none() {
+        warn!("Using >test.txt.bz2< as the input file.");
+    } else {
+        f = opts.file.as_ref().unwrap().to_string()
+    }
 
-        //let file = File::open(&f)?;
-        //let metadata = std::fs::metadata(&f)?;
+    //let file = File::open(&f)?;
+    //let metadata = std::fs::metadata(&f)?;
 
-        br = BitReader::new(File::open(&f)?)
-    };
+    let mut br = BitReader::new(File::open(&f)?);
     //debug!("Starting decompression at {}", br.loc());
 
     // Look for a valid signature.
@@ -153,19 +145,16 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         return Err(Error::new(io::ErrorKind::Other, "Invalid block size"));
     }
 
-    let mut f_out; // Prepare to write the data.
-    {
-        // (Use block so tempoary variables drop earlier.)
-        let mut fname = opts.file.as_ref().unwrap().clone();
-        fname = fname.split(".bz2").map(|s| s.to_string()).collect(); // strip off the .bz2
-        fname.push_str(".txt"); // for my testing purposes.
-        f_out = OpenOptions::new()
-            .write(true)
-            .create(true)
-            //.append(true)
-            .open(&fname)
-            .expect("Can't open file for writing.");
-    }
+    // Good so far. Prepare to write the data.
+    let mut fname = opts.file.as_ref().unwrap().clone();
+    fname = fname.split(".bz2").map(|s| s.to_string()).collect(); // strip off the .bz2
+    fname.push_str(".txt"); // for my testing purposes.
+    let mut f_out = OpenOptions::new()
+        .write(true)
+        .create(true)
+        //.append(true)
+        .open(&fname)
+        .expect("Can't open file for writing.");
 
     // Block_counter is for reporting purposes
     let mut block_counter = 0;
@@ -316,38 +305,29 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // We are now ready to read the data and decode it.
         // Set aside a vec to store the data we decode (size based on the table count)
         let mut out = vec![
-            0_u8;
-            (match table_count {
+            0_u16;
+            match table_count {
                 2 => 200,
                 3 => 600,
                 4 => 1200,
                 5 => 2400,
                 _ => (block_size as usize * 100000) + 19,
-            })
+            }
         ];
 
         // Now read the blocks in chunks of 50 symbols with the huffman map selected by the selector vec
         // Initialize key variables
-        let mut out_idx = 0; // used to write to the vec faster.
         let mut block_index = 0;
         let mut bit_count: u32 = 0;
         let mut code = 0_u32;
         let mut depth = 0;
+        // Set the eob to one more than the symbols in symbol_set.
+        let eob = symbol_set.len() as u16 + 1;
 
         // Get references to the current level variables and symbol set
         let (l, s) = &huf_decode_maps[decode_map_selectors[block_index]];
         let mut level = l;
         let mut symbol_index = s;
-
-        // Initialize counters to do RLE2 and MTF simultaneously with the symbol decoding
-        let mut zeros = 0_usize;
-        let mut zero_multiplier = 1;
-
-        // Set the eob.
-        let eob = symbol_set.len() as u16 + 1;
-
-        // Create a Move-To-Front vector
-
         // Loop through the data in chunks trying to find valid symbols in the bit stream
         loop {
             // Left shift any code bits we are currently holding so we can add in the next level of bits
@@ -363,94 +343,17 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 depth += 1;
                 continue;
             } else {
-                // We found a code in this level.
-                // Calculate the offset to determine which symbol.
-                // Match against the several special cases below.
-                match symbol_index[(level[depth].offset + code - level[depth].start_code) as usize]
-                {
-                    // If we found RUNA, do magic to calculate how many zeros we need
-                    RUNA => {
-                        zeros += zero_multiplier;
-                        zero_multiplier <<= 1;
-                    }
-                    // If we found RUNB, do magic to calculate how many zeros we need
-                    RUNB => {
-                        zeros += (zero_multiplier << 1);
-                        zero_multiplier <<= 1;
-                    }
-                    // Every other symbol needs to be converted to a u8 and run through the Move-To-Front transform
-                    // When symbols are at the front of the MTF list, we use a swap function to adjust the MTF vector.
-                    // Otherwise .remove() and .insert() prove faster.
-                    // POSSIBLE PROBLEM: SYMBOL MAP AND BLOCK HAVE ONLY 1 SYMBOL
-                    2 => {
-                        // First output any pending run of zeros as mtf[0].
-                        if zeros > 0 {
-                            zero_bomb_check(zeros);
-                            for i in out_idx..=(out_idx + zeros) {
-                                out[i] = symbol_set[0]
-                            }
-                            // Increment the output index
-                            out_idx += zeros;
+                // We found a code in this level. Calculate the offset and grab the symbol
+                let sym =
+                    symbol_index[(level[depth].offset + code - level[depth].start_code) as usize];
 
-                            // Adjust the zero counters
-                            zero_multiplier = 1;
-                            zeros = 0;
-                        }
+                // Put it into the output vec.
+                out[block_index] = sym;
 
-                        // Then output the symbol (one less than n)
-                        out[out_idx] = symbol_set[1];
-                        // And increment the out_idx counter
-                        out_idx += 1;
-
-                        // Do the swap of the first two items in the mtf_index
-                        symbol_set.swap(0 as usize, 1);
-                    }
-                    // Swapping more than just 2 slows the performance.
-                    // 3 => ...
-
-                    // Anything other symbol index, first output any pending run of zeros as mtf[0].
-                    n => {
-                        // First output any pending run of zeros as mtf[0].
-                        if zeros > 0 {
-                            zero_bomb_check(zeros);
-                            for i in out_idx..=(out_idx + zeros) {
-                                out[i] = symbol_set[0]
-                            }
-                            // Increment the output index
-                            out_idx += zeros;
-
-                            // Adjust the zero counters
-                            zero_multiplier = 1;
-                            zeros = 0;
-                        }
-
-                        // Then check if this is the end of block symbol
-                        if n == eob {
-                            // If we are, check if we are at the end of the block too early
-                            if block_index / CHUNK_SIZE < selector_count as usize - 1 {
-                                error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_index/50, selector_count);
-                                // Probably should terminate the program here.
-                            }
-                            // Adjust the vec length to the block_index
-                            out.truncate(out_idx);
-                            // All done.
-                            break;
-                        }
-
-                        // Then output the symbol (one less than n)
-                        out[out_idx] = symbol_set[n as usize - 1];
-                        // And increment the out_idx counter
-                        out_idx += 1;
-
-                        // And adjust the mtf_index for the next symbol.
-                        let sym = symbol_set.remove(n as usize - 1);
-                        symbol_set.insert(0, sym as u8)
-                    }
-                }
-                // Increment the block index after every symbol we find
+                // Update the block index
                 block_index += 1;
 
-                // If we are at a chunck boundary, update the level variables.
+                // Update the level variables if we are starting a new chunk.
                 if block_index % CHUNK_SIZE == 0 {
                     let (l, s) = &huf_decode_maps[decode_map_selectors[block_index / 50]];
                     level = l;
@@ -460,28 +363,42 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 // Reset the depth index and code.
                 depth = 0;
                 code = 0;
+
+                // Check if we have reached the end of block
+                if sym == eob {
+                    // If we are, check if we are at the end of the block too early
+                    if block_index / CHUNK_SIZE < selector_count as usize - 1 {
+                        error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_index/50, selector_count);
+                        // Probably should terminate the program here.
+                    }
+                    // Adjust the vec length to the block_index
+                    out.truncate(block_index);
+                    // All done. Go do the RLE2 and MTF.
+                    break;
+                }
             }
         }
+
         time.mark("huffman");
 
-        // // Undo the RLE2 and MTF, converting to u8 in the process
-        // // Set aside a vec to store the data we decode (size based on the table count)
-        // let mut mtf_out: Vec<u8> = vec![
-        //     0_u8;
-        //     match table_count {
-        //         2 => 200,
-        //         3 => 600,
-        //         4 => 1200,
-        //         5 => 2400,
-        //         _ => (block_size as usize * 100000) + 19,
-        //     }
-        // ];
-        // rle2_mtf_decode(&out, &mut mtf_out, &mut symbol_set);
+        // Undo the RLE2 and MTF, converting to u8 in the process
+        // Set aside a vec to store the data we decode (size based on the table count)
+        let mut mtf_out: Vec<u8> = vec![
+            0_u8;
+            match table_count {
+                2 => 200,
+                3 => 600,
+                4 => 1200,
+                5 => 2400,
+                _ => (block_size as usize * 100000) + 19,
+            }
+        ];
+        rle2_mtf_decode(&out, &mut mtf_out, &mut symbol_set);
 
-        // time.mark("rle_mtf");
+        time.mark("rle_mtf");
 
         // Undo the BWTransform
-        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &out); //, &symbol_set);
+        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_out); //, &symbol_set);
 
         time.mark("bwt");
 
@@ -621,12 +538,4 @@ fn huf_decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
     result.push(level);
 
     result
-}
-
-fn zero_bomb_check(zeros: usize) {
-    // Blow up if the run is too big - this should be more elegant in the future
-    if zeros > ZERO_BOMB {
-        error!("Run of zeros exceeded a million - probably input bomb.");
-        std::process::exit(100)
-    }
 }

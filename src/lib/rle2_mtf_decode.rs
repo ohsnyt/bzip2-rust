@@ -37,8 +37,10 @@ pub fn rle2_mtf_decode(data_in: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut V
                 zeros += (bit_multiplier << 1);
                 bit_multiplier <<= 1;
             }
-            // Swapping when there are only two items provides a very minimal preformance increase
+            // If we found symbol 2...
+            // Do a swap when there are only two items provides a very minimal preformance increase
             2 => {
+                // First output any pending run of zeros as mtf[0]. 
                 if zeros > 0 {
                     for symbol in out.iter_mut().skip(index).take(zeros + 1) {
                         *symbol = mtf_index[0]
@@ -48,34 +50,17 @@ pub fn rle2_mtf_decode(data_in: &[u16], out: &mut Vec<u8>, mut mtf_index: &mut V
                     bit_multiplier = 1;
                     zeros = 0;
                 }
-                // Then output the symbol (one less than n)
+                // Then output the symbol (one less than n) and increment the index
                 out[index] = mtf_index[1];
-
-                // Increment the index
                 index += 1;
 
+                // Do the swap of the first two items in the mtf_index
                 mtf_index.swap(0 as usize, 1);
             }
-            // Adding one more slows the performance.
-            // 3 => {
-            //     if zeros > 0 {
-            //         for symbol in out.iter_mut().skip(index).take(zeros + 1) {
-            //             *symbol = mtf_index[0]
-            //         }
-            //         // Adjust the counters
-            //         index += zeros;
-            //         bit_multiplier = 1;
-            //         zeros = 0;
-            //     }
-            //     // Then output the symbol (one less than n)
-            //     out[index] = mtf_index[2];
+            // Swapping more than just 2 slows the performance.
+            // 3 => ...
 
-            //     // Increment the index
-            //     index += 1;
-
-            //     mtf_index.swap(0 as usize, 2);
-            //     mtf_index.swap(1 as usize, 2);
-            // } // Anything else, first output any pending run of zeros as mtf[0].
+            // Anything other symbol index, first output any pending run of zeros as mtf[0].
             n => {
                 if zeros > 0 {
                     for symbol in out.iter_mut().skip(index).take(zeros + 1) {

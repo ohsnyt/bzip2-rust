@@ -1,9 +1,5 @@
 use log::{debug, error, info, warn};
 
-const RUNA: u16 = 0;
-const RUNB: u16 = 1;
-const ZERO_BOMB: usize = 2 * 1024 * 1024;
-
 use crate::lib::{
     crc::{do_crc, do_stream_crc},
     rle2_mtf_decode::rle2_mtf_decode,
@@ -120,42 +116,34 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     // DEBUG timer
     let mut time = Timer::new();
 
-    // Initialize steam CRC value
-    let mut stream_crc = 0;
+    // Start bitreader from input file in the command line
+    let mut br = BitReader::new(File::open(opts.file.as_ref().unwrap().to_string())?);
 
-    let mut br;
-    // Initialize stuff to read the file
-    {
-        // (Use block so tempoary variables drop earlier.)
-        let mut f = "test.txt.bz2".to_string();
-        if opts.file.is_none() {
-            warn!("Using >test.txt.bz2< as the input file.");
-        } else {
-            f = opts.file.as_ref().unwrap().to_string()
-        }
-
-        //let file = File::open(&f)?;
-        //let metadata = std::fs::metadata(&f)?;
-
-        br = BitReader::new(File::open(&f)?)
-    };
-    //debug!("Starting decompression at {}", br.loc());
+    // We will eventually need to mark the output file with the timestamp of the compresssed file.
+    //let metadata = std::fs::metadata(opts.file.as_ref().unwrap().to_string())?;
 
     // Look for a valid signature.
     if "BZh".as_bytes() == br.bytes(3).expect(EOF_MESSAGE) {
         info!("Found a valid bzip2 signature.");
+    } else {
+        error!(
+            "Fatal error: {} is not a valid bzip2 compressed file.",
+            opts.file.as_ref().unwrap().to_string()
+        );
+        return Err(Error::new(io::ErrorKind::Other, "Invalid compressed file."));
     }
 
     // Use the block size to validate the max number of selectors.
     // (Use saturating_sub in case there is a data error - to prevent underflow)
     let block_size = br.byte().expect(EOF_MESSAGE).saturating_sub(0x30);
     if !(1..=9).contains(&block_size) {
+        error!("Fatal error: Found invalid block size.");
         return Err(Error::new(io::ErrorKind::Other, "Invalid block size"));
     }
 
-    let mut f_out; // Prepare to write the data.
+    // Good so far. Prepare to write the data. (Drop temp variables after this block)
+    let mut f_out: File;
     {
-        // (Use block so tempoary variables drop earlier.)
         let mut fname = opts.file.as_ref().unwrap().clone();
         fname = fname.split(".bz2").map(|s| s.to_string()).collect(); // strip off the .bz2
         fname.push_str(".txt"); // for my testing purposes.
@@ -167,26 +155,29 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             .expect("Can't open file for writing.");
     }
 
-    // Block_counter is for reporting purposes
+    // Initialize steam CRC value
+    let mut stream_crc = 0;
+    // Initialize block_counter for reporting purposes
     let mut block_counter = 0;
     // Save space for the symbol set
     let mut symbol_set: Vec<u8>;
+    let mut symbols: usize;
 
     'block: loop {
         block_counter += 1;
 
         // Block header (or footer) should come next.
         if let Some(header_footer) = br.bytes(6) {
-            //check for footer first
+            // Check for footer first. Exit the loop block when we find it.
             if header_footer == FOOTER {
                 break 'block;
             }
-            // Then create an error if this is not a block header
+            // We must now have a block header. Create an error if not.
             if header_footer != HEADER {
                 return Err(Error::new(io::ErrorKind::Other, "Invalid block footer"));
             }
+            info!("Found a valid header for block {}.", block_counter);
         };
-        info!("Found a valid header for block {}.", block_counter);
 
         // Get crc
         let block_crc = br.bint(32).expect(EOF_MESSAGE);
@@ -199,13 +190,14 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Get key (origin pointer)
         let key = br.bint(24).expect(EOF_MESSAGE);
         if key > block_size as usize * 100000 + 10 {
+            error!("Invalid key pointer");
             return Err(Error::new(io::ErrorKind::Other, "Invalid key pointer"));
         }
         info!("Key is {}.", key);
 
-        // Get the symbol set (dropping the temporary vec used to grab the data)
+        // Get the symbol info. (Use block to drop the temporary vec used to grab the data)
         {
-            // First set up the map vec starting with the map "index".
+            // First set up a temporary map vec starting with the map "index".
             let mut sym_map: Vec<u16> = vec![br.bint(16).expect(EOF_MESSAGE) as u16];
 
             // Now get as many 16-symbol maps as indicated by the set bits in the "index"
@@ -213,16 +205,18 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 sym_map.push(br.bint(16).expect(EOF_MESSAGE) as u16);
             }
 
-            // Finally decode the symbol map and save it
+            // Decode the symbol map and save it
             symbol_set = decode_sym_map(&sym_map);
+
+            // Count how many symbols are in the symbol map. The +2 adds in RUNA and RUNB.
+            symbols = symbol_set.len() + 2;
+            info!("Found {} symbols for block {}.", symbols, block_counter);
         }
-        //  Count how many symbols are in the symbol map. The +2 adds in RUNA and RUNB.
-        let symbols = symbol_set.len() + 2;
-        info!("Found {} symbols for block {}.", symbols, block_counter);
 
         // Read NumTrees
         let table_count = br.bint(3).expect(EOF_MESSAGE);
         if !(2..=6).contains(&table_count) {
+            error!("Invalid table count");
             return Err(Error::new(io::ErrorKind::Other, "Invalid table count"));
         }
 
@@ -231,68 +225,74 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Read Selectors based on the actual number of selectors reported
         // (But only save the ones we can use! Hence max_selectors.)
-        let max_selectors = block_size as usize * 100000 / 50;
-        let mut decode_map_selectors = Vec::with_capacity(selector_count as usize);
-        let mut group: u8 = 0;
-        for _ in 0..selector_count {
-            while br.bool_bit().expect(EOF_MESSAGE) {
-                group += 1;
+        let mut selector_map = vec![0_usize, selector_count];
+        {
+            // First read the "raw" selector map
+            let mut raw_selector_map = Vec::with_capacity(selector_count as usize);
+            // Use block to drop temporary variables
+            let max_selectors = block_size as usize * 100000 / 50;
+            let mut group: u8 = 0;
+            for _ in 0..selector_count {
+                while br.bool_bit().expect(EOF_MESSAGE) {
+                    group += 1;
+                }
+                // Like Julian, ignore  excessive selectors, only push maps that can be used.
+                if selector_count <= max_selectors {
+                    raw_selector_map.push(group);
+                }
+                group = 0;
             }
-            // Like Julian, ignore  excessive selectors, only push maps that can be used.
-            if selector_count <= max_selectors {
-                decode_map_selectors.push(group);
+            // Adjust the selector_count if needed
+            if selector_count > max_selectors {
+                warn!("Found {} selectors were reported, but the maximum is {}. Adjust the selector count down.", selector_count, max_selectors);
+                selector_count = max_selectors;
             }
-            group = 0;
+
+            // Create an index vec for the number of tables we need
+            let mut table_idx: Vec<usize> = (0..table_count as usize).collect();
+            // Undo the move to the front.
+            for (i, &selector) in raw_selector_map.iter().enumerate() {
+                selector_map[i] = table_idx[selector as usize];
+                // use swaps instead of remove/insert as it tends to be faster when items are near the front.
+                for i in 0..selector as usize {
+                    table_idx.swap(i, selector as usize);
+                }
+            }
+            info!(
+                "Decoded the {} selectors for the {} tables in block {}.",
+                selector_count, table_count, block_counter
+            );
         }
-
-        // Adjust the selector_count if needed
-        if selector_count > max_selectors {
-            warn!("Found {} selectors were reported, but the maximum is {}. Adjust the selector count down.", selector_count, max_selectors);
-            selector_count = max_selectors;
-        }
-
-        // Decode selectors from MTF values for the selectors
-        // Create an index vec for the number of tables we need
-        let table_idx: Vec<usize> = (0..table_count as usize).collect();
-
-        // Now undo the move to front for the selectors
-        let decode_map_selectors = decode_map_selectors
-            .iter()
-            .fold((Vec::new(), table_idx), |(mut o, mut s), x| {
-                o.push(s[*x as usize]);
-                let c = s.remove(*x as usize);
-                s.insert(0, c);
-                (o, s)
-            })
-            .0;
-        info!(
-            "Decoded the {} selectors for the {} tables in block {}.",
-            selector_count, table_count, block_counter
-        );
 
         time.mark("setup");
 
-        // Read the Huffman symbol length maps and create decode maps which have level info
+        // Read the Huffman symbol lengths and create decode maps which have decoding info
         //  and a level-specific vec of the symbols.
         let mut huf_decode_maps: Vec<(Vec<Level>, Vec<u16>)> =
             vec![(Vec::new(), Vec::with_capacity(symbols)); table_count];
 
         for huffman_map in huf_decode_maps.iter_mut().take(table_count) {
+            // Reserve space for the next map
             let mut map: Vec<(u16, u32)> = vec![(0_u16, 0_u32); symbols];
+            // Read the first (base) map length - five bits long
             let mut l: i32 = br.bint(5).expect(EOF_MESSAGE) as i32;
-
+            // For each known symbol at this level (including a repeat of the one we just read)
+            // calculate the symbol length based on the relative bit length from the base symbol we just read.
             for symbol in 0..symbols as u16 {
                 let mut diff: i32 = 0;
                 loop {
+                    // The offsets come in pairs of "10" or "11". "0" marks the end of the offset.
                     if br.bool_bit().expect(EOF_MESSAGE) {
                         if br.bool_bit().expect(EOF_MESSAGE) {
-                            diff -= 1
+                            diff -= 1 // Found "11" - subtract 1
                         } else {
-                            diff += 1
+                            diff += 1 // Found "10" - add 1
                         }
                     } else {
+                        // Found a "0" instead of a "1x" pair. Calculate the offset and map the symbol.
                         map[symbol as usize] = (symbol, (l + diff) as u32);
                         if l + diff > 17 {
+                            // Perhaps this should be a fatal error as the data is corrupt.
                             warn!(
                                 "Symbol length of {} exceeds max for sym {} in table {}",
                                 l + diff,
@@ -300,6 +300,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                                 table_count
                             )
                         }
+                        // The next code is calculated offset from the length of the symbol we just decoded.
                         l += diff;
                         break;
                     }
@@ -307,181 +308,112 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             }
             // Maps must be sorted by length for the next step.
             map.sort_by(|a, b| a.1.cmp(&b.1));
-            // Create a symbol list for decoding
-            let symbol_index = map.iter().map(|(s, _)| *s).collect::<Vec<u16>>();
-            // Build the decode map and store it.
-            *huffman_map = (huf_decode_map(&map), symbol_index);
+
+            // Build the decode map and store it along with the symbol list for decoding this map.
+            *huffman_map = (
+                huf_decode_map(&map),
+                map.iter().map(|(s, _)| *s).collect::<Vec<u16>>(),
+            );
         }
 
         // We are now ready to read the data and decode it.
-        // Set aside a vec to store the data we decode (size based on the table count)
+        // Set aside a output vec to store the data we decode (size based on the table count)
         let mut out = vec![
-            0_u8;
-            (match table_count {
+            0_u16;
+            match table_count {
                 2 => 200,
                 3 => 600,
                 4 => 1200,
                 5 => 2400,
                 _ => (block_size as usize * 100000) + 19,
-            })
+            }
         ];
 
-        // Now read the blocks in chunks of 50 symbols with the huffman map selected by the selector vec
-        // Initialize key variables
-        let mut out_idx = 0; // used to write to the vec faster.
-        let mut block_index = 0;
-        let mut bit_count: u32 = 0;
-        let mut code = 0_u32;
-        let mut depth = 0;
+        // Now read the input block in chunks of 50 symbols using the huffman map for that chunk indicated by the selector map
+        {
+            // Isolate temporary variable in this block.
+            // Initialize key variables
+            let mut block_index = 0;
+            let mut bit_count: u32 = 0;
+            let mut code = 0_u32;
+            let mut depth = 0;
+            // Set the eob to one more than the symbols in symbol_set.
+            let eob = symbol_set.len() as u16 + 1;
 
-        // Get references to the current level variables and symbol set
-        let (l, s) = &huf_decode_maps[decode_map_selectors[block_index]];
-        let mut level = l;
-        let mut symbol_index = s;
+            // Get references to the current level variables and symbol set.
+            //   Too bad we have to do a "double" assignment here and about line 375.
+            let (l, s) = &huf_decode_maps[selector_map[block_index]];
+            let mut level = l;
+            let mut symbol_index = s;
+            // Loop through the data in chunks trying to find valid symbols in the bit stream
+            loop {
+                // Left shift any code bits we are currently holding so we can add in the next level of bits
+                code <<= level[depth].bits;
 
-        // Initialize counters to do RLE2 and MTF simultaneously with the symbol decoding
-        let mut zeros = 0_usize;
-        let mut zero_multiplier = 1;
+                // Get the required bits at this level depth and add them to our code
+                //time.mark("h_bitread");
+                code |= br.bint(level[depth].bits as usize).expect(EOF_MESSAGE) as u32;
+                //time.mark("huffman");
 
-        // Set the eob.
-        let eob = symbol_set.len() as u16 + 1;
+                // If the code is bigger than the end code at this level, try the next level
+                if code >= level[depth].end_code {
+                    depth += 1;
+                    continue;
+                } else {
+                    // We found a code in this level. Calculate the offset and grab the symbol
+                    let sym = symbol_index
+                        [(level[depth].offset + code - level[depth].start_code) as usize];
 
-        // Create a Move-To-Front vector
+                    // Put it into the output vec.
+                    out[block_index] = sym;
 
-        // Loop through the data in chunks trying to find valid symbols in the bit stream
-        loop {
-            // Left shift any code bits we are currently holding so we can add in the next level of bits
-            code <<= level[depth].bits;
+                    // Update the block index
+                    block_index += 1;
 
-            // Get the required bits at this level depth and add them to our code
-            //time.mark("h_bitread");
-            code |= br.bint(level[depth].bits as usize).expect(EOF_MESSAGE) as u32;
-            //time.mark("huffman");
-
-            // If the code is bigger than the end code at this level, try the next level
-            if code >= level[depth].end_code {
-                depth += 1;
-                continue;
-            } else {
-                // We found a code in this level.
-                // Calculate the offset to determine which symbol.
-                // Match against the several special cases below.
-                match symbol_index[(level[depth].offset + code - level[depth].start_code) as usize]
-                {
-                    // If we found RUNA, do magic to calculate how many zeros we need
-                    RUNA => {
-                        zeros += zero_multiplier;
-                        zero_multiplier <<= 1;
+                    // Update the level variables if we are starting a new chunk.
+                    if block_index % CHUNK_SIZE == 0 {
+                        let (l, s) = &huf_decode_maps[selector_map[block_index / 50]];
+                        level = l;
+                        symbol_index = s;
                     }
-                    // If we found RUNB, do magic to calculate how many zeros we need
-                    RUNB => {
-                        zeros += (zero_multiplier << 1);
-                        zero_multiplier <<= 1;
-                    }
-                    // Every other symbol needs to be converted to a u8 and run through the Move-To-Front transform
-                    // When symbols are at the front of the MTF list, we use a swap function to adjust the MTF vector.
-                    // Otherwise .remove() and .insert() prove faster.
-                    // POSSIBLE PROBLEM: SYMBOL MAP AND BLOCK HAVE ONLY 1 SYMBOL
-                    2 => {
-                        // First output any pending run of zeros as mtf[0].
-                        if zeros > 0 {
-                            zero_bomb_check(zeros);
-                            for i in out_idx..=(out_idx + zeros) {
-                                out[i] = symbol_set[0]
-                            }
-                            // Increment the output index
-                            out_idx += zeros;
 
-                            // Adjust the zero counters
-                            zero_multiplier = 1;
-                            zeros = 0;
+                    // Reset the depth index and code.
+                    depth = 0;
+                    code = 0;
+
+                    // Check if we have reached the end of block
+                    if sym == eob {
+                        // If we are, check if we are at the end of the block too early
+                        if block_index / CHUNK_SIZE < selector_count as usize - 1 {
+                            error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_index/50, selector_count);
+                            // Probably should terminate the program here.
                         }
-
-                        // Then output the symbol (one less than n)
-                        out[out_idx] = symbol_set[1];
-                        // And increment the out_idx counter
-                        out_idx += 1;
-
-                        // Do the swap of the first two items in the mtf_index
-                        symbol_set.swap(0 as usize, 1);
-                    }
-                    // Swapping more than just 2 slows the performance.
-                    // 3 => ...
-
-                    // Anything other symbol index, first output any pending run of zeros as mtf[0].
-                    n => {
-                        // First output any pending run of zeros as mtf[0].
-                        if zeros > 0 {
-                            zero_bomb_check(zeros);
-                            for i in out_idx..=(out_idx + zeros) {
-                                out[i] = symbol_set[0]
-                            }
-                            // Increment the output index
-                            out_idx += zeros;
-
-                            // Adjust the zero counters
-                            zero_multiplier = 1;
-                            zeros = 0;
-                        }
-
-                        // Then check if this is the end of block symbol
-                        if n == eob {
-                            // If we are, check if we are at the end of the block too early
-                            if block_index / CHUNK_SIZE < selector_count as usize - 1 {
-                                error!("Found EOB before working through all selectors. (Chunk {} instead of {}.)", block_index/50, selector_count);
-                                // Probably should terminate the program here.
-                            }
-                            // Adjust the vec length to the block_index
-                            out.truncate(out_idx);
-                            // All done.
-                            break;
-                        }
-
-                        // Then output the symbol (one less than n)
-                        out[out_idx] = symbol_set[n as usize - 1];
-                        // And increment the out_idx counter
-                        out_idx += 1;
-
-                        // And adjust the mtf_index for the next symbol.
-                        let sym = symbol_set.remove(n as usize - 1);
-                        symbol_set.insert(0, sym as u8)
+                        // Adjust the vec length to the block_index
+                        out.truncate(block_index);
+                        // All done. Go do the RLE2 and MTF.
+                        break;
                     }
                 }
-                // Increment the block index after every symbol we find
-                block_index += 1;
-
-                // If we are at a chunck boundary, update the level variables.
-                if block_index % CHUNK_SIZE == 0 {
-                    let (l, s) = &huf_decode_maps[decode_map_selectors[block_index / 50]];
-                    level = l;
-                    symbol_index = s;
-                }
-
-                // Reset the depth index and code.
-                depth = 0;
-                code = 0;
             }
         }
         time.mark("huffman");
 
-        // // Undo the RLE2 and MTF, converting to u8 in the process
-        // // Set aside a vec to store the data we decode (size based on the table count)
-        // let mut mtf_out: Vec<u8> = vec![
-        //     0_u8;
-        //     match table_count {
-        //         2 => 200,
-        //         3 => 600,
-        //         4 => 1200,
-        //         5 => 2400,
-        //         _ => (block_size as usize * 100000) + 19,
-        //     }
-        // ];
-        // rle2_mtf_decode(&out, &mut mtf_out, &mut symbol_set);
+        // Undo the RLE2 and MTF, converting to u8 in the process
+        // Set aside a vec to store the data we decode (size based on the table count)
+        let size = match table_count {
+            2 => 200,
+            3 => 600,
+            4 => 1200,
+            5 => 2400,
+            _ => (block_size as usize * 100000) + 19,
+        };
 
-        // time.mark("rle_mtf");
+        let mtf_out = rle2_mtf_decode(&out, &mut symbol_set, size);
+
+        time.mark("rle_mtf");
 
         // Undo the BWTransform
-        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &out); //, &symbol_set);
+        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_out); //, &symbol_set);
 
         time.mark("bwt");
 
@@ -508,7 +440,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         time.mark("crcs");
 
-        // Done!! Write the data
+        // Done!! Write the data.
         let result = f_out.write(&rle1_v);
         info!("Wrote a block of data with {} bytes.", result.unwrap());
 
@@ -561,6 +493,8 @@ impl Level {
     }
 }
 
+/// Decode a vec of symbols and lengths into the level structure needed to efficiently
+/// decode the bit stream.
 fn huf_decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
     // Initialize result vector
     let mut result = Vec::new();
@@ -610,7 +544,7 @@ fn huf_decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
             current_bit_length = *bit_length;
         }
     }
-    // Done at the last level. Record the level.
+    // Done at the last level. Record the level information.
     let mut level = Level::new();
     let symbol = map[map.len() - 1].0;
 
@@ -621,12 +555,4 @@ fn huf_decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
     result.push(level);
 
     result
-}
-
-fn zero_bomb_check(zeros: usize) {
-    // Blow up if the run is too big - this should be more elegant in the future
-    if zeros > ZERO_BOMB {
-        error!("Run of zeros exceeded a million - probably input bomb.");
-        std::process::exit(100)
-    }
 }

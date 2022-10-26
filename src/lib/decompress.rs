@@ -2,7 +2,7 @@ use log::{debug, error, info, warn};
 
 use crate::lib::{
     crc::{do_crc, do_stream_crc},
-    rle2_mtf_decode::rle2_mtf_decode,
+    rle2_mtf_decode::{rle2_mtf_decode, rle2_mtf_decode_fast},
 };
 
 use super::{
@@ -225,7 +225,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Read Selectors based on the actual number of selectors reported
         // (But only save the ones we can use! Hence max_selectors.)
-        let mut selector_map = vec![0_usize, selector_count];
+        let mut selector_map = vec![0_usize; selector_count];
         {
             // First read the "raw" selector map
             let mut raw_selector_map = Vec::with_capacity(selector_count as usize);
@@ -400,20 +400,24 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Undo the RLE2 and MTF, converting to u8 in the process
         // Set aside a vec to store the data we decode (size based on the table count)
-        let size = match table_count {
-            2 => 200,
-            3 => 600,
-            4 => 1200,
-            5 => 2400,
-            _ => (block_size as usize * 100000) + 19,
-        };
+        // (NOTE: Table count does NOT equate to size in highly compressable data)
+        let size = 900019_usize;
+        // match table_count {
+        //     2 => 200,
+        //     3 => 600,
+        //     4 => 1200,
+        //     5 => 2400,
+        //     _ => (block_size as usize * 100000) + 19,
+        // };
 
-        let mtf_out = rle2_mtf_decode(&out, &mut symbol_set, size);
+        let (mtf_out, freq) = rle2_mtf_decode_fast(&out, &mut symbol_set, size);
 
         time.mark("rle_mtf");
 
         // Undo the BWTransform
-        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_out); //, &symbol_set);
+        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_test(key as u32, &mtf_out, freq); //, &symbol_set);
+        //let mtf_8 = mtf_out.iter().map(|s| *s as u8).collect::<Vec<u8>>();
+        //let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_8); //, &symbol_set);
 
         time.mark("bwt");
 

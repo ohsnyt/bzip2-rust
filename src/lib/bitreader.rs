@@ -27,23 +27,9 @@ impl<R: std::io::Read> BitReader<R> {
 
     /// Check (and refill) buffer - true if we have data, false if there is no more
     fn have_data(&mut self) -> bool {
-        // first time...
-        // if self.bytes_read == 0 {
-        //     let size = self
-        //         .source
-        //         .read(&mut self.buffer)
-        //         .expect("Unble to read source data");
-        //     if size == 0 {
-        //         return false;
-        //     } else {
-        //         self.buffer.truncate(size);
-        //         self.bytes_read += size;
-        //         self.byte_index = 0;
-        //         self.bit_index = 0;
-        //     }
-        // } else {
-        if self.bytes_read == 0 || self.byte_index == self.buffer.len() {
-            //if self.is_empty() {
+        // Originally: if self.bytes_read == 0 || self.byte_index == self.buffer.len() {
+        // when self.bytes_read == 0, then byte_index must equal buffer length
+        if self.byte_index == self.buffer.len() {
             let size = self
                 .source
                 .read(&mut self.buffer)
@@ -57,22 +43,23 @@ impl<R: std::io::Read> BitReader<R> {
                 self.bit_index = 0;
             }
         }
-        //}
         true
     }
 
-    /// Function to indicate buffer is empty (not necessarily the source)
-    fn is_empty(&self) -> bool {
-        (self.byte_index > self.buffer.len() - 1)
-            || (self.byte_index == self.buffer.len() && self.bit_index == 0)
-    }
+    /*     /// Function to indicate that the *buffer* is empty (not necessarily the source)
+       fn is_empty(&self) -> bool {
+           (self.byte_index > self.buffer.len() - 1)
+               || (self.byte_index == self.buffer.len() && self.bit_index == 0)
+       }
+    */
 
-    /// Return one bit
+    /// Return one bit, or None if there is no more data to read
     pub fn bit(&mut self) -> Option<usize> {
         // If bit_index is == 0, check if we have a byte to read. Return None if we have no data
         if self.bit_index == 0 && !self.have_data() {
             return None;
         }
+        // Otherwise return the bit as an Some(usize)
         let bit =
             (self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> (7 - self.bit_index);
         self.bit_index += 1;
@@ -83,7 +70,7 @@ impl<R: std::io::Read> BitReader<R> {
         Some(bit as usize)
     }
 
-    /// Return Option<Bool> *true* if the next bit is 1, *false* if 0
+    /// Return Option<Bool> *true* if the next bit is 1, *false* if 0, consuming the bit.
     pub fn bool_bit(&mut self) -> Option<bool> {
         self.bit().map(|bit| bit == 1)
     }
@@ -174,7 +161,7 @@ impl<R: std::io::Read> BitReader<R> {
     }
 }
 
-// Iterator is not currently used, but was tried with alternative factorings that proved slower.
+/* // Iterator is not currently used, but was tried with alternative factorings that proved slower.
 impl<R> Iterator for BitReader<R>
 where
     R: Read,
@@ -184,6 +171,7 @@ where
         self.bit()
     }
 }
+ */
 
 #[cfg(test)]
 mod test {
@@ -204,7 +192,7 @@ mod test {
         assert_eq!(br.bit(), None);
     }
 
-    #[test]
+    /* #[test]
     fn iter_test() {
         let x = [0b1000_0001_u8, 0b0100_1000].as_slice();
         let mut br = BitReader::new(x);
@@ -225,7 +213,7 @@ mod test {
         assert_eq!(br.next(), Some(0));
         assert_eq!(br.next(), Some(0));
         assert_eq!(br.next(), None);
-    }
+    } */
     #[test]
     fn bint_test() {
         let x = [0b00011011].as_slice();

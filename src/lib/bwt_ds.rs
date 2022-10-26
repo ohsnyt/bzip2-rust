@@ -80,10 +80,11 @@ pub fn bwt_decode_fastest(key: u32, bwt_in: &[u8]) -> Vec<u8> {
 
     //Build the keys vector to find the next character in the original data
     // This is the slowest portion of this function - I assume cache misses causes problems
+    // It slows down when t_vec is over about 500k.
     let mut keys = vec![0_u32; end];
     let mut key = key;
 
-    // Assign to vec[0] to avoid a temporary assignment below
+    // Assign to keys[0] to avoid a temporary assignment below
     keys[0] = t_vec[key as usize];
 
     for i in 1..end {
@@ -99,84 +100,53 @@ pub fn bwt_decode_fastest(key: u32, bwt_in: &[u8]) -> Vec<u8> {
 }
 
 /// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
-pub fn bwt_decode_small(key: u32, bwt_in: &[u8]) -> Vec<u8> {
-    let mut time = Instant::now();
+pub fn bwt_decode_test(key: u32, bwt_in: &[u32], mut freq_in: [u32; 256]) -> Vec<u8> {
     // Calculate end once.
     let end = bwt_in.len();
 
-    // Use u32 instead of usize to keep memory needs down.
-    // First get a freq count of symbols.
-    let mut freq = vec![0_u32; 256];
-
-    for i in 0..end {
-        freq[bwt_in[i] as usize] += 1;
+    // Convert frequency count to a cumulative sum of frequencies
+    let mut freq = [0_u32; 256];
+    {
+        for i in 0..255 {
+            freq[i + 1] = freq[i] + freq_in[i];
+        }
     }
-    let freqa = time.elapsed().as_micros();
-    println!("Freq a: {} µs", freqa);
 
-    let mut sum = 0;
+    // Faster decompression algorithm
+    /* Compute the T^(-1) vector
+    Each element of the input block is used to compute the index of the suffix to that symbol.
+    The suffix pointer (24 bits) is combined with the element (8 bits) to create a u32 combined
+    info word for the t^(-1) vector (24 bits of pointer and 8 bits of symbol).
+    */
+    let mut t_vec = vec![0_u32; end+19];
     
-    // This is slightly faster than iter_mut().for_each
-    for i in 0..256 {
-        let tmp = freq[i];
-        freq[i] = sum;
-        sum += tmp;
-    }
-    let freqb = time.elapsed().as_micros();
-    println!("Freq b: {} µs", freqb - freqa);
-
-    //Build the transformation vector to find the next character in the original data
-    // Using an array instead of a vec saves about 4 ms.
-    // The t_vec numbers are somewhat grouped
-    let mut t_veca = vec![0_u32; end / 2];
-    let mut t_vecb = vec![0_u32; end - end / 2];
     for (i, &s) in bwt_in.iter().enumerate() {
-        let tmp = freq[s as usize] as usize;
-        if tmp < (end / 2) {
-            t_veca[tmp] = i as u32;
-        } else {
-            t_vecb[tmp - (end / 2)] = i as u32;
-        }
-        freq[s as usize] += 1
-    }
-    let tvec = time.elapsed().as_micros();
-    println!("t_vec: {} µs", tvec - freqb);
-
-    // Build the keys vector to find the next character in the original data.
-    // (It is faster to do this as a separate step from the transformation.)
-    // Building the keys vec is the slowest portion of this function. The keys are widely
-    // scattered numerically (0-900k). I assume cache misses causes the speed problem here.
-    let mut keys = vec![0_u32; end];
-    let mut key = key;
-
-    // Assign to vec[0] to avoid a temporary assignment below
-    if key < (end as u32) / 2 {
-        keys[0] = t_veca[key as usize]
-    } else {
-        keys[0] = t_vecb[key as usize - end / 2]
+        t_vec[freq[s as usize] as usize] = ((i as u32) << 8 | s);
+        freq[s as usize] += 1;
     }
 
-    for i in 1..end {
-        let tmp = keys[i - 1];
-        if key < (end as u32) / 2 {
-            keys[i] = t_veca[key as usize]
-        } else {
-            keys[i] = t_vecb[key as usize - end / 2]
-        }
-    }
-    let key_time = time.elapsed().as_micros();
-    println!("keys: {} µs", key_time - tvec);
+    // Transform the data. Initialize the output vec.
+    let mut orig = vec![0_u8; end];
 
-    // Transform the data
-    let mut orig = vec![0; end];
-    for i in 0..bwt_in.len() {
-        orig[i] = bwt_in[keys[i] as usize];
+    // Get the origin key and use it to get first element key.
+    let mut key = key as usize;
+    //let (k, _) = key_byte(t_vec[key]);
+    //key = k;
+
+    for i in 0..orig.len() {
+        let (k, b) = key_byte(t_vec[key]);
+        key = k;
+        orig[i] = b;
     }
-    let t_time = time.elapsed().as_micros();
-    println!("transform: {} µs", t_time - key_time);
-    println!("Total: {:?}", time.elapsed());
 
     orig
+}
+
+fn key_byte(complex: u32) -> (usize, u8) {
+    let byte = (complex & 0xff) as u8;
+    let b2 = complex as u8;
+    let ptr = complex >> 8;
+    ((complex >> 8) as usize, (complex & 0xff) as u8)
 }
 
 /// Decode a Burrows-Wheeler-Transform

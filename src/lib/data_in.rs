@@ -1,5 +1,5 @@
 use log::{info, warn, error};
-use super::options::BzOpts;
+use super::cli::BzOpts;
 use std::fs::{File, Metadata};
 
 #[derive(Debug)]

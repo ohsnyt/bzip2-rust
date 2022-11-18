@@ -17,7 +17,7 @@ use std::{
 mod lib;
 use lib::compress::compress;
 use lib::decompress::decompress;
-use lib::options::BzOpts;
+use lib::cli::BzOpts;
 
 use log::{error, info, warn, LevelFilter};
 use simplelog::{Config, TermLogger, TerminalMode};
@@ -37,9 +37,9 @@ fn main() -> io::Result<()> {
 
     //----- Figure how what we need to do
     match options.op_mode {
-        lib::options::Mode::Zip => compress(&mut options),
-        lib::options::Mode::Unzip => decompress(&options),
-        lib::options::Mode::Test => {
+        lib::cli::Mode::Zip => compress(&mut options),
+        lib::cli::Mode::Unzip => decompress(&options),
+        lib::cli::Mode::Test => {
             // test();
             Result::Ok(())
         }

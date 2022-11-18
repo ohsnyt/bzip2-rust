@@ -1,5 +1,4 @@
 pub mod bitreader;
-//pub mod bitty;
 pub mod bitwriter;
 //pub mod bwt_rib;
 pub mod bwt_ds;
@@ -15,7 +14,6 @@ pub mod decompress;
 pub mod huffman;
 mod huffman_code_from_weights;
 pub mod mtf;
-pub mod options;
 pub mod rle1;
 pub mod rle2;
 pub mod symbol_map;

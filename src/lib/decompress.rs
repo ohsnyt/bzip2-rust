@@ -7,7 +7,7 @@ use crate::lib::{
 
 use super::{
     bitreader::BitReader,
-    options::BzOpts,
+    cli::BzOpts,
     rle1::rle1_decode,
     rle2::rle2_decode,
     symbol_map::{self, decode_sym_map},

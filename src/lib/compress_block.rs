@@ -15,6 +15,7 @@ pub fn compress_block(
     block_size: u8,
     algorithm: &super::cli::Algorithms,
     qs: &mut QsortData,
+    iterations: usize,
 ) {
     // Adjust qs fields
     qs.end = block.end as usize;
@@ -76,7 +77,7 @@ pub fn compress_block(
     rle2_encode(block);
 
     // Now for the compression - the Huffman encoding (which also writes out data)
-    let _result = huf_encode(bw, block);
+    let _result = huf_encode(bw, block, iterations);
     // SHOULD HANDLE RESULT ERROR
 
     // if this is the last block, write the stream footer magic and  crc and flush

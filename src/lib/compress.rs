@@ -10,9 +10,9 @@ use crate::lib::crc::{do_crc, do_stream_crc};
 use super::bitwriter::BitWriter;
 use super::bwt::primary::main_sort::QsortData;
 use super::compress_block::compress_block;
-use super::options::Status;
+use super::cli::{Status, BzOpts};
 use super::rle1::rle_encode;
-use super::{data_in, options::BzOpts};
+use super::data_in;
 
 /*
     NOTE: I AM IN THE PROGRESS OF CHANGING THIS SO IT WORKS WITH A C FFI.
@@ -159,6 +159,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
             opts.block_size,
             &opts.algorithm,
             &mut qs,
+            opts.iterations,
         );
 
         // Write out what we have so we don't have to hold it all.

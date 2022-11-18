@@ -40,6 +40,7 @@ impl PartialOrd for Node {
 pub fn huf_encode(
     bw: &mut BitWriter,
     block: &mut Block,
+    iterations: usize,
 ) -> Result<(), Error> {
     // Get the length of this RLE2 compressed block
     let vec_end = block.temp_vec.len();
@@ -123,14 +124,16 @@ pub fn huf_encode(
      against real data. These adjusted numbers are used to build a huffman tree, and
      thereby the huffman codes.
 
-     We will iterate four times to improve the tables. 
+     We will iterate four times (default value, can be changed in options) to improve the tables. 
+     ds: Nov 2022: Looking at trial runs, it seems that three times gains almost the same
+     value as four times. Each larger size gains slightly more in ascii texts.
     */
 
     // Remember for later how many selectors we will have, and where we store them
     let mut selector_count = 0;
     let mut selectors = vec![];
 
-    for iter in 0..4 {
+    for iter in 0..iterations {
         // initialize favorites[] to 0 for each table/group
         let mut favorites = [0; 6];
 

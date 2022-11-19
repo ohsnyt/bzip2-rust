@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use std::io::{self, Write};
 use std::os::unix::prelude::MetadataExt;
 
-use log::{info, warn};
+use log::{info, warn, debug};
 
 use crate::lib::crc::{do_crc, do_stream_crc};
 
@@ -147,7 +147,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
 
         // Update and record the stream crc
         block.stream_crc = do_stream_crc(block.stream_crc, block.block_crc);
-        warn!(
+        debug!(
             "Block crc is {}, stream crc is {}",
             block.block_crc, block.stream_crc,
         );

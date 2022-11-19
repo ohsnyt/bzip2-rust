@@ -1,4 +1,4 @@
-use log::{ error, info};
+use log::{ error, info, debug};
 
 use super::bitwriter::BitWriter;
 use super::compress::Block;
@@ -208,7 +208,7 @@ pub fn huf_encode(
             // Prepare to get the next group of 50 bytes from the input
             start = end;
         } // End of the while loop, we've gone through the entire input (again).
-        info!(
+        debug!(
             " pass {}: size is {}, grp uses are {:?}",
             iter + 1,
             total_cost / 8,

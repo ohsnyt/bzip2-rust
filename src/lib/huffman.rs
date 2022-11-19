@@ -152,8 +152,8 @@ pub fn huf_encode(
         compute the best table to use based on the one that has the lowest "weight" cost.
 
         NOTE: Julian did a trick with rolling all six 16 bit arrays into 3 32 bit arrays.
-        I'm not doing that here. If we do in the future, we could use 1 128 bit array
-        for the same purpose, I beleive (or possibly multiple usize arrays).
+        I'm not doing that here. If we do in the future, I believe we could use 1 128 bit array
+        for the same purpose (or possibly multiple usize arrays).
 
         Our goal is to find the coding table which has the lowest cost for this chunk
         of data, and record that in the selector table.

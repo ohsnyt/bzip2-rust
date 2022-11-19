@@ -214,6 +214,7 @@ mod test {
         assert_eq!(br.next(), Some(0));
         assert_eq!(br.next(), None);
     } */
+
     #[test]
     fn bint_test() {
         let x = [0b00011011].as_slice();
@@ -222,6 +223,7 @@ mod test {
         assert_eq!(br.bint(1), Some(0));
         assert_eq!(br.bint(2), Some(3));
     }
+
     #[test]
     fn byte_test() {
         let x = "Hello, world!".as_bytes();
@@ -230,5 +232,36 @@ mod test {
         assert_eq!(br.byte(), Some('e' as u8));
         assert_eq!(br.byte(), Some('l' as u8));
         assert_eq!(br.byte(), Some('l' as u8));
+    }
+
+    #[test]
+    fn bytes_test() {
+        let x = "Hello, world!".as_bytes();
+        let mut br = BitReader::new(x);
+        assert_eq!(br.bytes(5), Some("Hello".as_bytes().to_vec()));
+        }
+
+    #[test]
+    fn loc_test() {
+        let x = "Hello, world!".as_bytes();
+        let mut br = BitReader::new(x);
+        println!("{}",br.loc());
+        println!("Got {:?}, at {}",br.bytes(5), br.loc());
+        println!("Got {:?}, at {}",br.bit(), br.loc());
+        assert_eq!(br.loc(), "[5.1]");
+        }
+    
+    #[test]
+    fn bool_bit_test() {
+        let x = [0b01010000].as_slice();
+        let mut br = BitReader::new(x);
+        assert_eq!(br.bool_bit(), Some(false));
+        assert_eq!(br.bool_bit(), Some(true));
+        assert_eq!(br.bool_bit(), Some(false));
+        assert_eq!(br.bool_bit(), Some(true));
+        assert_eq!(br.bool_bit(), Some(false));
+        assert_eq!(br.bool_bit(), Some(false));
+        assert_eq!(br.bool_bit(), Some(false));
+        assert_eq!(br.bool_bit(), Some(false));
     }
 }

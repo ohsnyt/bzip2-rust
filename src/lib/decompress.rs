@@ -117,7 +117,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     let mut time = Timer::new();
 
     // Start bitreader from input file in the command line
-    let mut br = BitReader::new(File::open(opts.file.as_ref().unwrap().to_string())?);
+    let mut br = BitReader::new(File::open(opts.file.as_ref().unwrap())?);
 
     // We will eventually need to mark the output file with the timestamp of the compresssed file.
     //let metadata = std::fs::metadata(opts.file.as_ref().unwrap().to_string())?;
@@ -128,7 +128,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     } else {
         error!(
             "Fatal error: {} is not a valid bzip2 compressed file.",
-            opts.file.as_ref().unwrap().to_string()
+            opts.file.as_ref().unwrap()
         );
         return Err(Error::new(io::ErrorKind::Other, "Invalid compressed file."));
     }
@@ -416,8 +416,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Undo the BWTransform
         let mut bwt_v = crate::lib::bwt_ds::bwt_decode_test(key as u32, &mtf_out, freq); //, &symbol_set);
-        //let mtf_8 = mtf_out.iter().map(|s| *s as u8).collect::<Vec<u8>>();
-        //let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_8); //, &symbol_set);
+                                                                                         //let mtf_8 = mtf_out.iter().map(|s| *s as u8).collect::<Vec<u8>>();
+                                                                                         //let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_8); //, &symbol_set);
 
         time.mark("bwt");
 

@@ -1,13 +1,7 @@
-use std::time::Instant;
-
 ///Burrows-Wheeler-Transform
 /// Transforms a u8 sli&ce using bwt. The key is u32.
 pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
-    //let ext = orig.len();
-    //let mut index: Vec<(u8, usize)> = orig.iter().enumerate().map(|(i, &s)| (s, i)).collect();
-    //index.append(&mut (orig.iter().enumerate().map(|(i, &s)| (s, i + ext)).collect()));
-
     let mut index = vec![0; orig.len()];
     for i in 0..index.len() {
         index[i as usize] = i as u32;
@@ -118,8 +112,8 @@ pub fn bwt_decode_test(key: u32, bwt_in: &[u32], mut freq_in: [u32; 256]) -> Vec
     The suffix pointer (24 bits) is combined with the element (8 bits) to create a u32 combined
     info word for the t^(-1) vector (24 bits of pointer and 8 bits of symbol).
     */
-    let mut t_vec = vec![0_u32; end+19];
-    
+    let mut t_vec = vec![0_u32; end + 19];
+
     for (i, &s) in bwt_in.iter().enumerate() {
         t_vec[freq[s as usize] as usize] = ((i as u32) << 8 | s);
         freq[s as usize] += 1;
@@ -133,10 +127,10 @@ pub fn bwt_decode_test(key: u32, bwt_in: &[u32], mut freq_in: [u32; 256]) -> Vec
     //let (k, _) = key_byte(t_vec[key]);
     //key = k;
 
-    for i in 0..orig.len() {
+    for el in orig.iter_mut() {
         let (k, b) = key_byte(t_vec[key]);
         key = k;
-        orig[i] = b;
+        *el = b;
     }
 
     orig
@@ -177,8 +171,12 @@ pub fn bwt_decode(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     let mut orig = vec![0; bwt_in.len()];
     let mut key = t_vec[key as usize];
 
-    for i in 0..bwt_in.len() {
-        orig[i] = bwt_in[key];
+    // for i in 0..bwt_in.len() {
+    //     orig[i] = bwt_in[key];
+    //     key = t_vec[key]
+    // }
+    for el in orig.iter_mut().take(bwt_in.len()) {
+        *el = bwt_in[key];
         key = t_vec[key]
     }
     orig
@@ -188,8 +186,8 @@ pub fn bwt_decode(key: u32, bwt_in: &[u8]) -> Vec<u8> {
 pub fn bwt_decode_new(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     // First get a freq count of symbols
     let mut freq = vec![0_usize; 256];
-    for i in 0..bwt_in.len() {
-        freq[bwt_in[i] as usize] += 1;
+    for el in bwt_in {
+        freq[*el as usize] += 1;
     }
     let mut sum = 0;
 

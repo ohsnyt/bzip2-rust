@@ -10,7 +10,7 @@ pub enum Algorithms {
     /// Use original Bzip2 Burrow Wheeler Transform algorithm when compressing
     Julian,
     /// Use SAIS based Burrow Wheeler Transform algorithm when compressing
-    SAIS,
+    Sais,
     /// Use simple Burrow Wheeler Transform algorithm when compressing
     Simple,
     // Radix - uses voracious_radix_sort crate when compressing

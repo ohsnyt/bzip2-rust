@@ -45,7 +45,7 @@ pub fn compress_block(
             (block.key, block.data) = result
         }
         // Using SAIS algorithm from ribzip2
-        crate::lib::cli::Algorithms::SAIS => {
+        crate::lib::cli::Algorithms::Sais => {
             info!("Using SAIS algorithm.");
             //block_sort(data, 30);
             let result = crate::lib::bwt_ribzip::bwt_internal::bwt(&block.data);

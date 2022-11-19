@@ -10,7 +10,7 @@ pub struct BitWriter {
 
 impl BitWriter {
     /// Called to create a new bitwriter
-    pub fn new(size:usize) -> Self {
+    pub fn new(size: usize) -> Self {
         Self {
             output: Vec::with_capacity(size),
             queue: 0,
@@ -37,10 +37,10 @@ impl BitWriter {
     It is primarily used to write odd size data.
     Eg 0000100_00000000_00000000_00000010 writes out 0010.
     */
-    /// Writes 0-24 bits encoded with the number of bits to write in the most 
+    /// Writes 0-24 bits encoded with the number of bits to write in the most
     /// significant byte of a 32 bit word.
     pub fn out24(&mut self, data: u32) {
-        let depth = (data >> 24) as u8; //get bit length
+        let depth = (data >> 24) as u8; //get bit length by shifting out the 24 data bits
         self.queue <<= depth; //shift queue by bit length
         self.queue |= (data & (0xffffffff >> (32 - depth))) as u64; //add data portion to queue
         self.q_bits += depth; //update depth of queue bits
@@ -79,12 +79,65 @@ impl BitWriter {
             self.q_bits += 8 - self.q_bits;
             self.write_stream(); // write out all tha tis left
             if self.q_bits > 0 {
-            error!("Stuff left in the BitWriter queue.");}
+                error!("Stuff left in the BitWriter queue.");
+            }
         }
     }
 
     /// Debugging function to return the number of bytes.bits output so far
     pub fn loc(&self) -> String {
         format! {"[{}.{}]",((self.output.len() * 8) + self.q_bits as usize)/8, ((self.output.len() * 8) + self.q_bits as usize)%8}
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::BitWriter;
+
+    #[test]
+    fn out8_test() {
+        let mut bw = BitWriter::new(100);
+        let data = 'x' as u8;
+        bw.out8(data);
+        bw.flush();
+        let out = bw.output;
+        assert_eq!(out, "x".as_bytes());
+    }
+
+    #[test]
+    fn out16_test() {
+        let mut bw = BitWriter::new(100);
+        let data = 0b00100001_00100000;
+        bw.out16(data);
+        bw.flush();
+        let out = bw.output;
+        assert_eq!(out, "! ".as_bytes());
+    }
+
+    #[test]
+    fn out24_and_loc_test() {
+        let mut bw = BitWriter::new(100);
+        let data = 0b00001000_00000000_00000000_00100001;
+        bw.out24(data);
+        bw.flush();
+        let out = &bw.output;
+        assert_eq!(out, "!".as_bytes());
+        assert_eq!("[1.0]", &bw.loc());
+        let data = 0b00011000_00000000_00000000_00000011;
+        bw.out24(data);
+        bw.flush();
+        let out2 = &bw.output;
+        assert_eq!(out2, &[33, 0, 0, 3]); // Note: '33' is data from previous call
+        assert_eq!("[4.0]", &bw.loc());
+    }
+
+    #[test]
+    fn out32_test() {
+        let mut bw = BitWriter::new(100);
+        let data = 0b00100001_00100000_00100001_00100000;
+        bw.out32(data);
+        bw.flush();
+        let out = bw.output;
+        assert_eq!(out, [33, 32, 33, 32]);
     }
 }

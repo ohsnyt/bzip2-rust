@@ -8,7 +8,7 @@ pub fn main_gtu(mut a: usize, mut b: usize, qs: &mut QsortData) -> bool {
         error!("mainGtU error")
     }
 
-    // Could I do this by slice faster? Maybe qs.block[a..a+12] != qs.block[b..b+12]? No. It is slower.
+    // I thought maybe doing this by slice could be faster. No. It is slower.
     macro_rules! check_bd {
         () => {
             if &qs.block_data[a] != &qs.block_data[b] {
@@ -67,4 +67,3 @@ pub fn main_gtu(mut a: usize, mut b: usize, qs: &mut QsortData) -> bool {
     }
     false
 }
-

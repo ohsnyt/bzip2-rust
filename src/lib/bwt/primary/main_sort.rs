@@ -1,10 +1,13 @@
+use super::main_q_sort3::main_q_sort3;
+use crate::lib::compress::Block;
 use log::{debug, error, info};
 
-use crate::lib::compress::Block;
+//NOTE: This is based on the algorithm from Julian Seward.
+// I have tweaked it for speed with Rust idioms in several places.
+// I don't claim to be any kind of sorting genious - I am very open
+// to suggestions to improve this code. ds.
 
-use super::main_q_sort3::main_q_sort3;
-
-// initialize key constants
+// Initialize key constants
 const MAIN_QSORT_STACK_SIZE: usize = 100;
 const BZ_N_RADIX: i32 = 2;
 const OVERSHOOT: usize = 34;
@@ -38,11 +41,8 @@ impl QsortData {
     }
 }
 
-pub fn main_sort(block: &mut Block, qs: & mut QsortData) {
+pub fn main_sort(block: &mut Block, qs: &mut QsortData) {
     info!("Main sort initialize.");
-
-    // initialize key variables and structs
-    //let mut qs = QsortData::new(block.end, block.budget);
 
     // Initialize vecs for buckets
     let mut copy_start = vec![0_i32; 256];
@@ -166,14 +166,14 @@ pub fn main_sort(block: &mut Block, qs: & mut QsortData) {
                             hi - lo + 1
                         );
                         // Then sort the bucket
-                        main_q_sort3( qs);
+                        main_q_sort3(qs);
                         // Update our count of rows that are now sorted
                         num_q_sorted += hi - lo + 1;
 
                         // if the sorting was too "expensive", we fail out and try the fallback method
                         if qs.budget < 0 {
                             block.budget = qs.budget;
-                            return
+                            return;
                         };
                     }
                 }

@@ -34,7 +34,7 @@ pub(crate) fn main_q_sort3(mut qs: &mut QsortData) {
             continue;
         }
         // Get the approximate median value from the block data in this bucket
-        // Shifting from [] to .get() did not alter speed, but did increase complexity
+        // (Note: Shifting from [] to .get() syntax did not alter speed, but did increase complexity.)
         let med = mmed3(
             qs.block_data[qs.bwt_ptr[lo as usize] as usize + d as usize],
             qs.block_data[qs.bwt_ptr[hi as usize] as usize + d as usize],
@@ -48,7 +48,6 @@ pub(crate) fn main_q_sort3(mut qs: &mut QsortData) {
 
         loop {
             // Sort the bucket based on lt_lo and un_lo
-            // This indexed version is marginally faster than a .get() version.
             while un_hi >= un_lo {
                 let n = qs.block_data[qs.bwt_ptr[un_lo as usize] as usize + d as usize] as i32
                     - med as i32;
@@ -63,7 +62,7 @@ pub(crate) fn main_q_sort3(mut qs: &mut QsortData) {
                 };
                 un_lo += 1;
             }
-            // Alternate .get() version of Sort the bucket based on lt_lo and un_lo
+            // Alternate .get() version of Sort the bucket based on lt_lo and un_lo. This is not faster.
             // while un_hi >= un_lo {
             //     if let Some(ptr) = bwt_ptr.get(un_lo as usize) {
             //         if let Some(n) = block_data.get(*ptr as usize + d as usize) {
@@ -80,6 +79,7 @@ pub(crate) fn main_q_sort3(mut qs: &mut QsortData) {
             //         }
             //     }
             // }
+
             // Sort the bucket based on gt_hi and un_hi
             while un_hi >= un_lo {
                 if un_hi == 0 {
@@ -188,7 +188,7 @@ fn mmed3(mut a: u16, mut b: u16, c: u16) -> u32 {
     b as u32
 }
 
-//  ds. This version 15% faster than previous while loop version
+//  ds. This version 15% faster than a previous while loop version
 /// Swap n pointers starting a lo/lo_2
 pub fn mvswap(bwt_ptr: &mut [u32], lo: i32, lo_2: i32, n: i32) {
     for i in 0..n {

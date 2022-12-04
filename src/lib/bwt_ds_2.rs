@@ -1,292 +1,242 @@
-/* use log::error;
-use std::{
-    cmp::{min, Ordering},
-    iter::Enumerate,
-};
-use voracious_radix_sort::{RadixSort, Radixable};
+use core::cmp::Ordering;
+//use log::{debug, error, info, warn};
+use rayon::prelude::*;
+use std::mem;
 
-const SYSBYTES: usize = (usize::BITS / 8) as usize;
-
-/// Struct for main BTW data
-#[derive(Copy, Clone, Debug)]
-pub struct BWTData {
-    /// SYSBYTES sized context of original data (8 bytes on 64-bit platform)
-    key: usize,
-    /// original sequence number
-    ptr: usize,
-    /// sorted (or not)
-    sorted: bool,
-    subgroup: u32,
+/// Struct for Burrows-Wheeler-Transform data.
+/// Contains the index to the original data order, a multi-byte sort
+/// value (for speed).
+#[derive(Clone, Eq, Debug)]
+pub struct BwtKey {
+    sort: usize,
+    index: u32,
+    symbol: u8,
 }
-impl PartialOrd for BWTData {
-    fn partial_cmp(&self, other: &BWTData) -> Option<Ordering> {
-        match self.key.partial_cmp(&other.key) {
-            Some(std::cmp::Ordering::Greater) => Some(Ordering::Greater),
-            Some(std::cmp::Ordering::Less) => Some(Ordering::Less),
-            Some(std::cmp::Ordering::Equal) => self.subgroup.partial_cmp(&other.subgroup),
-            None => self.subgroup.partial_cmp(&other.subgroup),
+/// Creator, requires an index number (u32), a sort value (usize), and a symbol value (u8).
+impl BwtKey {
+    pub fn new(index: u32, sort: usize, symbol: u8) -> Self {
+        Self {
+            sort,
+            index,
+            symbol,
         }
     }
 }
-impl PartialEq for BWTData {
+
+/// Custom ordering for BwtKey. Only sorts unsorted items.
+impl PartialOrd for BwtKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.sort.cmp(&other.sort))
+    }
+}
+impl Ord for BwtKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.sort.cmp(&other.sort)
+    }
+}
+impl PartialEq for BwtKey {
     fn eq(&self, other: &Self) -> bool {
-        self.key == other.key && self.subgroup == other.subgroup
+        self.sort == other.sort
     }
 }
 
-impl Radixable<usize> for BWTData {
-    type Key = usize;
-    #[inline]
-    fn key(&self) -> Self::Key {
-        self.key
+/// Parallel BTW sorting algorithm. ds. 2022.
+/// ENTRY POINT
+pub fn bwt_encode(data: &[u8]) -> (u32, Vec<u8>) {
+    // Create usize sorting values
+    let udata: Vec<usize> = udata_par_map(&data);
+    // Create vec of custom structs for sorting
+    let mut bwt_data = convert_to_bwt_data(&data, &udata);
+    // Do smart initial sort of the data
+    par_bwt_sort(&mut bwt_data);
+
+    // Repeatedly sort the data as long as we find identical sequences in it.
+    let mut sub_depth = 1;
+    while par_subsorting(&mut bwt_data, sub_depth, &udata) {
+        sub_depth += 1;
+    }
+    // return the vec of sorted data
+    match find_key(&bwt_data) {
+        Some(key) => {
+            return (
+                key,
+                bwt_data.par_iter().map(|el| el.symbol).collect::<Vec<u8>>(),
+            )
+        }
+        None => return (0, vec![]),
     }
 }
 
-/// Struct for subsort indexing - secondary (tertiary, etc.) sorting
-#[derive(Copy, Clone, Debug)]
-pub struct SubsortData {
-    /// Context for sorting substring
-    key: usize,
-    /// Pointer of original position within the substring
-    ptr: usize,
-    /// Copy of main block slice sorted in the subsort (to speed up "sorting" the main block)
-    original: BWTData,
-}
-impl PartialOrd for SubsortData {
-    fn partial_cmp(&self, other: &SubsortData) -> Option<Ordering> {
-        self.key.partial_cmp(&other.key)
-    }
-}
-impl PartialEq for SubsortData {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key
+/// Smart-ish BWT sort function, invokes parallel sorting for larger data sets.
+fn par_bwt_sort(mut data: &mut [BwtKey]) {
+    // Don't spool up threads if only a few items to sort
+    if data.len() > 15 {
+        data.par_sort()
+    } else {
+        data.sort()
     }
 }
 
-impl Radixable<usize> for SubsortData {
-    type Key = usize;
-    #[inline]
-    fn key(&self) -> Self::Key {
-        self.key
+/// Parallel update BwtKey data after sort
+fn par_subsorting(data: &mut [BwtKey], rundepth: u32, udata: &Vec<usize>) -> bool {
+    // Create tuples of all identical sort key sequences
+    let mut seqs: Vec<(usize, usize)> = Vec::new();
+    // Limit local variables to this block
+    {
+        // Local variable looks for runs
+        let mut run = 1_usize;
+        for i in 1..data.len() {
+            if data[i - 1] == data[i] {
+                run += 1;
+            } else {
+                if run > 1 {
+                    seqs.push((i - run, i));
+                }
+                run = 1;
+            }
+        }
+
+        //Exit with false if we didn't find any runs
+        if seqs.len() == 0 {
+            return false;
+        }
     }
+
+    // Otherwise update the keys and sort the sequences
+    update_btw_keys(data, rundepth + 1, udata);
+    seqs.iter().for_each(|(start, end)| {
+        data[*start..*end].par_sort();
+    });
+
+    // Return true (we sorted something)
+    true
 }
 
-/// Burrows-Wheeler-Transform - written by David Snyder.
-/// This sorts the data with context to reduce resorting. It
-/// returns a usize key and u8 vec of the sorted data.
-pub fn bwt_encode(bytes: &[u8]) -> (usize, Vec<u8>) {
-    // First get the size of the block.
-    let end = bytes.len();
-
-    // Add space for the context
-    let mut b: Vec<u8> = bytes.to_vec();
-    b.extend(bytes[0..8].iter());
-
-    // Create a vec with context, pointer and sort status information.
-    // (Iter below is faster than older fold version)
-    let mut udata: Vec<BWTData> = b[0..end]
-        .iter()
+/// Convert data to BwtKey vector
+fn convert_to_bwt_data(mut data: &[u8], udata: &[usize]) -> Vec<BwtKey> {
+    let end = data.len();
+    data.par_iter()
         .enumerate()
-        .map(|(idx, _)| BWTData {
-            key: usize::from_be_bytes(b[idx..(idx + SYSBYTES)].try_into().unwrap()),
-            ptr: idx,
-            sorted: false,
-            subgroup: 0,
+        .map(|(i, _)| {
+            BwtKey::new(
+                ((end - i) % end) as u32,
+                udata[(end - i) % end],
+                data[(end - 1) - i % end],
+            )
         })
-        .collect::<Vec<BWTData>>();
+        .collect::<Vec<BwtKey>>()
+}
 
-    // We don't need b any more.
-    drop(b);
+/// Update btw_keys to next depth level
+fn update_btw_keys(mut data: &mut [BwtKey], depth: u32, udata: &Vec<usize>) {
+    let end = udata.len();
+    data.par_iter_mut().for_each(|el| {
+        el.sort = udata[(el.index as usize + (std::mem::size_of::<usize>()) * depth as usize) % end]
+            as usize;
+    });
+}
 
-    // Sort using the voracious multi-thread radix sort (2 threads works well)
-    voracious_radix_sort::RadixSort::voracious_mt_sort(&mut udata, 2);
-
-    // Mark items that are now fully sorted relative to their neighbors. First and last
-    // elements in the vec are special cases.
-    // First element.
-    if udata[0].key != udata[1].key {
-        udata[0].sorted = true;
+/// Return key entry from btw_keys
+fn find_key(data: &[BwtKey]) -> Option<u32> {
+    match data
+        .par_iter()
+        .enumerate()
+        .find_first(|(_, el)| el.index == 0)
+    {
+        Some((i, _)) => { return Some(i as u32)},
+        None => return None,
     }
-    // Middle elements.
-    for i in 1..end - 1 {
-        if udata[i - 1].key != udata[i].key && udata[i].key != udata[i + 1].key {
-            udata[i].sorted = true;
-        }
-    }
-    // Last element.
-    if udata[end - 1].key != udata[end - 2].key {
-        udata[end - 1].sorted = true;
+}
+
+/// Create fast usize sorting data from input.
+/// Combines multiple input u8s into one usize.
+/// Currently designed for 64, 32, 16 and 8 bit system architectures.
+fn udata_par_map(data: &[u8]) -> Vec<usize> {
+    // Get the OS memory size
+    let size = mem::size_of::<usize>();
+
+    // Pad out the data by usize-1 more data by repeating the input as needed
+    let mut ext_data = data.to_vec();
+    let mut extend = size - 1;
+    let newsize = data.len() + extend;
+    while ext_data.len() < newsize {
+        ext_data.extend_from_slice(&data[0..(extend).min(data.len())]);
+        extend -= (extend).min(data.len());
     }
 
-    // Now build an index to the pointers so we can find the original items fast.
-    let mut index: Vec<usize> =
-        udata
-            .iter()
+    // Match on usize length (in bytes)
+    match size {
+        /* When Rust goes to a 128 bit usize, add this code
+        16 => ext_data
+        .par_windows(size)
+        .map(|w| {
+            (w[0] as usize) << 120
+            | (w[1] as usize) << 112
+            | (w[2] as usize) << 104
+            | (w[3] as usize) << 96
+            | (w[4] as usize) << 88
+            | (w[5] as usize) << 80
+            | (w[6] as usize) << 72
+            | (w[7] as usize) << 64
+            | (w[8] as usize) << 56
+            | (w[9] as usize) << 48
+            | (w[10] as usize) << 40
+            | (w[11] as usize) << 32
+            | (w[12] as usize) << 24
+            | (w[13] as usize) << 16
+            | (w[14] as usize) << 8
+            | (w[15] as usize)
+        })
+        .collect(),
+        */
+        8 => ext_data
+            .par_windows(size)
             .enumerate()
-            .fold(vec![0_usize; udata.len()], |mut v, (idx, el)| {
-                v[el.ptr] = idx;
-                v
-            });
-
-    // We need to track how deep we are in sub-sorting so that we can calculate the offset
-    // in terms of depth*SYSBYTES. We start with 1.
-    let mut depth = 1;
-    //println!("Depth is now {}", depth);
-    // Create the a bucket for subsorting
-    let mut bucket: (usize, usize);
-
-    // Create a vec to hold subsort data - this is currently HUGE under the assumetion that
-    // it is faster to waste space than calculate the true size needed.
-    let mut subsort = vec![
-        SubsortData {
-            key: 0,
-            ptr: 0,
-            original: BWTData {
-                key: 0,
-                ptr: 0,
-                sorted: false,
-                subgroup: 0,
-            },
-        };
-        end
-    ];
-
-    // While we still have data to sort.
-    //   (This expression returns true only if any element is marked as not sorted)
-    while udata.iter().any(|el| el.sorted == false) {
-        let mut i = 0;
-        let remaining_count = udata.iter().filter(|el| el.sorted == false).count();
-        if remaining_count > 0 {
-            log::info!(
-                "---The subsort level {}: {} elements yet to sort.",
-                depth,
-                udata.iter().filter(|el| el.sorted == false).count()
-            );
+            .map(|(_, w)| {
+                (w[0] as usize) << 56
+                    | (w[1] as usize) << 48
+                    | (w[2] as usize) << 40
+                    | (w[3] as usize) << 32
+                    | (w[4] as usize) << 24
+                    | (w[5] as usize) << 16
+                    | (w[6] as usize) << 8
+                    | (w[7] as usize)
+            })
+            .collect(),
+        4 => ext_data
+            .par_windows(size)
+            .enumerate()
+            .map(|(_, w)| {
+                (w[0] as usize) << 24
+                    | (w[1] as usize) << 16
+                    | (w[2] as usize) << 8
+                    | (w[3] as usize)
+            })
+            .collect(),
+        2 => ext_data
+            .par_windows(size)
+            .enumerate()
+            .map(|(_, w)| (w[0] as usize) << 8 | (w[1] as usize))
+            .collect(),
+        1 => ext_data.par_iter().map(|b| *b as usize).collect(),
+        _ =>
+        // Unplanned OS architecture - possibly 8 bit system.
+        {
+            panic!()
         }
-        while i < end {
-            if !udata[i].sorted {
-                bucket = (i, get_bucket_length(&udata[i..]));
-                sort_bucket(&mut index, &mut udata, bucket, depth, &mut subsort, end);
-                i += bucket.1 - 1;
-            }
-            i += 1;
-        }
-        depth += 1;
-    }
-    log::info!("---Done sorting.",);
-
-    // Get key and compute BWT output
-    let mut key: usize = 0;
-    let mut bwt: Vec<u8> = vec![0; end];
-    for i in 0..end {
-        if udata[i].ptr == 0 {
-            key = i;
-            bwt[i] = bytes[end - 1];
-        } else {
-            bwt[i] = bytes[udata[i].ptr - 1];
-        }
-    }
-    (key, bwt)
-}
-
-//============== Helper functions =================
-/// Sort sub-buckets of identical elements, marking udata elements if they were sorted.
-fn sort_bucket(
-    index: &mut [usize],
-    udata: &mut [BWTData],
-    (start, length): (usize, usize),
-    depth: usize,
-    subsort: &mut [SubsortData],
-    end: usize,
-) {
-    // Added this error message for testing purposes. Should never happen.
-    if length < 2 {
-        error!("Oops - bucket too short");
-        return;
-    }
-
-    // Populate the 'resuable' subsort vec we received
-    for i in 0..length {
-        subsort[i] = SubsortData {
-            key: udata[index[(udata[start + i].ptr + depth * SYSBYTES) % end]].key,
-            ptr: i,
-            original: udata[start + i],
-        };
-    }
-
-    // Quick solution when there are only two elements
-    if length == 2 {
-        match subsort[0].key.cmp(&subsort[1].key) {
-            Ordering::Greater => {
-                // Swap the two elements then the index pointers
-                udata.swap(start, start + 1);
-                // Swap the index pointers
-                index.swap(udata[start].ptr, udata[start + 1].ptr);
-                udata[start].sorted = true;
-                udata[start + 1].sorted = true;
-                return;
-            }
-            Ordering::Equal => return,
-            Ordering::Less => {
-                udata[start].sorted = true;
-                udata[start + 1].sorted = true;
-                return;
-            }
-        }
-    }
-    // Quick solution when all elements are the same
-    if subsort[0..length].iter().all(|el| el.key == subsort[0].key) {
-        return;
-    }
-
-    // Step 2: Sort the subsort elements, don't waste time with multi threaded sort
-    //         on these smaller sorts.
-    subsort[0..length].voracious_sort();
-
-    // Step 3: Update the sort and subgroup info within the subsort
-    let mut group_num = 1;
-    let mut group_key = 0;
-    //  Do the first element
-    if subsort[0].key != (subsort[1].key) {
-        subsort[0].original.sorted = true;
-    } else {
-        subsort[0].original.subgroup = group_num;
-        group_key = subsort[0].key;
-    }
-    //  Then the middle elements
-    for i in 1..length - 1 {
-        if subsort[i - 1].key != subsort[i].key && subsort[i].key != subsort[i + 1].key {
-            subsort[i].original.sorted = true;
-        } else {
-            if subsort[i].key != group_key {
-                group_num += 1;
-                group_key = subsort[i].key;
-            }
-            subsort[i].original.subgroup = group_num;
-        }
-    }
-    //  And finally the last element
-    if subsort[length - 1].key != subsort[length - 2].key {
-        subsort[length - 1].original.sorted = true;
-    } else {
-        subsort[length - 1].original.subgroup = group_num;
-    }
-
-    // Step 3b: Re-Sort the subsort elements with the subgroup info
-    subsort[0..length].voracious_sort();
-
-    // Step 4: Replace the original data based on the subsort pointers.
-    for i in 0..length {
-        udata[start + i] = subsort[i].original;
-        index[udata[start + i].ptr] = start + i;
     }
 }
 
-/// Returns the number of identical elements from the start of the slice.
-fn get_bucket_length(slice: &[BWTData]) -> usize {
-    slice
-        .iter()
-        .position(|&x| x != slice[0])
-        .unwrap_or_else(|| slice.len())
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+
+    pub fn basic_encoding_test() {
+        let transformed = b"fsrrdkkeaddrrffs,esd?????     eeiiiieeeehrppkllkppttpphppPPIootwppppPPcccccckk      iipp    eeeeeeeeer'ree  ".to_vec();
+        let orig_ptr = 24;
+        let original = b"If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????".to_vec();
+        let res = bwt_encode(&original);
+        assert_eq!(res, (orig_ptr, transformed));
+    }
 }
- */

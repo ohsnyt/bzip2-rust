@@ -13,8 +13,8 @@ pub enum Algorithms {
     Sais,
     /// Use simple Burrow Wheeler Transform algorithm when compressing
     Simple,
-    // Radix - uses voracious_radix_sort crate when compressing
-    //Radix,
+    // Parallel - uses custom BWT sorting alorithm with Rayon when compressing
+    Parallel,
 }
 /// Define three operational modes
 #[derive(Debug)]

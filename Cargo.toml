@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 #cbindgen = "0.20.0"
-clap = { version = "3", features = ["derive"] }
-log = {version = "0.4.14", features = ["release_max_level_warn"]}
+clap = { version = "3.2.23", features = ["derive"] }
+log = {version = "0.4.17", features = ["release_max_level_warn"]}
 simplelog = { version = "0.12.0", features = ["paris"] }
 #rustc-hash = { version = "1.1.0"}
 #voracious_radix_sort = { version = "1.1.0", features = ["voracious_multithread"] }
@@ -17,6 +17,7 @@ simplelog = { version = "0.12.0", features = ["paris"] }
 #rdxsort =2 "0.3.0"
 #criterion = "0.3.5"
 #crc = "3.0.0" #too slow
+rayon = "1.6.0"
 
 #[[bench]]
 #name = "my_benchmark"

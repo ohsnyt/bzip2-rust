@@ -165,13 +165,23 @@ fn rle2_run_encode_5() {
     assert_eq!(rle2_encode_runs(5, &mut counts), [0, 1])
 }
 
+// For decode tests, we have to reduce the output by one byte because the
+// decoder removes the last byte (assuming it is an eof symbol).
+#[test]
+fn rle2_decode_zero_run_5() {
+    assert_eq!(
+        rle2_decode(&[0, 1]),
+        vec![0; 5 - 1 as usize]
+    )
+}
+
 #[test]
 fn rle2_zero_run_roundtrip_a() {
     let n = 473;
     let mut counts = vec![0, 0];
     assert_eq!(
         rle2_decode(&rle2_encode_runs(n, &mut counts)),
-        vec![0; n as usize]
+        vec![0; n as usize - 1]
     )
 }
 
@@ -181,6 +191,6 @@ fn rle2_zero_run_roundtrip_b() {
     let mut counts = vec![0, 0];
     assert_eq!(
         rle2_decode(&rle2_encode_runs(n, &mut counts)),
-        vec![0; n as usize]
+        vec![0; n as usize - 1]
     )
 }

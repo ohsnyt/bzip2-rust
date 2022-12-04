@@ -20,7 +20,7 @@ pub fn compress_block(
     // Adjust qs fields
     qs.end = block.end as usize;
     qs.budget = block.budget;
-    
+
     // If this is the first block, write the stream header
     if block.seq == 1 {
         // Put the header onto the bit stream
@@ -51,11 +51,12 @@ pub fn compress_block(
             let result = crate::lib::bwt_ribzip::bwt_internal::bwt(&block.data);
             (block.key, block.data) = result
         }
-        /* // Using voracious_radix_sort and DS algorithm
-        crate::lib::cli::Algorithms::Radix => {
-            info!("Using DS radix algorithm.");
-            crate::lib::bwt_ds_2::bwt_encode(data)
-        } */
+        // Using rayon and DS algorithm
+        crate::lib::cli::Algorithms::Parallel => {
+            info!("Using DS parallel algorithm.");
+            let result = crate::lib::bwt_ds_2::bwt_encode(&block.data);
+            (block.key, block.data) = result
+        }
         // Using julians algorithm
         crate::lib::cli::Algorithms::Julian => {
             info!("Using Julians algorithm.");

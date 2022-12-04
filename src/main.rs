@@ -40,7 +40,7 @@ fn main() -> io::Result<()> {
         lib::cli::Mode::Zip => compress(&mut options),
         lib::cli::Mode::Unzip => decompress(&options),
         lib::cli::Mode::Test => {
-            // test();
+            //test();
             Result::Ok(())
         }
     }
@@ -53,6 +53,7 @@ use crate::lib::bwt_ds::bwt_decode;
 use crate::lib::mtf::mtf_encode;
 use lib::rle1::rle1_decode;
 
+//no longer working since changes made to rle and mtf decoding
 /* fn test() {
     // Prepare to read the data.
     //let filename = "src/highwayman.txt";
@@ -229,4 +230,5 @@ use lib::rle1::rle1_decode;
         //info!("-------------------------------------\n");
     }
 }
+
  */

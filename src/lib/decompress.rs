@@ -410,14 +410,29 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         //     _ => (block_size as usize * 100000) + 19,
         // };
 
+        let mut symbol_set_slow = symbol_set.clone();
         let (mtf_out, freq) = rle2_mtf_decode_fast(&out, &mut symbol_set, size);
+
+        /* //compare to slower version
+        let mtf_out_slow_1 = rle2_mtf_decode(&out, &mut symbol_set_slow, size);
+        let mtf_out_slow = mtf_out_slow_1.iter().map(|el| *el as u32).collect::<Vec<u32>>();
+        let mut freq = [0_u32; 256];
+        for el in &mtf_out_slow {
+            freq[*el as usize] += 1;
+        }
+        //println!("MTFs match: {:?}. Freqs match: {:?}", mtf_out == mtf_out_slow, freq == freq_fast);
+        for i in 0..256 {
+            if freq[i] != freq_fast[i] {
+                println!("Freqencies differed at index {}. Good is {} vs {}.", i, freq[i], freq_fast[i]);
+            }
+        } */
 
         time.mark("rle_mtf");
 
         // Undo the BWTransform
-        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_test(key as u32, &mtf_out, freq); //, &symbol_set);
-                                                                                         //let mtf_8 = mtf_out.iter().map(|s| *s as u8).collect::<Vec<u8>>();
-                                                                                         //let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_8); //, &symbol_set);
+        let mut bwt_v = crate::lib::bwt_ds::bwt_decode_test(key as u32, &mtf_out, &freq);
+        //let mtf_8 = mtf_out.iter().map(|s| *s as u8).collect::<Vec<u8>>();
+        //let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_8); //, &symbol_set);
 
         time.mark("bwt");
 

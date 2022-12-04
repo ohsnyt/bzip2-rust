@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 ///Burrows-Wheeler-Transform
 /// Transforms a u8 sli&ce using bwt. The key is u32.
 pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
@@ -6,8 +8,9 @@ pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     for i in 0..index.len() {
         index[i as usize] = i as u32;
     }
-    // Sort index
-    index[..].sort_by(|a, b| block_compare(*a as usize, *b as usize, orig));
+
+    // Sort index (par_sort_by is 3x faster than .sort_by)
+    index[..].par_sort_by(|a, b| block_compare(*a as usize, *b as usize, orig));
     // Tried radix sort, but it was slower
     //rdxsort::RdxSort::rdxsort(&mut index);
     //info!("Known good index: {:?}", index);
@@ -50,11 +53,28 @@ pub fn bwt_decode_fastest(key: u32, bwt_in: &[u8]) -> Vec<u8> {
     let end = bwt_in.len();
 
     // Use u32 instead of usize to keep memory needs down.
-    // First get a freq count of symbols.
+    /* // First get a freq count of symbols.
     let mut freq = vec![0_u32; 256];
     for i in 0..end {
         freq[bwt_in[i] as usize] += 1;
     }
+     */
+
+    // OR, parallel version
+    let mut freq = bwt_in
+        .par_iter()
+        .fold(
+            || vec![0_usize; 256],
+            |mut freqs, &el| {
+                freqs[el as usize] += 1;
+                freqs
+            },
+        )
+        .reduce(
+            || vec![0_usize; 256],
+            |s, f| s.iter().zip(&f).map(|(a, b)| a + b).collect(),
+        );
+
     let mut sum = 0;
 
     // This is slightly faster than iter_mut().for_each
@@ -94,12 +114,13 @@ pub fn bwt_decode_fastest(key: u32, bwt_in: &[u8]) -> Vec<u8> {
 }
 
 /// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
-pub fn bwt_decode_test(key: u32, bwt_in: &[u32], mut freq_in: [u32; 256]) -> Vec<u8> {
+pub fn bwt_decode_test(key: u32, bwt_in: &[u32], mut freq_in: &[u32]) -> Vec<u8> {
     // Calculate end once.
     let end = bwt_in.len();
 
     // Convert frequency count to a cumulative sum of frequencies
     let mut freq = [0_u32; 256];
+
     {
         for i in 0..255 {
             freq[i + 1] = freq[i] + freq_in[i];
@@ -112,13 +133,13 @@ pub fn bwt_decode_test(key: u32, bwt_in: &[u32], mut freq_in: [u32; 256]) -> Vec
     The suffix pointer (24 bits) is combined with the element (8 bits) to create a u32 combined
     info word for the t^(-1) vector (24 bits of pointer and 8 bits of symbol).
     */
+    /* Not working
     let mut t_vec = vec![0_u32; end + 19];
 
     for (i, &s) in bwt_in.iter().enumerate() {
         t_vec[freq[s as usize] as usize] = ((i as u32) << 8 | s);
         freq[s as usize] += 1;
     }
-
     // Transform the data. Initialize the output vec.
     let mut orig = vec![0_u8; end];
 
@@ -132,14 +153,51 @@ pub fn bwt_decode_test(key: u32, bwt_in: &[u32], mut freq_in: [u32; 256]) -> Vec
         key = k;
         *el = b;
     }
+    println!("u8:\n{:?}", &orig);
+    println!("Decoded:\n{}", std::str::from_utf8(&orig).unwrap());
+    orig
+    */
+
+    //Build the transformation vector to find the next character in the original data
+    // Using an array instead of a vec saves about 4 ms.
+    let mut t_vec = [0_u32; 900024];
+    for (i, &s) in bwt_in.iter().enumerate() {
+        t_vec[freq[s as usize] as usize] = i as u32;
+        freq[s as usize] += 1
+    }
+
+    //Build the keys vector to find the next character in the original data
+    // This is the slowest portion of this function - I assume cache misses causes problems
+    // It slows down when t_vec is over about 500k.
+    let mut keys = vec![0_u32; end];
+    let mut key = key;
+
+    // Assign to keys[0] to avoid a temporary assignment below
+    keys[0] = t_vec[key as usize];
+
+    for i in 1..end {
+        keys[i] = t_vec[keys[i - 1] as usize];
+    }
+    // (1..end)
+    // .into_par_iter()
+    // .fold( || vec![], |mut acc, i|  {acc.push(t_vec[keys[i - 1] as usize]);acc})
+    // .reduce(|| vec![], | a,  b| a.into_iter().chain(b.into_iter()).collect());
+
+    // Transform the data
+    let mut orig = vec![0_u8; end];
+    for i in 0..bwt_in.len() {
+        orig[i] = bwt_in[keys[i] as usize] as u8;
+    }
+    //println!("u8:\n{:?}", &orig);
+    //println!("Decoded:\n{}", std::str::from_utf8(&orig).unwrap());
 
     orig
 }
 
 fn key_byte(complex: u32) -> (usize, u8) {
-    let byte = (complex & 0xff) as u8;
-    let b2 = complex as u8;
-    let ptr = complex >> 8;
+    //let byte = (complex & 0xff) as u8;
+    //let b2 = complex as u8;
+    //let ptr = complex >> 8;
     ((complex >> 8) as usize, (complex & 0xff) as u8)
 }
 

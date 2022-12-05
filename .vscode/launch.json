@@ -24,7 +24,7 @@
                 //"-d",
                 //"src/timeseries_export2.csv",
                 //"-z",
-                "src/Peter.txt",
+                //"src/Peter.txt",
                 //"src/IMG_7.tiff",
                 //"/Users/david/Documents/bzip2/bzip2/tests/sample1.bz2",
                 //"src/idiot shorter.txt",
@@ -36,7 +36,7 @@
                 //"src/test.txt",
                 // "-z",
                 //"9",
-                //"src/idiot.txt",
+                "src/idiot.txt",
                 "-z",
                 "-v4",
                 //"src/Peter_Julian1.bz2",
@@ -48,7 +48,6 @@
                 "9",
                 //"simple",
                 //"sais",
-                //"radix",
                 "parallel"
             ],
             "cwd": "${workspaceFolder}"

@@ -1,15 +1,15 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write, Read};
+use std::io::{self, Read, Write};
 use std::os::unix::prelude::MetadataExt;
 
-use log::{info, debug};
+use log::{debug, info};
 
-use crate::tools::crc::{do_crc, do_stream_crc};
 use crate::bitstream::bitwriter::BitWriter;
+use crate::tools::crc::{do_crc, do_stream_crc};
 
-use crate::julian::primary::main_sort::QsortData;
 use super::compress_block::compress_block;
-use crate::tools::cli::{BzOpts, Algorithms};
+use crate::julian::primary::main_sort::QsortData;
+use crate::tools::cli::{Algorithms, BzOpts};
 use crate::tools::rle1::rle_encode;
 
 /*
@@ -102,6 +102,9 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     while bytes_left > 0 {
         block.data.clear();
         block.temp_vec.clear();
+        // Are these next two necessary?
+        block.sym_map.clear();
+        block.freqs.clear();
 
         // Calculate how much data we need for this next block.
         //   We can't exceed the input file size, though.
@@ -114,7 +117,8 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
             if buf.is_empty() {
                 //   Read 20% more than we need, if we have enough data left.
                 buf = vec![0; (block.end as usize * 5 / 4).min(bytes_left)];
-                fin.read_exact(&mut buf).expect("Could not read enough bytes.");
+                fin.read_exact(&mut buf)
+                    .expect("Could not read enough bytes.");
             }
             // Do the rle on a glob of data - hopefully more than we need
             let (processed, new_data) = rle_encode(&buf, bytes_desired);

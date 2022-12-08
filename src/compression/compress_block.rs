@@ -9,9 +9,9 @@ use crate::snyder::bwt_ds_par::bwt_encode_par;
 use crate::tools::cli::Algorithms;
 use log::{debug, info};
 
+use crate::compression::compress::Block;
 use crate::huffman_coding::huffman::huf_encode;
 use crate::tools::{mtf::mtf_encode, rle2::rle2_encode};
-use crate::compression::compress::Block;
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Compress one block and write out the stream.

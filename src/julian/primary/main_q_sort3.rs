@@ -1,6 +1,4 @@
-use std::cmp::Ordering;
-
-use log::{error, info, warn};
+use log::{error, warn};
 
 use super::{main_simple_sort::main_simple_sort, main_sort::QsortData};
 const MAIN_QSORT_STACK_SIZE: usize = 100;

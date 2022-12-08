@@ -1,4 +1,4 @@
-use log::{error, warn};
+use log::{error};
 
 use super::main_sort::QsortData;
 

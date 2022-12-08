@@ -33,11 +33,10 @@ pub fn block_sort(block: & mut Block, qs: & mut QsortData) {
 
         main_sort(block, qs);
 
-        info!(
-            " {} work, {} block, ratio {}",
+        debug!(
+            "Work depleated: {}, block size: {}.",
             budget_init - block.budget,
             block.end,
-            (budget_init - block.budget) / (block.end as i32).min(1)
         );
         if block.budget < 0 {
             debug!("    too repetitive; using fallback sorting algorithm");

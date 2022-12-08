@@ -5,7 +5,7 @@
 #![warn(clippy::disallowed_types)]
 //#[global_allocator]
 //static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-#![allow(clippy::special_module_name)]
+#![allow(special_module_name)]
 mod bitstream;
 mod bwt_ribzip;
 mod compression;
@@ -26,7 +26,7 @@ use simplelog::{Config, TermLogger, TerminalMode};
 fn main() -> Result<(), std::io::Error> {
     // Available log levels are Error, Warn, Info, Debug, Trace
     TermLogger::init(
-        LevelFilter::Info,
+        LevelFilter::Debug,
         Config::default(),
         TerminalMode::Stdout,
         simplelog::ColorChoice::AlwaysAnsi,

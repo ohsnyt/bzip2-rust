@@ -1,4 +1,4 @@
-use log::{error, trace, warn};
+use log::{debug, error, info, trace};
 
 use crate::bitstream::bitwriter::BitWriter;
 
@@ -139,7 +139,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
                 } // End of the for_each loop, we've gone through the entire input (again).
             });
 
-        warn!(
+        info!(
             " pass {}: best cost is {}, grp uses are {:?}",
             iter + 1,
             total_cost / 8,
@@ -147,16 +147,12 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         );
 
         if iter == iterations - 1 {
-            warn!("Final tables:",);
-            for i in 0..table_count {
-                warn!(
+            debug!("Final tables:",);
+            for (i, table) in tables.iter().enumerate().take(table_count) {
+                debug!(
                     "\n      {}: {:?}",
                     i,
-                    tables[i]
-                        .iter()
-                        .take(block.eob as usize + 1)
-                        .map(|s| *s)
-                        .collect::<Vec<u32>>()
+                    table.iter().take(block.eob as usize + 1).copied()
                 );
             }
         }
@@ -172,11 +168,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
             trace!(
                 "Table {}:\n{:?}",
                 t,
-                tables[t]
-                    .iter()
-                    .take(block.eob as usize)
-                    .map(|s| *s)
-                    .collect::<Vec<_>>()
+                tables[t].iter().take(block.eob as usize + 1).copied()
             );
         });
     }

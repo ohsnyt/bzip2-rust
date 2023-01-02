@@ -271,8 +271,6 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
             let (l, s) = &huf_decode_maps[selector_map[block_index]];
             let mut level = l;
             let mut symbol_index = s;
-            // FOR DEBUGGING
-            let mut mark_loc = br.loc();
 
             // Loop through the data in chunks trying to find valid symbols in the bit stream
             loop {
@@ -293,12 +291,6 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
                     let sym = symbol_index
                         [(level[depth].offset + code - level[depth].start_code) as usize];
 
-                    // DEBUGGING
-                    println!(
-                        "{:>3}: Found {} and writing at {}",
-                        block_index, sym, mark_loc
-                    );
-                    mark_loc = br.loc();
 
                     // Put it into the output vec.
                     out[block_index] = sym;
@@ -342,11 +334,6 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
         let size = 900019_usize;
 
         let (mtf_out, freq) = rle2_mtf_decode_fast(&out, &mut symbol_set, size);
-
-        for byte in &mtf_out {
-            print!("{:x?} ", *byte);
-        }
-        println!("");
 
         timer.mark("rle_mtf");
 

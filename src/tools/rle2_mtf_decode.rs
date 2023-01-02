@@ -6,7 +6,7 @@ const RUNB: u16 = 1;
 const ZERO_BOMB: usize = 2 * 1024 * 1024;
 
 /// Does run-length-decoding from rle2_encode.
-pub fn rle2_mtf_decode(data_in: &[u16], mut mtf_index: &mut Vec<u8>, size: usize) -> Vec<u8> {
+pub fn rle2_mtf_decode(data_in: &[u16], mtf_index: &mut Vec<u8>, size: usize) -> Vec<u8> {
     // Initialize output buffer
     let mut out = vec![0; size];
 

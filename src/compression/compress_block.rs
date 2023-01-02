@@ -8,7 +8,7 @@ use crate::snyder::bwt_ds::bwt_encode;
 use crate::snyder::bwt_ds_big::bwt_encode_big;
 use crate::snyder::bwt_ds_par::bwt_encode_par;
 use crate::tools::cli::Algorithms;
-use log::{debug, info, trace};
+use log::{debug, info};
 
 use crate::compression::compress::Block;
 use crate::huffman_coding::huffman::huf_encode;

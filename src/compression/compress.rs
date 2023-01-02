@@ -2,7 +2,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::unix::prelude::MetadataExt;
 
-use log::{debug, info, trace};
+use log::{debug, info};
 
 use crate::bitstream::bitwriter::BitWriter;
 use crate::tools::crc::{do_crc, do_stream_crc};

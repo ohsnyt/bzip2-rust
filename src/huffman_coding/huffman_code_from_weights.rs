@@ -1,5 +1,3 @@
-use log::trace;
-
 use super::huffman::{Node, NodeData};
 
 /// Improve a slice of Huffman codes lengths (u8) using a slice of  
@@ -48,9 +46,6 @@ pub fn improve_code_len_from_weights<'a>(
             // Keep the leaves sorted by weight so we pop elements correctly.
             //tree.sort_unstable_by(|a, b| b.weight.cmp(&a.weight));
             tree.sort_unstable();
-            // for el in &tree{
-            //     println!("{:>4} {:>2} ", el.syms, el.weight)
-            // }
 
             // Pull off the bottom nodes and make a new leaf
             let right_child = tree.pop().unwrap();
@@ -99,7 +94,6 @@ fn return_leaves(node: &Node, depth: u8, leaves: &mut Vec<(u16, u8)>) {
             return_leaves(right_child, depth + 1, leaves);
         }
         NodeData::Leaf(mtf) => {
-            //println!("Leaf symbol: {}, Depth: {}", mtf, depth);
             leaves.push((*mtf, depth));
         }
     };
@@ -110,8 +104,6 @@ fn return_leaves(node: &Node, depth: u8, leaves: &mut Vec<(u16, u8)>) {
 fn add_weights(a: u32, b: u32) -> u32 {
     let weight_mask: u32 = 0xffffff00;
     let depth_mask: u32 = 0x000000ff;
-    //println!("    a    b  a&wm b&wm max_depth_mask");
-    //println!("{:>5}{:>5}{:>5}{:>5}{:>5}", a, b, a & weight_mask, b & weight_mask,  a & depth_mask.max( b & depth_mask));
     ((a & weight_mask) + (b & weight_mask)) | (1 + (a & depth_mask).max(b & depth_mask))
 }
 

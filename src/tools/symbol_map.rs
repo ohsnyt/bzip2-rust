@@ -1,14 +1,16 @@
-use std::collections::VecDeque;
-
 const BIT_MASK: u16 = 0x8000;
 
 /// Similar to makeMaps_e
-/// Takes a sorted deduped vec of all symbols used in the input and
-/// creates the unique bzip2 symbol map of symbols encoded as u16s
-pub fn encode_sym_map(symbols: &VecDeque<u8>) -> Vec<u16> {
+/// Takes an array (or slice) of all symbols used in the input and creates the unique
+/// bzip2 symbol map. Assumes at least one symbol exists.
+pub fn encode_sym_map(symbols: &[u8]) -> Vec<u16> {
     let mut symbol_maps: Vec<u16> = vec![0; 17];
 
-    for byte in symbols.iter() {
+    // Find the end of the symbols if this is an array with trailing zeros. Assumes at least one symbol.
+    let end = symbols.iter().skip(1).position(|&n| n == 0).unwrap_or(255) + 1;
+
+    // This works even if end is greater than the length of symbols
+    for byte in symbols.iter().take(end) {
         let l1 = byte >> 4; // Divide by 16 (>>4) to find which map set the bit mask belongs to
         symbol_maps[0] |= BIT_MASK >> l1; // Mask the appropriate set
         symbol_maps[1 + l1 as usize] |= BIT_MASK >> (byte & 15); // (&15 = %16) index to the map, and set the mask there
@@ -34,25 +36,28 @@ pub fn decode_sym_map(symbol_map: &[u16]) -> Vec<u8> {
     indicating the presence / absense of those u8s. Etc.
     */
     //
-    let mut result: Vec<u8> = Vec::with_capacity(256);
+    let mut symbols: Vec<u8> = Vec::with_capacity(256);
     // Set a counter for the number of maps
     let mut map_idx = 0;
 
     for block in 0..16 {
         // Check the index to see if the next bit has a block of bytes
         if (symbol_map[0] & (BIT_MASK >> block)) > 0 {
+            // Found one, so increment the index to the correct symbol map offset
             map_idx += 1;
-            // If so, iterate through the next u16 to find which bytes were present
+            // Within that u16, iterate to find which bytes were present
             for byte_idx in 0..16_u8 {
+                // Is the next bit set (indicating that symbol existed in the data)?
                 if (symbol_map[map_idx] & (BIT_MASK >> byte_idx)) > 0 {
-                    // Store this symbol on the vec. (block * 16 + byte_idx = u8 value we found)
-                    result.push((block << 4) + byte_idx);
+                    // Store this symbol on the symbols vec. (block * 16 + byte_idx = u8 value we found)
+                    symbols.push((block << 4) + byte_idx);
                 };
             }
         }
     }
-    result
+    symbols
 }
+
 
 #[test]
 fn encode_symbol_map_test() {
@@ -60,17 +65,13 @@ fn encode_symbol_map_test() {
     x.push(0x1);
     x.sort_unstable();
     x.dedup();
-    let x = VecDeque::from(x);
+    let x = Vec::from(x);
     let idx = vec![48896, 16384, 33032, 1, 64, 32768, 24281, 47360];
     assert_eq!(idx, encode_sym_map(&x))
 }
 #[test]
 fn encode_symbol_map_full_test() {
-    let mut x: Vec<u8> = vec![];
-    for i in 0..=255 {
-        x.push(i)
-    }
-    let x = VecDeque::from(x);
+    let x = (0..=255).collect::<Vec<u8>>();
     let idx = vec![0xffff; 17];
     assert_eq!(idx, encode_sym_map(&x))
 }
@@ -86,12 +87,7 @@ fn decode_symbol_map_test() {
 #[test]
 fn decode_symbol_map_full_test() {
     let maps = vec![0xffff; 17];
-    let mut compare: Vec<u8> = vec![];
-    for i in 0..=255 {
-        compare.push(i)
-    }
-    compare.sort_unstable();
-    compare.dedup();
+    let compare = (0..=255).collect::<Vec<u8>>();
     assert_eq!(compare, decode_sym_map(&maps));
 }
 
@@ -100,7 +96,7 @@ fn roundtrip_symbol_map_test() {
     let mut x = "Decode this.".as_bytes().to_vec();
     x.sort_unstable();
     x.dedup();
-    let y = VecDeque::from(x.clone());
+    let y = Vec::from(x.clone());
     let rt = encode_sym_map(&y);
     assert_eq!(decode_sym_map(&rt), x)
 }

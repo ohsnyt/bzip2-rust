@@ -1,7 +1,9 @@
 use core::cmp::Ordering;
-use log::{debug, error, info, warn};
+use log::{error, trace};
 use rayon::prelude::*;
-use std::{mem, sync::Arc};
+use std::mem;
+
+use crate::compression::compress::Block;
 
 const SORT_XPOINT: usize = 40000; //Approx point at which parallel work is faster than sequential for sorting
 const VEC_XPOINT: usize = 75000; //Approx point at which parallel work is faster for BwtKey Vec creation
@@ -48,67 +50,56 @@ impl PartialEq for BwtKey {
 
 /// Parallel bwt sorting algorithm. ds. 2022.
 /// ENTRY POINT
-pub fn bwt_encode_par(data: &[u8]) -> (u32, Vec<u8>) {
-    let now = std::time::Instant::now();
-    info!("Entering parallel bwt sorting algorithm.");
-
+pub fn bwt_encode_par(block: &mut Block) {
     // Create usize sorting values
-    let udata: Vec<usize> = udata_par_map(data);
+    let udata: Vec<usize> = udata_par_map(&block.data);
     // Create vec of custom structs for sorting
-    let mut bwt_data = convert_to_bwt_data(data, &udata);
+    let mut bwt_data = convert_to_bwt_data(&block.data, &udata);
     // Do smart initial sort of the data
-    let now = std::time::Instant::now();
     if bwt_data.len() > SORT_XPOINT {
-        bwt_data.par_sort();
+        bwt_data.par_sort_unstable();
     } else {
-        bwt_data.sort();
+        bwt_data.sort_unstable();
     }
-    debug!("Initial sort took {:?}", now.elapsed());
 
     // Repeatedly sort the data as long as we find identical sequences in it.
     let mut sub_depth = 1;
     while subsorting(&mut bwt_data, sub_depth, &udata) {
         sub_depth += 1;
     }
-    // return the vec of sorted data
+    // Return key and sorted data via block
     // Logic for parallel vs sequential
 
     let end = bwt_data.len();
     if end > SORT_XPOINT {
-        /// Return key entry from bwt_keys
         if let Some(key) = bwt_data
             .par_iter()
             .enumerate()
             .find_first(|(_, el)| el.index == 0)
             .map(|(i, _)| i as u32)
         {
-            (
-                key,
-                bwt_data.par_iter().map(|el| el.symbol).collect::<Vec<u8>>(),
-            )
-        } else {
-            (0, vec![])
+            block.key = key;
+            bwt_data
+                .par_iter()
+                .map(|el| el.symbol)
+                .collect_into_vec(&mut block.data);
         }
-    } else {
-        if let Some(key) = bwt_data
-            .iter()
-            .enumerate()
-            .find(|(_, el)| el.index == 0)
-            .map(|(i, _)| i as u32)
-        {
-            (
-                key,
-                bwt_data.iter().map(|el| el.symbol).collect::<Vec<u8>>(),
-            )
-        } else {
-            (0, vec![])
-        }
+    } else if let Some(key) = bwt_data
+        .iter()
+        .enumerate()
+        .find(|(_, el)| el.index == 0)
+        .map(|(i, _)| i as u32)
+    {
+        block.key = key;
+        bwt_data
+            .par_iter()
+            .map(|el| el.symbol)
+            .collect_into_vec(&mut block.data);
     }
 }
 
 /// Parallel update BwtKey data after sort
 fn subsorting(data: &mut [BwtKey], rundepth: u32, udata: &Vec<usize>) -> bool {
-    let now = std::time::Instant::now();
     // Create tuples of all identical sort key sequences
     let mut seqs: Vec<(usize, usize)> = Vec::new();
     // Limit local variables to this block
@@ -138,30 +129,27 @@ fn subsorting(data: &mut [BwtKey], rundepth: u32, udata: &Vec<usize>) -> bool {
         update_bwt_keys(&mut data[*start..*end], rundepth, udata);
         if end - start > SORT_XPOINT {
             data[*start..*end].par_sort();
-            debug!("{} par keys. ", end - start);
+            trace!("\n{} par keys. ", end - start);
         } else {
             data[*start..*end].sort();
         }
     });
-
-    debug!("Run depth {} took {:?}.", rundepth, now.elapsed());
 
     // Return true (we sorted something)
     true
 }
 
 /// Convert data to BwtKey vector
-fn convert_to_bwt_data(mut data: &[u8], udata: &[usize]) -> Vec<BwtKey> {
+fn convert_to_bwt_data(data: &[u8], udata: &[usize]) -> Vec<BwtKey> {
     let end = data.len();
-    if end > SORT_XPOINT {
+    if end > VEC_XPOINT {
         data.par_iter()
             .enumerate()
-            .map(|(i, _)| {
-                BwtKey::new(
-                    ((end - i) % end) as u32,
-                    udata[(end - i) % end],
-                    data[(end - 1) - i % end],
-                )
+            .map(|(i, _)| BwtKey {
+                index: ((end - i) % end) as u32,
+                sort: udata[(end - i) % end],
+                depth: 0,
+                symbol: data[((end - 1) - i) % end],
             })
             .collect::<Vec<BwtKey>>()
     } else {
@@ -182,25 +170,20 @@ fn convert_to_bwt_data(mut data: &[u8], udata: &[usize]) -> Vec<BwtKey> {
 fn update_bwt_keys(mut data: &mut [BwtKey], depth: u32, udata: &Vec<usize>) {
     let end = udata.len();
     // Parallel processing helps with performance when the data set is over 75k in size.
-    if end > VEC_XPOINT {
-        pub fn convert_a2(mut data: &[u8], udata: &[usize]) -> Vec<BwtKey> {
-            let end = data.len();
-            data.par_iter()
-                .enumerate()
-                .map(|(i, sym)| BwtKey {
-                    index: ((end - i) % end) as u32,
-                    sort: udata[(end - i) % end],
-                    depth: 0,
-                    symbol: data[(end - i) % end],
-                })
-                .collect()
-        }
-    }
+    // FIX THIS
+    // if end > VEC_XPOINT {
+    //     let offset = (std::mem::size_of::<usize>()) * (depth as usize);
+    //     data.par_iter_mut()
+    //         .enumerate()
+    //         .map(|(i, el)| el.update(udata[(i + offset) % end], depth as u16))
+    //         .count();
+    // } else {
     let offset = (std::mem::size_of::<usize>()) * (depth as usize);
     for i in 0..data.len() {
         data[i].sort = udata[(data[i].index as usize + offset) % end];
         data[i].depth = depth as u16;
     }
+    //}
 }
 
 /// Create fast usize sorting data from input.
@@ -347,19 +330,5 @@ pub fn udata_par_map(data: &[u8]) -> Vec<usize> {
                 panic!()
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[test]
-
-    pub fn basic_encoding_test() {
-        let transformed = b"fsrrdkkeaddrrffs,esd?????     eeiiiieeeehrppkllkppttpphppPPIootwppppPPcccccckk      iipp    eeeeeeeeer'ree  ".to_vec();
-        let orig_ptr = 24;
-        let original = b"If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?????".to_vec();
-        let res = bwt_encode_par(&original);
-        assert_eq!(res, (orig_ptr, transformed));
     }
 }

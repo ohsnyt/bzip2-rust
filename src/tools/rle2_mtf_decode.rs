@@ -5,7 +5,7 @@ const RUNA: u16 = 0;
 const RUNB: u16 = 1;
 const ZERO_BOMB: usize = 2 * 1024 * 1024;
 
-/* /// Does run-length-decoding from rle2_encode.
+/// Does run-length-decoding from rle2_encode.
 pub fn rle2_mtf_decode(data_in: &[u16], mut mtf_index: &mut Vec<u8>, size: usize) -> Vec<u8> {
     // Initialize output buffer
     let mut out = vec![0; size];
@@ -82,31 +82,26 @@ pub fn rle2_mtf_decode(data_in: &[u16], mut mtf_index: &mut Vec<u8>, size: usize
     out.truncate(index - 1);
     out
 }
- */
-/// Does run-length-decoding from rle2_encode.
+
+/// Does run-length-decoding and MTF decoding.
+/// Takes huffman decoder data, symbol set, and max block size.
+/// Returns ascii data for bwt transform, plus frequency count of the data.
 pub fn rle2_mtf_decode_fast(
     data_in: &[u16],
     mtf_index: &mut Vec<u8>,
     size: usize,
-) -> (Vec<u32>, Vec<u32>) {
+) -> (Vec<u8>, Vec<u32>) {
     // Initialize output buffer
-    let mut out = vec![0_u32; size];
+    let mut out = vec![0_u8; size];
 
     // Initialize counters
     let mut zeros = 0_usize;
     let mut bit_multiplier = 1;
     let mut index = 0_usize;
 
-    // Add (bogus) eob symbol to the mtf_index (symbol set)
-    mtf_index.push(0);
-
-    // For speed bump in unsafe code below
-    //let end = mtf_index.len();
-    //let halfway = end << 2;
-
-    // iterate through the input, doing the conversion as we find RUNA/RUNB sequences
-    for &symbol in data_in {
-        match symbol {
+    // iterate through the input (less EOB), doing the conversion as we find RUNA/RUNB sequences
+    for &rle2_code in data_in.iter().take(data_in.len() - 1) {
+        match rle2_code {
             // If we found RUNA, do magic to calculate how many zeros we need
             RUNA => {
                 zeros += bit_multiplier;
@@ -118,58 +113,70 @@ pub fn rle2_mtf_decode_fast(
                 bit_multiplier <<= 1;
             }
 
-            // Found a "normal" symbol
+            // Found a "normal" rle2_code
             n => {
-                // Output zero data, if any
+                // Output zeros from RUNA/RUNB sequences, if any
                 if zeros > 0 {
                     zero_bomb(zeros);
-                    for symbol in out.iter_mut().skip(index).take(zeros + 1) {
-                        *symbol = mtf_index[0] as u32;
+                    for repeat in out.iter_mut().skip(index).take(zeros) {
+                        *repeat = mtf_index[0];
                     }
 
-                    // Adjust the counters
+                    // Adjust the RUNA/RUNB sequence counters
                     index += zeros;
                     bit_multiplier = 1;
                     zeros = 0;
                 }
 
-                // Then output the symbol (location is one less than n)
-                let mut loc = n as usize - 1;
-                out[index] = mtf_index[loc] as u32;
+                // Convert the RLE2_code into an MTF_code
+                let mut mtf_code = n as usize - 1;
+                // And output an byte from the MTF index
+                out[index] = mtf_index[mtf_code];
 
                 // Increment the index
                 index += 1;
 
-                // If the index is less than 16 elements into the vec,
-                if loc < 16 {
+                // If this index is less than 16 elements into the vec,
+                if mtf_code < 16 {
                     // Shift each index at the front of mtfa "forward" one. Do this first in blocks of 4 for speed.
-                    let temp_sym = mtf_index[loc];
+                    let temp_sym = mtf_index[mtf_code];
 
-                    while loc > 3 {
-                        mtf_index[loc] = mtf_index[loc - 1];
-                        mtf_index[loc - 1] = mtf_index[loc - 2];
-                        mtf_index[loc - 2] = mtf_index[loc - 3];
-                        mtf_index[loc - 3] = mtf_index[loc - 4];
-                        loc -= 4;
+                    while mtf_code > 3 {
+                        mtf_index[mtf_code] = mtf_index[mtf_code - 1];
+                        mtf_index[mtf_code - 1] = mtf_index[mtf_code - 2];
+                        mtf_index[mtf_code - 2] = mtf_index[mtf_code - 3];
+                        mtf_index[mtf_code - 3] = mtf_index[mtf_code - 4];
+                        mtf_code -= 4;
                     }
                     // ...then clean up any odd ones
-                    while loc > 0 {
-                        mtf_index[loc] = mtf_index[loc - 1];
-                        loc -= 1;
+                    while mtf_code > 0 {
+                        mtf_index[mtf_code] = mtf_index[mtf_code - 1];
+                        mtf_code -= 1;
                     }
-                    // ...and finally put the "new" symbol index at the front of the index.
+                    // ...and finally move this index to the front.
                     mtf_index[0] = temp_sym;
                 } else {
                     /* general case */
-                    let sym = mtf_index.remove(loc);
+                    let sym = mtf_index.remove(mtf_code);
                     mtf_index.insert(0, sym as u8)
                 }
             }
         }
     }
+    // Output trailing zeros from RUNA/RUNB sequences, if any
+    if zeros > 0 {
+        zero_bomb(zeros);
+        for repeat in out.iter_mut().skip(index).take(zeros) {
+            *repeat = mtf_index[0];
+        }
 
-    // Truncate the vec to the actual data, removing the eob marker.
-    out.truncate(index - 1);
+        // Adjust the index as needed
+        index += zeros;
+    }
+
+    // Truncate the vec to the actual data.
+    // (Index is incremented after writing the symbol, so must be decremented by one here.)
+    out.truncate(index);
 
     //Create the freq vec using a parallel approach
     let freq = out

@@ -15,13 +15,15 @@ pub enum Algorithms {
     Simple,
     // Parallel - uses custom BWT sorting alorithm with Rayon when compressing
     Parallel,
+    // Big sequential - uses custom BWT sorting alorithm without Rayon
+    Big,
 }
 /// Define three operational modes
 #[derive(Debug)]
 pub enum Mode {
     Zip,
     Unzip,
-    Test,
+    //Test,
 }
 impl Display for Mode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -79,7 +81,7 @@ impl BzOpts {
         Self {
             file: None,
             block_size: 9,
-            op_mode: Mode::Test,
+            op_mode: Mode::Zip,
             keep_input_files: false,
             work_factor: WorkFactor::Normal,
             force_overwrite: false,
@@ -156,7 +158,7 @@ pub struct Args {
     #[clap(long = "best")]
     best: bool,
 
-    /// Sets verbosity. -v1 shows very little, -v4 is chatty
+    /// Sets verbosity. -v1 shows very little, -v5 is chatty
     #[clap(short = 'v', default_value_t = 3)]
     v: u8,
 
@@ -232,9 +234,9 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
         bz_opts.block_size = 2
     };
 
-    if args.test {
-        bz_opts.op_mode = Mode::Test
-    };
+    // if args.test {
+    //     bz_opts.op_mode = Mode::Test
+    // };
 
     if args.fast {
         bz_opts.block_size = 2
@@ -246,10 +248,12 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
 
     // Set the log level
     match args.v {
-        1 => log::set_max_level(log::LevelFilter::Off),
-        2 => log::set_max_level(log::LevelFilter::Error),
+        0 => log::set_max_level(log::LevelFilter::Off),
+        1 => log::set_max_level(log::LevelFilter::Error),
+        2 => log::set_max_level(log::LevelFilter::Warn),
         3 => log::set_max_level(log::LevelFilter::Info),
-        _ => log::set_max_level(log::LevelFilter::Debug),
+        4 => log::set_max_level(log::LevelFilter::Debug),
+        _ => log::set_max_level(log::LevelFilter::Trace),
     };
 
     // NOTE: This overwrites the best and small flags!
@@ -268,6 +272,7 @@ pub fn init_bz_opts(bz_opts: &mut BzOpts) {
     // Below we report initialization status to the user
     info!("---- Bzip2 Initialization Start ----",);
     info!("Verbosity set to {}", log::max_level());
+    //log::trace!("Testing trace level");
     info!("Operational mode set to {}", bz_opts.op_mode);
     match &bz_opts.file {
         Some(s) => info!("Getting input from the file {}", s),

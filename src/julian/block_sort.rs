@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::{trace, warn};
 
 use crate::compression::compress::Block;
 
@@ -7,7 +7,7 @@ use super::primary::main_sort::{main_sort, QsortData};
 
 /// Primary entry into Julian's BWT sorting system. This receives a ref to the block,  and the work factor.
 /// It returns the key (usize) and data.
-pub fn block_sort(block: & mut Block, qs: & mut QsortData) {
+pub fn block_sort(block: &mut Block, qs: &mut QsortData) {
     // If the size of the block us under 10k, use the fallbackSort function.
     if block.end < 10000 {
         fallback_sort(block)
@@ -33,13 +33,13 @@ pub fn block_sort(block: & mut Block, qs: & mut QsortData) {
 
         main_sort(block, qs);
 
-        debug!(
-            "Work depleated: {}, block size: {}.",
+        trace!(
+            "\nWork depleated: {}, block size: {}.",
             budget_init - block.budget,
             block.end,
         );
         if block.budget < 0 {
-            debug!("    too repetitive; using fallback sorting algorithm");
+            warn!("    too repetitive; using fallback sorting algorithm");
             fallback_sort(block);
         }
     };

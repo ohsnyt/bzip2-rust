@@ -1,4 +1,4 @@
-use log::error;
+use log::{error, trace};
 
 /// Creates a bitstream for output. Although output is accessible at any time, it
 /// is best to call Flush before reading the "final" output.
@@ -45,6 +45,9 @@ impl BitWriter {
         self.queue |= (data & (0xffffffff >> (32 - depth))) as u64; //add data portion to queue
         self.q_bits += depth; //update depth of queue bits
         self.write_stream();
+        // DEBUGGING
+        let width = depth as usize;
+        println!("\x1b[93m{:0>width$b} \x1b[0m",data & (0xffffff));
     }
 
     /// Takes a 32 bit word of pre-packed binary encoded data and puts it on the stream.
@@ -77,7 +80,7 @@ impl BitWriter {
         if self.q_bits > 0 {
             self.queue <<= 8 - self.q_bits; //pad the queue with zeros
             self.q_bits += 8 - self.q_bits;
-            self.write_stream(); // write out all tha tis left
+            self.write_stream(); // write out all that is left
             if self.q_bits > 0 {
                 error!("Stuff left in the BitWriter queue.");
             }

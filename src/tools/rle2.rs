@@ -20,21 +20,12 @@ However it proved to require lots of lookups through BtreeMaps. I have moved bac
 hopes of signficant speed advantages of direct indexing instead of searches.)
 */
 
-//use log::error;
-
 use crate::compression::compress::Block;
-
-//pub(crate) const RUNA: u16 = 0;
-//pub(crate) const RUNB: u16 = 1;
 
 /// Does run-length-encoding only on byte 0_u8. Output (a Vec<u16>) is encoded in a unique Bzip2 way 
 /// and placed in temp_vec within Block
 pub fn rle2_encode(block: &mut Block) {
     let mut zeros: u32 = 0;
-    // we will need an End Of Block byte to be one larger than the last byte recorded.
-    //let mut eob = 0;
-    // we will need a frequency count of all symbols
-    let mut freq_out = [0u32; 258];
 
     // iterate through the input, turning runs of 1+ zeros into RUNA/RUNB sequences
     // shift all other indexes up one
@@ -49,7 +40,7 @@ pub fn rle2_encode(block: &mut Block) {
             // We didn't find a zero. So If we have any pending zeros to put out
             if zeros > 0 {
                 // write out the pending zeros using the special bzip2 coding
-                block.temp_vec.extend(rle2_encode_runs(zeros, &mut freq_out).iter());
+                block.temp_vec.extend(rle2_encode_runs(zeros, &mut block.freqs).iter());
                 // and reset the zeros counter
                 zeros = 0;
             }
@@ -59,12 +50,12 @@ pub fn rle2_encode(block: &mut Block) {
             //Write out the pending character with the value incremented by 1
             block.temp_vec.push(tmp);
             // Increment the frequency counts
-            freq_out[tmp as usize] += 1;
+            block.freqs[tmp as usize] += 1;
             // Alway look for the largest value so we can mark the eob as +1
             block.eob = block.eob.max(tmp);
         }
     }
-    block.temp_vec.extend(rle2_encode_runs(zeros, &mut freq_out).iter());
+    block.temp_vec.extend(rle2_encode_runs(zeros, &mut block.freqs).iter());
     // Increment the eob symbol to be one more than the largest symbol we found.
     block.eob += 1;
     // Write out the EOB to the stream.

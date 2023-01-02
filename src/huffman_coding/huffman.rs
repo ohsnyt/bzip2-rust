@@ -1,36 +1,40 @@
-use log::{ error, debug};
+use log::{error, trace, warn};
 
 use crate::bitstream::bitwriter::BitWriter;
 
-use crate::compression::compress::Block;
 use super::huffman_code_from_weights::improve_code_len_from_weights;
+use crate::compression::compress::Block;
 use std::cmp::Ordering;
 use std::io::Error;
 
-#[derive(Eq, PartialEq, PartialOrd, Debug, Clone)]
+#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone)]
 pub enum NodeData {
     Kids(Box<Node>, Box<Node>),
     Leaf(u16),
 }
-
-#[derive(Eq, PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Ord, Debug, Clone)]
 pub struct Node {
     pub weight: u32,
     pub depth: u8,
+    pub syms: u32,
     pub node_data: NodeData,
 }
 impl Node {
-    pub fn new(weight: u32, depth: u8, node_data: NodeData) -> Node {
+    pub fn new(weight: u32, depth: u8, syms: u32, node_data: NodeData) -> Node {
         Node {
             weight,
             depth,
+            syms,
             node_data,
         }
     }
 }
 impl PartialOrd for Node {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.weight.partial_cmp(&other.weight)
+        if other.weight == self.weight {
+            return Some(other.syms.cmp(&self.syms));
+        }
+        Some(other.weight.cmp(&self.weight))
     }
 }
 
@@ -38,7 +42,381 @@ impl PartialOrd for Node {
 /// Encode MTF data using Julian's multi-table system.
 /// In addition to the options and BitWriter, we need frequency counts,
 /// the bwt key, crc, the symbol map, and eob symbol (last symbol).
-pub fn huf_encode(
+pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> Result<(), Error> {
+    // Get the length of this RLE2 compressed block
+    let vec_end = block.temp_vec.len();
+    // We can have 2-6 coding tables depending on how much data we have coming in.
+    let table_count: usize = match vec_end {
+        0..=199 => 2,
+        200..=599 => 3,
+        600..=1199 => 4,
+        1200..=2399 => 5,
+        _ => 6,
+    };
+
+    // Now we can initialize the coding tables based on our frequency counts
+    let mut tables = init_tables(&block.freqs, table_count, block.eob);
+
+    // And initialize a count of how many selectors we need, a vec to store them,
+    let selector_count = (block.temp_vec.len() / 50) + 1;
+    let mut selectors = vec![0_usize; selector_count];
+
+    /*
+     So now we have our tables divided out by frequency ratios. Each symbol in each table
+     is either a 0 or a 15. At the end of this next loop, those will be adjusted as we test
+     against real data. These adjusted numbers are used to build a huffman tree, and
+     thereby the huffman codes.
+
+     We will iterate four times (default value, can be changed in options) to improve the tables.
+     ds: Nov 2022: Looking at trial runs, it seems that three trial runs gains almost the same
+     value as four times. Each larger size gains slightly more in ascii texts. Therefor I added
+     an option to let the user change the number of trial runs -- mostly for more testing purposes.
+    */
+
+    for iter in 0..iterations {
+        // initialize favorites[] to 0 for each table/group, for reporting only
+        let mut favorites = [0; 6];
+
+        // Initilalize the total cost for this iteration (used only in reporting)
+        let mut total_cost = 0;
+
+        // Initialize "recalculated" frequency array for each table/group (for adjusting the tables)
+        let mut rfreq = [[0u32; 258]; 6];
+
+        // Reset the selectors on each iteration - not needed because we record them only on the last iteration
+        //selectors.clear();
+
+        /*
+        Time to move through the input 50 bytes at a time. For each group of 50, we
+        compute the best table to use based on the one that has the lowest "weight" cost.
+
+        NOTE: Julian did a trick with rolling all six 16 bit arrays into 3 32 bit arrays.
+        I'm not doing that here. If we do in the future, I believe we could use 1 128 bit array
+        for the same purpose (or possibly 2 64 bit arrays, or a struct).
+
+        Our goal is to find the coding table which has the lowest cost for this chunk
+        of data, and record that in the selector table.
+        */
+
+        block
+            .temp_vec
+            .chunks(50)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                // the cost array helps us find which table is best for each 50 byte chunk
+                let mut cost = [0; 6];
+
+                // Find the best table for the next chunk
+                // For each symbol, iterate through each table and calculate that tables cost for the symbol
+                chunk.iter().for_each(|symbol| {
+                    (0..table_count).for_each(|t| cost[t] += tables[t][*symbol as usize])
+                });
+
+                // Get the position of the lowest non-zero cost (or first if several have the same low cost)
+                let bt = cost
+                    .iter()
+                    .position(|n| n == cost[0..table_count as usize].iter().min().unwrap())
+                    .unwrap() as usize;
+
+                // Add that lowest cost to total_cost for the entire input data set
+                total_cost += cost[bt];
+
+                // For reporting only, increment the appropriate fave array with the index
+                // so we know how many times this table was chosen as "best"
+                favorites[bt] += 1;
+
+                // Now that we know the best table, go get the frequency counts for
+                // the symbols in this group of 50 bytes and store the freq counts into rfreq.
+                // As we go through an iteration, this becomes cumulative.
+                // This is used to improve the tables for the next iteration.
+                chunk
+                    .iter()
+                    .for_each(|&symbol| rfreq[bt as usize][symbol as usize] += 1);
+
+                // On the last iteration, collect the selector list
+                if iter == iterations - 1 {
+                    selectors[i] = bt;
+                } // End of the for_each loop, we've gone through the entire input (again).
+            });
+
+        warn!(
+            " pass {}: best cost is {}, grp uses are {:?}",
+            iter + 1,
+            total_cost / 8,
+            favorites
+        );
+
+        if iter == iterations - 1 {
+            warn!("Final tables:",);
+            for i in 0..table_count {
+                warn!(
+                    "\n      {}: {:?}",
+                    i,
+                    tables[i]
+                        .iter()
+                        .take(block.eob as usize + 1)
+                        .map(|s| *s)
+                        .collect::<Vec<u32>>()
+                );
+            }
+        }
+
+        // Next we will call improve_code_len_from_weights on each of the tables we made.
+        // This makes actual node trees based off our weighting. This will put the
+        // improved weights into the weight arrays. As mentioned, we do this 4 times.
+        // for t in 0..table_count as usize {
+        //     improve_code_len_from_weights(&mut tables[t], &rfreq[t], block.eob);
+        // }
+        (0..table_count).for_each(|t| {
+            improve_code_len_from_weights(&mut tables[t], &rfreq[t], block.eob);
+            trace!(
+                "Table {}:\n{:?}",
+                t,
+                tables[t]
+                    .iter()
+                    .take(block.eob as usize)
+                    .map(|s| *s)
+                    .collect::<Vec<_>>()
+            );
+        });
+    }
+    /*
+      4 iterations are now done, and we have good tables and selectors.
+      Time to make actual binary codes for reach table. Since we have good lengths,
+      we can use the code_from_length function to quickly generate codes.
+    */
+
+    // Next are the symbol maps, 16 bit L1 + 0-16 words of 16 bit L2 maps.
+    for word in &block.sym_map {
+        bw.out16(*word);
+    }
+
+    // Symbol maps are followed by a 3 bit number of Huffman trees that exist
+    bw.out24((3 << 24) | table_count as u32);
+
+    // Then a 15 bit number indicating the how many selectors are used
+    // (how many 50 byte groups are in this block of data)
+    bw.out24((15 << 24) | selector_count as u32);
+
+    /*
+    Selectors tell us which table is to be used for each 50 symbol chunk of input
+    data in this block.
+
+    Given a list of selectors such as [0,2,0,2,1,0], we can see that bytes
+    1-50 are decoded by table 0, 51-100 are decoded by table 2, etc.
+
+    HOWEVER, the selectors are written after a Move-To-Front transform, to save space.
+    */
+
+    // Initialize an index to the tables to do a MTF transform for the selectors
+    let mut table_idx = vec![0, 1, 2, 3, 4, 5];
+
+    // Prepare the output selector vec
+    let mut mtf_selectors = vec![0_usize; selector_count];
+
+    // ...then do the MTF transform of the selector vector
+    for i in 0..selector_count {
+        let selector = selectors[i];
+        let mut idx = table_idx.iter().position(|c| c == &selector).unwrap();
+        mtf_selectors[i as usize] = idx;
+        // If the index is not already at the front of the table, do a MTF
+        if table_idx[idx] != 0 {
+            // Shift each index at the front of selector "forward" one. Do blocks of 3 for speed.
+            let temp_sel = table_idx[idx as usize];
+
+            while idx > 2 {
+                table_idx[idx as usize] = table_idx[idx as usize - 1];
+                table_idx[idx as usize - 1] = table_idx[idx as usize - 2];
+                table_idx[idx as usize - 2] = table_idx[idx as usize - 3];
+                idx -= 3;
+            }
+            // ...then clean up any odd ones
+            while idx > 0 {
+                table_idx[idx as usize] = table_idx[idx as usize - 1];
+                idx -= 1;
+            }
+            // ...and finally put the "new" symbol index at the front of the index.
+            table_idx[0] = temp_sel;
+        }
+    }
+
+    // Now write out all the mtf'ed selectors
+    for selector in &mtf_selectors {
+        match selector {
+            0 => bw.out24(0x01000000),
+            1 => bw.out24(0x02000002),
+            2 => bw.out24(0x03000006),
+            3 => bw.out24(0x0400000e),
+            4 => bw.out24(0x0500001e),
+            5 => bw.out24(0x0600003e),
+            _ => error!("Bad selector value of {}", selector),
+        };
+    }
+    // All done with mtf_selectors.
+    drop(mtf_selectors);
+    /*
+    Now create the huffman codes. We need to convert our weights to huffman codes.
+    (And later we will want to use the BitWriter with those codes also.)
+    We will need both a vec of all output code tables, and a temporary place
+    to build each output-style table.
+
+    Remember, our tables are full 258 size arrays. We've done indexing and move-to-
+    front transforms, so we are using only the bottom portion of that array.
+
+    We will shift from an array format to a vec, which allows us to use Rust's
+    optimized sorting functions.
+    */
+
+    // Create the vec for the output-style code tables
+    let mut out_code_tables = vec![];
+
+    // For as many tables as we have, we have quite few steps to do
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..table_count as usize {
+        // Because we use a fixed array of tables for speed, we must use an index to get only the ones we want
+        let table = tables[i];
+        // Calculate the size once
+        let sym_size = block.eob as usize + 1;
+        // Now create a output-style table
+        let mut out_codes = vec![(0_u16, 0_u32); sym_size];
+        // ... and create a vec of the symbols actually used
+        // let mut len_sym: Vec<(u32, u16)> = vec![(0_u32, 0_u16); sym_size];
+        // for (i, &t) in table.iter().enumerate().take(sym_size) {
+        //     len_sym[i] = (t, i as u16);
+        // }
+        let mut len_sym: Vec<(u32, u16)> = table.iter().enumerate().take(sym_size).fold(
+            Vec::with_capacity(sym_size),
+            |mut vec, (i, t)| {
+                vec.push((*t, i as u16));
+                vec
+            },
+        );
+        // ... and sort that vec ascending by length
+        len_sym.sort_unstable();
+
+        /*
+        Get the minimum length in use so we can create the "next code".
+        Next_code is a tuple of length from len_sym and a 32 bit code we build.
+
+        Codes are sequential within each length range. For example, for a length
+        of 3, the codes would be 000, 001, 010, 011, etc.
+        */
+        // Initialize next_code to the length of the first (smallest) length, and 0.
+        let mut next_code: (u32, u32) = (len_sym[0].0, 0);
+
+        // Create a vec where we can store the codes.
+        let mut sym_codes = vec![(0_u16, 0_u32); sym_size];
+
+        /*
+        When the length changes, do a shift left for each increment and continue. So
+        for example, if the length is now 5 and the last code had a length of 3 and
+        was 010, we would now start with 01000, 01001, 01010, etc.
+
+        We store a version for the BitWriter, a format I also use in my hashmap
+        in the decompression side. This is in addition to the format we need below.
+
+        The length is in the most significant 8 bits, the code in the least.
+        For example if the length is 5 and the code is 11111, we'd see
+            01234567_XXXXXX_0123456780123456
+            00000101_000000_0000000000011111
+        X indicates space we never use. Excuse the odd _ marking. It is why I use
+        #[allow(clippy::unusual_byte_groupings)]
+        */
+        // For each symbol...
+        for (i, (len, sym)) in len_sym.iter().enumerate() {
+            if *len != next_code.0 {
+                next_code.1 <<= len - next_code.0;
+                next_code.0 = *len;
+            }
+            // ...save a version of the code in the BitWriter format
+            out_codes[i] = (*sym, len << 24 | next_code.1);
+
+            // ...and also save it for encoding below.
+            sym_codes[i] = (*sym, next_code.1);
+
+            // Increment the next_code.1 counter to generate the next code
+            next_code.1 += 1;
+        }
+
+        /*
+        Next we write out the symbol lengths that will be used in the decompression.
+        They start with an "origin" length of five bits taken from the first symbol.
+
+        Each symbol's length (INCLUDING THE FIRST SYMBOL) will be output as the delta
+        (difference) from the last symbol. Each delta is exactly 2 bits long, a 11 or
+        a 10. The end of the delta is indicated with a single zero bit.
+        It seems odd to me that we write the first symbol, which will ALWAYS have a
+        delta of zero.
+        */
+
+        // The len_sym vec now needs to be sorted by symbol, not length
+        len_sym.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+
+        trace!("\nWriting huffman map {} at {}", i, bw.loc());
+
+        // We write the origin as a five bit int
+        let mut origin = len_sym[0].0;
+        bw.out24((5 << 24) | origin as u32);
+
+        // ... and iterate through the entire symbol list writing the deltas
+        for entry in len_sym.iter() {
+            // get the next length
+            let (l, _) = entry;
+            // create the delta from the last length
+            let mut delta = *l as i32 - origin as i32;
+            // put this new length into origin for the next iteration of this loop
+            origin = *l;
+            // write out the length delta as ±1 repeatedly
+            loop {
+                match delta.cmp(&0) {
+                    // if the delta is greater than 0, write 0x10
+                    Ordering::Greater => {
+                        bw.out24(0x02_000002);
+                        // subtract one from the delta and loop again
+                        delta -= 1;
+                    }
+                    // if the delta is less than 0, write 0x11
+                    Ordering::Less => {
+                        bw.out24(0x02_000003);
+                        // add one t the delta and loop again
+                        delta += 1;
+                    }
+                    // if there is no delta, break out of this loop
+                    Ordering::Equal => {
+                        break;
+                    }
+                }
+            }
+            // write a single 0 bit to indicate we are done with this symbol's length code
+            bw.out24(0x01_000000);
+        }
+        // Sort the output codes by symbol before saving them in the output tables
+        out_codes.sort_unstable();
+        out_code_tables.push(out_codes);
+    }
+
+    /*
+    Now encode and write the data.
+    Each symbol in the input is basically an index to the code.
+    We do this using the 50 byte table selectors, so we have to switch that up regularly.
+    */
+
+    for (idx, chunk) in block.temp_vec.chunks(50).enumerate() {
+        let table_idx = selectors[idx];
+        chunk.iter().for_each(|symbol| {
+            bw.out24(out_code_tables[table_idx][*symbol as usize].1);
+        })
+    }
+
+    // All done
+    Ok(())
+}
+
+#[allow(clippy::unusual_byte_groupings)]
+/// Encode MTF data using Julian's multi-table system.
+/// In addition to the options and BitWriter, we need frequency counts,
+/// the bwt key, crc, the symbol map, and eob symbol (last symbol).
+pub fn huf_encode_old(
     bw: &mut BitWriter,
     block: &mut Block,
     iterations: usize,
@@ -54,15 +432,9 @@ pub fn huf_encode(
         _ => 6,
     };
 
-    // We need a frequency count for the RLE2 data
-    let mut freq = vec![0_u32; 258];
-    for i in 0..vec_end {
-        freq[block.temp_vec[i] as usize] += 1;
-    }
-
     // Initialize the tables to weights of 15. Since Rust requires compile time array
     // sizing, let's just make 6 even though we might need less.
-    let mut tables = [[15_u32; 258]; 6];
+    let mut tables = [[15_u32; 260]; 6];
 
     // Then set the soft limits to divide the data out to the tables.
     let portion_limit: u32 = vec_end as u32 / table_count;
@@ -98,7 +470,7 @@ pub fn huf_encode(
     // (based on how many groups we have, and remembering the special limits for
     // tables 2 and 4) increment the table index to point to the next table and
     // reset the portion sum to 0. Keep going through all the symbols.
-    for (i, freq) in freq.iter().enumerate().take(block.eob as usize + 1) {
+    for (i, freq) in block.freqs.iter().enumerate().take(block.eob as usize + 1) {
         let f = freq;
         if portion + f > portion_limit && (table_index == 2 || table_index == 4) {
             table_index = table_index.saturating_sub(1);
@@ -125,9 +497,10 @@ pub fn huf_encode(
      against real data. These adjusted numbers are used to build a huffman tree, and
      thereby the huffman codes.
 
-     We will iterate four times (default value, can be changed in options) to improve the tables. 
-     ds: Nov 2022: Looking at trial runs, it seems that three times gains almost the same
-     value as four times. Each larger size gains slightly more in ascii texts.
+     We will iterate four times (default value, can be changed in options) to improve the tables.
+     ds: Nov 2022: Looking at trial runs, it seems that three trial runs gains almost the same
+     value as four times. Each larger size gains slightly more in ascii texts. Therefor I added
+     an option to let the user change the number of trial runs -- mostly for more testing purposes.
     */
 
     // Remember for later how many selectors we will have, and where we store them
@@ -139,7 +512,7 @@ pub fn huf_encode(
         let mut favorites = [0; 6];
 
         // initialize "recalculated" frequency array for each table/group
-        let mut rfreq = [[0u32; 258]; 6];
+        let mut rfreq = [[0u32; 260]; 6];
 
         // Initialized counters for how many selectors we will have, a vec to store them,
         selector_count = 0;
@@ -209,8 +582,8 @@ pub fn huf_encode(
             // Prepare to get the next group of 50 bytes from the input
             start = end;
         } // End of the while loop, we've gone through the entire input (again).
-        debug!(
-            " pass {}: size is {}, grp uses are {:?}",
+        trace!(
+            "\n pass {}: size is {}, grp uses are {:?}",
             iter + 1,
             total_cost / 8,
             favorites
@@ -425,8 +798,6 @@ pub fn huf_encode(
         if progress % 50 == 0 {
             table_idx = selectors[progress / 50];
         }
-        //if symbol == &block.eob {
-        //}
         bw.out24(out_code_tables[table_idx][*symbol as usize].1);
     }
 
@@ -434,83 +805,65 @@ pub fn huf_encode(
     Ok(())
 }
 
-/* #[derive(Debug, Clone)]
-struct Level {
-    bits: u32,
-    offset: u32,
-    start_code: u32,
-    end_code: u32,
-}
-impl Level {
-    fn new() -> Self {
-        Self {
-            bits: 0,
-            offset: 0,
-            start_code: 0,
-            end_code: 0,
-        }
-    }
-}
+/// Initialize 2-6 frequency tables based on the frequencies of the symbols in the data
+fn init_tables(freqs: &[u32], table_count: usize, eob: u16) -> [[u32; 258]; 6] {
+    // Initialize the tables to weights of 15. Since Rust requires compile time array
+    // sizing, let's just make 6 even though we might need less.
+    let mut tables = [[15_u32; 258]; 6];
 
-fn huf_decode_map(map: &Vec<(u16, u32)>) -> Vec<Level> {
-    // Initialize result vector
-    let mut result = Vec::new();
+    // Then set the soft limits to divide the data out to the tables.
+    let portion_limit: u32 = freqs.iter().sum::<u32>() / table_count as u32;
+    /* How this works is a bit weird.
+    We initially make tables based on the frequency of the symbols. For example, say we
+    have enough data for six tables. Some symbols will have greater frequency than other
+    symbols - and because of our MTF, symbols like RUNA and RUNB will be very frequent in
+    many cases.
 
-    // Current_length is the number of bits sured for the code length at this level
-    let mut current_bit_length = map[0].1;
+    We will build the tables based on symbol frequency. We assign a weight of zero to each
+    possible symbol for those symbols that are in this  table, and a weight of 15 for any
+    symbol that doesn't get into this table. If we have lots of RUNA symbols, it is very
+    possible that over 1/6 of the frequency will be RUNA symbols. So this table would have
+    a weight of 0 given to RUNA and a weight of 15 given to every other symbol. The next
+    table gets as many symbols as needed to get to the next 1/6th of the frequency, with
+    weights similarly apportioned.
 
-    // Bits_to_add is the number of bits we need to check codes at this level. (First time
-    // it is also the bit length of the code)
-    let mut bits_to_add = current_bit_length;
+    After making these initial tables, we run through the data 50 bytes at a time and see
+    which table results in the lowest "cost" for those 50 bytes. We adjust costs/weights
+    and repeat three more times. Julian must have found that this works better than just
+    doing a straight-up huffman tree based on frequencies of the entire block.
+    */
 
-    // Current_code is the starting code at this level
-    let mut current_code = 0;
+    // Update our coding tables. Note: Tables 3 and 5 are unique in that they get
+    // just shy of the limit rather than just over the limit. If we did not do this,
+    // we may not get enough symbols in the last tables.
 
-    // Set symbol count variables
-    let mut count = 0_u32;
-    let mut last_count = count;
-
-    // For each bit level (number of bits in the code), get the symbol list
-    for (symbol, bit_length) in map.iter() {
-        count += 1;
-        if *bit_length == current_bit_length {
-            continue;
+    // First set our table index to the last table we need, and the portion sum to 0.
+    let mut table_index = table_count - 1;
+    let mut portion = 0;
+    // For each symbol add the frequency to portion and set the weight value for this
+    // symbol in this table to 0. If the current portion meets the portion limit
+    // (based on how many groups we have, and remembering the special limits for
+    // tables 2 and 4) increment the table index to point to the next table and
+    // reset the portion sum to 0. Keep going through all the symbols.
+    for (i, freq) in freqs.iter().enumerate().take(eob as usize + 1) {
+        let f = freq;
+        if portion + f > portion_limit && (table_index == 2 || table_index == 4) {
+            table_index = table_index.saturating_sub(1);
+            tables[table_index][i] = 0;
+            portion = *f;
+            if portion > portion_limit {
+                tables[table_index][i] = 0;
+                table_index = table_index.saturating_sub(1);
+                portion = 0;
+            }
         } else {
-            // Done at this level. Record the level.
-            let mut level = Level::new();
-
-            level.bits = bits_to_add;
-            level.offset = last_count;
-            level.start_code = current_code;
-            level.end_code = (current_code + count - 1) as u32;
-            result.push(level);
-
-            // Calculate the number of bits needed to get to the next level
-            bits_to_add = bit_length - current_bit_length;
-
-            // Update current_code for the next iteration before we change count
-            current_code = (current_code + count - 1) << bits_to_add;
-
-            // Update last_count for the next iteration
-            last_count += count - 1;
-
-            // Reset count to 1 (because we counted one already)
-            count = 1;
-
-            // Set current_length for the next level
-            current_bit_length = *bit_length;
-        }
+            portion += f;
+            tables[table_index][i] = 0;
+            if portion > portion_limit {
+                table_index = table_index.saturating_sub(1);
+                portion = 0;
+            }
+        };
     }
-    // Done at the last level. Record the level.
-    let mut level = Level::new();
-    let symbol = map[map.len() - 1].0;
-
-    level.bits = bits_to_add;
-    level.offset = last_count;
-    level.start_code = current_code;
-    level.end_code = current_code + count as u32;
-    result.push(level);
-
-    result
+    tables
 }
- */

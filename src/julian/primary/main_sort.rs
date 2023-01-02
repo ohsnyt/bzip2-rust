@@ -1,6 +1,6 @@
 use super::main_q_sort3::main_q_sort3;
 use crate::compression::compress::Block;
-use log::{debug, error, info};
+use log::{error, info, trace};
 
 //NOTE: This is based on the algorithm from Julian Seward.
 // I have tweaked it for speed with Rust idioms in several places.
@@ -158,8 +158,8 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData) {
                         qs.stack.clear();
                         qs.stack.push((lo, hi, BZ_N_RADIX));
                         // Report progress
-                        debug!(
-                            "   qsort [0x{:0x}, 0x{:0x}]   done {}   this {}",
+                        trace!(
+                            "\n   qsort [0x{:0x}, 0x{:0x}]   done {}   this {}",
                             ss,
                             j,
                             num_q_sorted,

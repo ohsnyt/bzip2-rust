@@ -24,7 +24,7 @@ const CHUNK_SIZE: usize = 50; // Bzip2 chunk size
 const FOOTER: [u8; 6] = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
 const HEADER: [u8; 6] = [0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59];
 
-/// Decompress the file given in the command line
+/// Decompress the file specified in opts (BzOpts). Current version also requires a Timer.
 pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
     // Start bitreader from input file in the command line
     let mut br = BitReader::new(File::open(opts.file.as_ref().unwrap())?);

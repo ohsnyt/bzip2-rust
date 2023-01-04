@@ -20,6 +20,7 @@ pub struct Node {
     pub node_data: NodeData,
 }
 impl Node {
+    /// Create a new node
     pub fn new(weight: u32, depth: u8, syms: u32, node_data: NodeData) -> Node {
         Node {
             weight,
@@ -30,6 +31,7 @@ impl Node {
     }
 }
 impl PartialOrd for Node {
+    /// Sort Nodes by decreasing weight and decreasing symbol value
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if other.weight == self.weight {
             return Some(other.syms.cmp(&self.syms));
@@ -39,9 +41,9 @@ impl PartialOrd for Node {
 }
 
 #[allow(clippy::unusual_byte_groupings)]
-/// Encode MTF data using Julian's multi-table system.
-/// In addition to the options and BitWriter, we need frequency counts,
-/// the bwt key, crc, the symbol map, and eob symbol (last symbol).
+/// Encode MTF/RLE2 data using Julian's multi-table system.
+/// We need a BitWriter, adequately spedified block data, and the number of iterations desired (Julian used 4).
+/// Data is returned via the block.
 pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> Result<(), Error> {
     // Get the length of this RLE2 compressed block
     let vec_end = block.temp_vec.len();
@@ -152,7 +154,10 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
                 debug!(
                     "\n      {}: {:?}",
                     i,
-                    table.iter().take(block.eob as usize + 1).copied()
+                    table
+                        .iter()
+                        .take(block.eob as usize + 1)
+                        .collect::<Vec<_>>()
                 );
             }
         }
@@ -166,28 +171,38 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         (0..table_count).for_each(|t| {
             improve_code_len_from_weights(&mut tables[t], &rfreq[t], block.eob);
             trace!(
-                "Table {}:\n{:?}",
+                "\nIter {}: Tbl {}:\n{:?}",
+                iter,
                 t,
-                tables[t].iter().take(block.eob as usize + 1).copied()
+                tables[t]
+                    .iter()
+                    .take(block.eob as usize + 1)
+                    .collect::<Vec<_>>()
             );
         });
     }
     /*
-      4 iterations are now done, and we have good tables and selectors.
+      All iterations are now done, and we have good tables and selectors.
       Time to make actual binary codes for reach table. Since we have good lengths,
       we can use the code_from_length function to quickly generate codes.
     */
 
     // Next are the symbol maps, 16 bit L1 + 0-16 words of 16 bit L2 maps.
+    trace!("\r\x1b[43mSymbol maps written at {}.     \x1b[0m", bw.loc());
     for word in &block.sym_map {
         bw.out16(*word);
     }
 
     // Symbol maps are followed by a 3 bit number of Huffman trees that exist
+    trace!("\r\x1b[Table count written at {}.     \x1b[0m", bw.loc());
     bw.out24((3 << 24) | table_count as u32);
 
     // Then a 15 bit number indicating the how many selectors are used
     // (how many 50 byte groups are in this block of data)
+    trace!(
+        "\r\x1b[43mSelector count written at {}.     \x1b[0m",
+        bw.loc()
+    );
     bw.out24((15 << 24) | selector_count as u32);
 
     /*
@@ -233,6 +248,11 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
     }
 
     // Now write out all the mtf'ed selectors
+    trace!(
+        "\r\x1b[43m{} Selectors written at {}.     \x1b[0m",
+        mtf_selectors.len(),
+        bw.loc()
+    );
     for selector in &mtf_selectors {
         match selector {
             0 => bw.out24(0x01000000),
@@ -344,14 +364,18 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         // The len_sym vec now needs to be sorted by symbol, not length
         len_sym.sort_unstable_by(|a, b| a.1.cmp(&b.1));
 
-        trace!("\nWriting huffman map {} at {}", i, bw.loc());
-
+        trace!("\r\x1b[43mWriting huffman map {} at {}.   \x1b[0m", i, bw.loc());
         // We write the origin as a five bit int
         let mut origin = len_sym[0].0;
         bw.out24((5 << 24) | origin as u32);
 
         // ... and iterate through the entire symbol list writing the deltas
         for entry in len_sym.iter() {
+            trace!(
+                "\r\x1b[43mDelta for {} is {}.     \x1b[0m",
+                entry.1,
+                entry.0
+            );
             // get the next length
             let (l, _) = entry;
             // create the delta from the last length
@@ -393,10 +417,14 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
     We do this using the 50 byte table selectors, so we have to switch that up regularly.
     */
 
+    // For debugging
+    let mut index = 0;
     for (idx, chunk) in block.temp_vec.chunks(50).enumerate() {
         let table_idx = selectors[idx];
         chunk.iter().for_each(|symbol| {
             bw.out24(out_code_tables[table_idx][*symbol as usize].1);
+            trace!("\r\x1b[43mRLE2 {} ({}) written at {}.   \x1b[0m", index, *symbol, bw.loc());
+            index += 1;
         })
     }
 

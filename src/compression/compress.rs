@@ -42,7 +42,7 @@ pub struct Block {
     pub is_last: bool,
 }
 
-/// Compress the input file defined in the command line.
+/// Compress the input file defined in opts <BzOpts>. Requires a Timer.
 pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
     // Create the struct to pass data to compress_block.rs
     // Initialize the size of the data vec to the block size to avoid resizing

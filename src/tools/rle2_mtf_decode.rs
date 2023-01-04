@@ -1,6 +1,8 @@
 use log::error;
 use rayon::prelude::*;
 
+use crate::compression::compress::Block;
+
 const RUNA: u16 = 0;
 const RUNB: u16 = 1;
 const ZERO_BOMB: usize = 2 * 1024 * 1024;
@@ -81,6 +83,150 @@ pub fn rle2_mtf_decode(data_in: &[u16], mtf_index: &mut Vec<u8>, size: usize) ->
     // Truncate the vec to the actual data, removing the eob marker.
     out.truncate(index - 1);
     out
+}
+
+/// Does Move-To-Front transforma and Run-Length-Encoding 2 prior to the huffman stage.
+/// Gets BWT output from block.data.
+/// Puts transformed u16 data into block.temp_vec and frequency count into block.freqs.
+pub fn rle2_mtf_encode(block: &mut Block) {
+    // Create a custom index of the input, using an array for speed
+    // Start by finding every u8 in the input.
+    let mut bool_array = vec![false; 256];
+    for i in &block.data {
+        bool_array[*i as usize] = true;
+    }
+    // Then initialize an index array of Option<usize> to None.
+    let mut mtf_index: [Option<usize>; 256] = [None; 256];
+    // For every u8 in the input, add an appropriate index number from 0..
+    let mut idx = 0_usize;
+    bool_array.iter().enumerate().for_each(|(i, &b)| {
+        if b {
+            mtf_index[i] = Some(idx);
+            idx += 1
+        }
+    });
+
+    // Get the EOB value from the bool_array
+    block.eob = bool_array.iter().filter(|el| **el).count() as u16;
+
+    // We are now done with the bool array
+    drop(bool_array);
+
+    // With the index, we can do the MTF (and RLE2)
+    // Initialize a zero counter
+    let mut zeros = 0_usize;
+    // Initialize an index into the output vec (block.temp_vec)
+    let mut idx = 0_usize;
+    // Size the temp_vec
+    block.temp_vec = vec![0_u16; block.data.len()];
+
+    // iterate through the input, doing the conversion as we create runs of zeros
+    for &byte in block.data.iter() {
+        // Get the byte index number stored in the MTF index
+        match mtf_index[byte as usize] {
+            None => {} // Should never happen
+            // If it is a zero, count it
+            Some(0) => zeros += 1,
+            // Anything else, output the zero sequence and then the next index
+            Some(index) => {
+                match zeros {
+                    0 => {} // Do nothing.
+                    1 => {
+                        block.temp_vec[idx] = 0;
+                        block.freqs[0] += 1;
+                        idx += 1;
+                        zeros = 0;
+                    }
+                    2 => {
+                        block.temp_vec[idx] = 1;
+                        block.freqs[1] += 1;
+                        idx += 1;
+                        zeros = 0;
+                    }
+                    mut n => {
+                        n -= 1;
+                        loop {
+                            // Output the appropriate RUNA/RUNB
+                            block.temp_vec[idx] = (n & 1) as u16;
+                            // Update the appropriate RUNA/RUNB frequency count
+                            block.freqs[n & 1] += 1;
+                            // Update the output index
+                            idx += 1;
+                            // adjust the zeros counter
+                            if n < 2 {
+                                break;
+                            }
+                            n = (n - 2) >> 1;
+                        }
+                        zeros = 0;
+                    }
+                }
+                // Output next index (incremented by 1 for the RUNB element)
+                block.temp_vec[idx] = index as u16 + 1;
+                idx += 1;
+                // Update the appropriate frequency count
+                block.freqs[index + 1] += 1;
+
+                // Shift the indecies
+                for i in 0..mtf_index.len() {
+                    if mtf_index[i].is_some() {
+                        if mtf_index[i] > Some(index) {
+                            // Do nothing
+                        } else if mtf_index[i] == Some(index) {
+                            mtf_index[i] = Some(0)
+                        } else {
+                            mtf_index[i] = Some(mtf_index[i].unwrap() + 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Writing any trailing zeros
+    match zeros {
+        0 => {} // Do nothing.
+        1 => {
+            block.temp_vec[idx] = 0;
+            block.freqs[0] += 1;
+            idx += 1;
+        }
+        2 => {
+            block.temp_vec[idx] = 1;
+            block.freqs[1] += 1;
+            idx += 1;
+        }
+        mut n => {
+            n -= 1;
+            loop {
+                // Output the appropriate RUNA/RUNB
+                block.temp_vec[idx] = (n & 1) as u16;
+                // Update the appropriate RUNA/RUNB frequency count
+                block.freqs[n & 1] += 1;
+                // Update the output index
+                idx += 1;
+                // adjust the zeros counter
+                if n < 2 {
+                    break;
+                }
+                n = (n - 2) >> 1;
+            }
+        }
+    }
+    // Add the EOB symbol to the end
+    block.temp_vec[idx] = block.eob;
+    idx += 1;
+
+    // Truncate the vec to the actual data.
+    block.temp_vec.truncate(idx);
+}
+
+/// Watch for malicious input
+fn zero_bomb(zeros: usize) {
+    // Blow up if the run is too big - this should be more elegant in the future
+    if zeros > ZERO_BOMB {
+        error!("Run of zeros exceeded a million - probably input bomb.");
+        std::process::exit(100)
+    }
 }
 
 /// Does run-length-decoding and MTF decoding.
@@ -194,13 +340,4 @@ pub fn rle2_mtf_decode_fast(
         );
 
     (out, freq)
-}
-
-/// Watch for malicious input
-fn zero_bomb(zeros: usize) {
-    // Blow up if the run is too big - this should be more elegant in the future
-    if zeros > ZERO_BOMB {
-        error!("Run of zeros exceeded a million - probably input bomb.");
-        std::process::exit(100)
-    }
 }

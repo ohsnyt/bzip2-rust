@@ -107,20 +107,20 @@ fn add_weights(a: u32, b: u32) -> u32 {
     ((a & weight_mask) + (b & weight_mask)) | (1 + (a & depth_mask).max(b & depth_mask))
 }
 
-///  Julian slide sort. Gets things in the right direction but not fully sorted.
-pub fn push_big_down(vec: &mut [(u32, u16)], mut idx: usize) {
-    if idx < 2 {
-        return;
-    }
-    // Add offset to account for the root node at index 0.
-    idx += 1;
-    let tmp = vec[idx];
-    while tmp.0 < vec[idx >> 1].0 {
-        vec.swap(idx, idx >> 1);
-        idx >>= 1;
-    }
-    vec[idx] = tmp;
-}
+// ///  Julian slide sort. Gets things in the right direction but not fully sorted.
+// pub fn push_big_down(vec: &mut [(u32, u16)], mut idx: usize) {
+//     if idx < 2 {
+//         return;
+//     }
+//     // Add offset to account for the root node at index 0.
+//     idx += 1;
+//     let tmp = vec[idx];
+//     while tmp.0 < vec[idx >> 1].0 {
+//         vec.swap(idx, idx >> 1);
+//         idx >>= 1;
+//     }
+//     vec[idx] = tmp;
+// }
 // pub fn push_big_down<T: std::cmp::PartialOrd + Clone>(vec: &mut [T], mut idx: usize) {
 //     if idx == 0 {
 //         return;

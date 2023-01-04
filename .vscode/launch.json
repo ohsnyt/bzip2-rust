@@ -24,9 +24,9 @@
                 //"-d",
                 //"src/timeseries_export2.csv",
                 //"-z",
-                "src/Peter.txt.bz2",
-                //"src/Peter.txt",
-                //"src/IMG.tiff",
+                //"src/Peter.txt.bz2",
+                "src/Peter.txt",
+                //"src/IMG_7.tiff",
                 //"/Users/david/Documents/bzip2/bzip2/tests/sample1.bz2",
                 //"src/idiot shorter.txt",
                 //"${workspaceFolder}/src/test.txt",
@@ -38,7 +38,7 @@
                 // "-z",
                 //"9",
                 //"src/idiot.txt",
-                "-d",
+                "-z",
                 "-v5",
                 //"src/Peter_Julian1.bz2",
                 //"src/Peter.txt.bz2",
@@ -49,7 +49,7 @@
                 "9",
                 //"simple",
                 //"sais",
-                //"parallel"
+                "parallel"
             ],
             "cwd": "${workspaceFolder}"
         },

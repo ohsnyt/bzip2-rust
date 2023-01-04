@@ -1,7 +1,7 @@
 const BUFFER_SIZE: usize = 1024 * 1024;
 const BIT_MASK: u8 = 0xff;
 
-/// Reads a Bzip2 file and allows reading a specified number of bits
+/// Reads a binary Bzip2 file.
 #[derive(Debug)]
 pub struct BitReader<R> {
     buffer: Vec<u8>,
@@ -12,7 +12,7 @@ pub struct BitReader<R> {
 }
 
 impl<R: std::io::Read> BitReader<R> {
-    /// Called to create a new bitReader
+    /// Creates a new bitReader (with a 1Mbyte buffer).
     pub fn new(source: R) -> Self {
         Self {
             buffer: vec![0; BUFFER_SIZE],
@@ -44,14 +44,7 @@ impl<R: std::io::Read> BitReader<R> {
         true
     }
 
-    /*     /// Function to indicate that the *buffer* is empty (not necessarily the source)
-       fn is_empty(&self) -> bool {
-           (self.byte_index > self.buffer.len() - 1)
-               || (self.byte_index == self.buffer.len() && self.bit_index == 0)
-       }
-    */
-
-    /// Return one bit, or None if there is no more data to read
+    /// Return Option<usize> (1 or 0), or None if there is no more data to read
     pub fn bit(&mut self) -> Option<usize> {
         // If bit_index is == 0, check if we have a byte to read. Return None if we have no data
         if self.bit_index == 0 && !self.have_data() {
@@ -68,12 +61,13 @@ impl<R: std::io::Read> BitReader<R> {
         Some(bit as usize)
     }
 
-    /// Return Option<Bool> *true* if the next bit is 1, *false* if 0, consuming the bit.
+    /// Return Option<Bool> *true* if the next bit is 1, *false* if 0, consuming the bit, 
+    /// or None if there is no more data to read
     pub fn bool_bit(&mut self) -> Option<bool> {
         self.bit().map(|bit| bit == 1)
     }
 
-    /// Return Option<usize> of the next n bits
+    /// Return Option<usize> of the next n bits, or None if there is no more data to read
     pub fn bint(&mut self, mut n: usize) -> Option<usize> {
         /*
         This is optimized to read as many bits as possible for each read.
@@ -135,12 +129,12 @@ impl<R: std::io::Read> BitReader<R> {
         Some(result)
     }
 
-    /// Read and return a bytes as an Option<u8>
+    /// Returns an Option<u8>, or None if there is no more data to read
     pub fn byte(&mut self) -> Option<u8> {
         self.bint(8).map(|byte| byte as u8)
     }
 
-    /// Read and return a vec of n bytes as an Option<Vec<u8>>
+    /// Returns an Option<Vec<u8>> of n bytes, or None if there is no more data to read
     pub fn bytes(&mut self, mut n: usize) -> Option<Vec<u8>> {
         let mut result: Vec<u8> = Vec::with_capacity(n);
 
@@ -153,7 +147,7 @@ impl<R: std::io::Read> BitReader<R> {
         Some(result)
     }
 
-    /// Debugging function. Report current position.
+    /// Debugging function. Report current position in the buffer.
     pub fn loc(&self) -> String {
         format!("[{}.{}]", self.byte_index, self.bit_index)
     }

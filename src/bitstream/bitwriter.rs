@@ -1,7 +1,6 @@
 use log::error;
 
-/// Creates a bitstream for output. Although output is accessible at any time, it
-/// is best to call Flush before reading the "final" output.
+/// Creates a bitstream for output. 
 pub struct BitWriter {
     pub output: Vec<u8>,
     queue: u64,
@@ -9,7 +8,9 @@ pub struct BitWriter {
 }
 
 impl BitWriter {
-    /// Called to create a new bitwriter
+    /// Create a new Bitwriter with an output buffer of size specified. Suggest the
+    /// size be set to the block size. Call flush() to flush the bit queue to the buffer
+    /// before closing the output file.
     pub fn new(size: usize) -> Self {
         Self {
             output: Vec::with_capacity(size),
@@ -19,7 +20,6 @@ impl BitWriter {
     }
 
     /// Internal bitstream write function common to all out.XX functions.
-    /// (Leaves the queue dirty, but that should be okay)
     fn write_stream(&mut self) {
         while self.q_bits > 7 {
             let byte = (self.queue >> (self.q_bits - 8)) as u8;
@@ -29,7 +29,7 @@ impl BitWriter {
     }
 
     /*
-    out24 takes a u32.  The 8 most significant bits of the word indicate how
+    NOTE: out24 takes a u32.  The 8 most significant bits of the word indicate how
     many of the least significant bits will be written. Those bits must be aligned to
     the least signficant bit. (The middle bits are masked out.)
     binary encoded data and puts it on the stream.
@@ -47,7 +47,7 @@ impl BitWriter {
         self.write_stream();
     }
 
-    /// Takes a 32 bit word of pre-packed binary encoded data and puts it on the stream.
+    /// Puts a 32 bit word of pre-packed binary encoded data on the stream.
     pub fn out32(&mut self, data: u32) {
         self.queue <<= 32; //shift queue by bit length
         self.queue |= data as u64; //add data portion to queue
@@ -55,7 +55,7 @@ impl BitWriter {
         self.write_stream();
     }
 
-    /// Takes a 16 bit word  of pre-packed binary encoded data and puts it on the stream.
+    /// Puts a 16 bit word  of pre-packed binary encoded data on the stream.
     pub fn out16(&mut self, data: u16) {
         self.queue <<= 16; //shift queue by bit length
         self.queue |= data as u64; //add data portion to queue
@@ -63,7 +63,7 @@ impl BitWriter {
         self.write_stream();
     }
 
-    /// Takes an 8 bit word  of pre-packed binary encoded data and puts it on the stream.
+    /// Puts an 8 bit word  of pre-packed binary encoded data on the stream.
     pub fn out8(&mut self, data: u8) {
         self.queue <<= 8; //shift queue by bit length
         self.queue |= data as u64; //add data portion to queue

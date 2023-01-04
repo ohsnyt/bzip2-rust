@@ -25,32 +25,28 @@ impl BwtKey {
             symbol,
         }
     }
-    // /// Update sort key and depth, requires a sort value (usize), and a depth value (u32).
-    // pub fn update(&mut self, sort: usize, depth: u16) {
-    //     self.sort = sort;
-    //     self.depth = depth;
-    // }
 }
 
-/// Custom ordering sorts based on sort value only.
+/// Sort based on sort value only.
 impl PartialOrd for BwtKey {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.sort.cmp(&other.sort))
     }
 }
+/// Sort based on sort value only.
 impl Ord for BwtKey {
     fn cmp(&self, other: &Self) -> Ordering {
         self.sort.cmp(&other.sort)
     }
 }
-/// Equality test both depth and sort values.
+/// Equality tests both depth and sort values.
 impl PartialEq for BwtKey {
     fn eq(&self, other: &Self) -> bool {
         (self.sort == other.sort) && (self.depth == other.depth)
     }
 }
 
-/// Parallel bwt sorting algorithm. ds. 2022.
+/// Sequential bwt sorting algorithm using Vec<usize> chunks instead of u8. ds, 2022.
 /// ENTRY POINT
 pub fn bwt_encode_big(block: &mut Block) {
     // Create usize sorting values

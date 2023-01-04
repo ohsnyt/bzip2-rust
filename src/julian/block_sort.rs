@@ -6,7 +6,7 @@ use super::fallback::fallback_sort::fallback_sort;
 use super::primary::main_sort::{main_sort, QsortData};
 
 /// Primary entry into Julian's BWT sorting system. This receives a ref to the block,  and the work factor.
-/// It returns the key (usize) and data.
+/// It returns the key (usize) and data. NOT FULLY OPTIMIZED.
 pub fn block_sort(block: &mut Block, qs: &mut QsortData) {
     // If the size of the block us under 10k, use the fallbackSort function.
     if block.end < 10000 {

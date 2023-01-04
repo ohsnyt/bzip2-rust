@@ -30,25 +30,26 @@ impl BwtKey {
     }
 }
 
-/// Custom ordering sorts based on sort value only.
 impl PartialOrd for BwtKey {
+    /// Sort based on sort value only.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.sort.cmp(&other.sort))
     }
 }
 impl Ord for BwtKey {
+    /// Sort based on sort value only.
     fn cmp(&self, other: &Self) -> Ordering {
         self.sort.cmp(&other.sort)
     }
 }
-/// Equality test both depth and sort values.
 impl PartialEq for BwtKey {
+    /// Equality tests both depth and sort values.
     fn eq(&self, other: &Self) -> bool {
         (self.sort == other.sort) && (self.depth == other.depth)
     }
 }
 
-/// Parallel bwt sorting algorithm. ds. 2022.
+/// Parallel bwt sorting algorithm using Vec<usize> data. ds. 2022.
 /// ENTRY POINT
 pub fn bwt_encode_par(block: &mut Block) {
     // Create usize sorting values

@@ -1,5 +1,6 @@
 use super::{duval::rotate_duval, sais::build_suffix_array};
 
+/// FROM https://github.com/torfmaster/ribzip2
 /// Computes the Burrows-Wheeler-Transform of the input data without a sentinel value.
 /// It uses the duval algorithm to provide a lexicographically minimal rotation of the input string
 /// and passes this to the SAIS algorithm. The rotation makes sure that the BWT is computed

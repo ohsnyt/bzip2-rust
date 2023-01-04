@@ -1,3 +1,4 @@
+/// FROM https://github.com/torfmaster/ribzip2
 fn duval(input: &[u8]) -> usize {
     let mut final_start = 0;
     let n = input.len();

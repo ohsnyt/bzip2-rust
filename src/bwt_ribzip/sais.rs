@@ -9,6 +9,7 @@ pub(crate) struct SuffixTableEntry {
     pub index: usize,
 }
 
+/// FROM https://github.com/torfmaster/ribzip2
 /// Build suffix array using the SAIS algorithm
 pub(crate) fn build_suffix_array(bytes: &[u8]) -> Vec<SuffixTableEntry> {
     let data = bytes.iter().map(|x| *x as usize).collect::<Vec<usize>>();

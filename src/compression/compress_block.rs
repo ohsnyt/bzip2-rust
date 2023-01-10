@@ -13,7 +13,7 @@ use log::{debug, info, trace};
 
 use crate::compression::compress::Block;
 use crate::huffman_coding::huffman::huf_encode;
-use crate::tools::{mtf::mtf_encode, rle2::rle2_encode};
+//use crate::tools::{mtf::mtf_encode, rle2::rle2_encode};
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Called by Compress, this handles one block and writes out to the output stream.
@@ -27,7 +27,7 @@ pub fn compress_block(
     iterations: usize,
     timer: &mut Timer,
 ) {
-    // Adjust qs fields
+    // Adjust qs fields  // ONLY needed in Julian algorithm - should be moved
     qs.end = block.end as usize;
     qs.budget = block.budget;
 
@@ -94,11 +94,17 @@ pub fn compress_block(
     bw.out24(0x18_000000 | block.key as u32); // and 24 bit key
     timer.mark("bwt");
 
-    // Now send the BTW data off for the MTF transform...
-    // ...followed by the RLE2 transform. These two may later be combined.
-    timer.mark("mtf");
+    // // Now send the BTW data off for the MTF transform...
+    // mtf_encode(block);
+    // timer.mark("mtf");
+
+    // // ...followed by the RLE2 transform. These two may later be combined.
+    // rle2_encode(block);
+    // timer.mark("rle");
 
     rle2_mtf_encode(block);
+    timer.mark("mtf");
+
 
     // Now for the compression - the Huffman encoding (which also writes out data)
     let _result = huf_encode(bw, block, iterations);

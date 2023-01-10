@@ -20,7 +20,7 @@ use compression::compress::*;
 use compression::decompress::decompress;
 use tools::cli::{init_bz_opts, BzOpts, Mode};
 
-use log::{info, warn, LevelFilter};
+use log::{info, log_enabled, warn, LevelFilter};
 use simplelog::{Config, TermLogger, TerminalMode};
 
 pub struct Timer {
@@ -146,45 +146,47 @@ fn main() -> Result<(), std::io::Error> {
         Mode::Unzip => decompress(&options, &mut timer),
     };
 
-    timer.mark("misc");
-    println!();
-    println!("CLI\t\t{:?}", timer.cli);
-    println!("BWT\t\t{:?}", timer.bwt);
-    println!("Huffman:\t{:?}", timer.huffman);
-    println!("MTF:\t\t{:?}", timer.mtf);
-    println!("CRCs:\t\t{:?}", timer.crcs);
-    println!("RLE:\t\t{:?}", timer.rle);
-    println!("RLE1:\t\t{:?}", timer.rle1);
-    println!("Setup:\t\t{:?}", timer.setup);
-    println!("Cleanup:\t{:?}", timer.cleanup);
-    println!("Total:\t\t{:?}\n", timer.total);
-    println!(
-        "Missing: {:?}",
-        timer.total
-            - (timer.cli
-                + timer.bwt
-                + timer.huffman
-                + timer.crcs
-                + timer.rle1
-                + timer.rle
-                + timer.setup
-                + timer.cleanup)
-    );
+    if log_enabled!(log::Level::Debug) {
+        timer.mark("misc");
+        println!();
+        println!("CLI\t\t{:?}", timer.cli);
+        println!("BWT\t\t{:?}", timer.bwt);
+        println!("Huffman:\t{:?}", timer.huffman);
+        println!("MTF:\t\t{:?}", timer.mtf);
+        println!("CRCs:\t\t{:?}", timer.crcs);
+        println!("RLE:\t\t{:?}", timer.rle);
+        println!("RLE1:\t\t{:?}", timer.rle1);
+        println!("Setup:\t\t{:?}", timer.setup);
+        println!("Cleanup:\t{:?}", timer.cleanup);
+        println!("Total:\t\t{:?}\n", timer.total);
+        println!(
+            "Missing: {:?}",
+            timer.total
+                - (timer.cli
+                    + timer.bwt
+                    + timer.huffman
+                    + timer.crcs
+                    + timer.rle1
+                    + timer.rle
+                    + timer.setup
+                    + timer.cleanup)
+        );
 
-    // Print out the results
-    println!("\nTimer results table:");
-    println!(
-        "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?}",
-        timer.cli,
-        timer.bwt,
-        timer.huffman,
-        timer.rle,
-        timer.mtf,
-        timer.rle1,
-        timer.setup,
-        timer.cleanup,
-        timer.total
-    );
+        // Print out the results
+        println!("\nTimer results table:");
+        println!(
+            "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?}",
+            timer.cli,
+            timer.bwt,
+            timer.huffman,
+            timer.rle,
+            timer.mtf,
+            timer.rle1,
+            timer.setup,
+            timer.cleanup,
+            timer.total
+        );
+    }
 
     info!("Done.\n");
     result

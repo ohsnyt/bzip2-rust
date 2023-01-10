@@ -94,6 +94,8 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
         .append(true)
         .open(&fname)?;
 
+    timer.mark("setup");
+
     //----- Prepare to loop through blocks of data and process it.
     //let mut bytes_processed = 0;
     let mut bytes_left = fin_metadata.size() as usize;
@@ -106,35 +108,38 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
 
         // Calculate how much data we need for this next block.
         //   We can't exceed the input file size, though.
-        let mut bytes_desired = block.end;
+        let bytes_desired = bytes_left.min(block.end as usize) as u32;
+        let mut block_full = false;
+        let mut processed = 0;
 
-        // Get data and do the RLE. We may need more than one read
-        while bytes_desired > 0 && bytes_left > 0 {
+        // Get data and do the RLE1. We may need more than one read to fill the buffer
+        while !block_full {
             if buf.is_empty() {
                 //   Read 20% more than we need, if we have enough data left.
                 buf = vec![0; (block.end as usize * 5 / 4).min(bytes_left)];
                 fin.read_exact(&mut buf)
                     .expect("Could not read enough bytes.");
+                processed = 0;
             }
 
-            timer.mark("setup");
-
             // Do the rle on a glob of data - hopefully more than we need
-            let (processed, new_data) = rle_encode(&buf, bytes_desired);
-            timer.mark("rle1");
+            let (bfull, used, new_data) =
+                rle_encode(&buf, bytes_desired - processed - block.data.len() as u32);
+            block_full = bfull;
+            processed += used;
 
-            // Subtract what we got from what we wanted, safely (must be done before append!)
-            bytes_desired = bytes_desired.saturating_sub(new_data.len() as u32);
+            // // Subtract what we got from what we wanted, safely (must be done before append!)
+            // bytes_desired = bytes_desired.saturating_sub(new_data.len() as u32);
 
             // Add the data to block
             block.data.extend(new_data.iter());
+            timer.mark("rle1");
 
-            // mark the end of the block
-            block.end = block.data.len() as u32;
-
-            timer.mark("setup");
-            // Do CRC on what we got
-            block.block_crc = do_crc(block.block_crc, &buf[0..processed as usize]);
+            if processed > buf.len() as u32 {
+                println!("Pause here...")
+            }
+            // Do CRC on what we got each time
+            block.block_crc = do_crc(block.block_crc, &buf[0..used as usize]);
             timer.mark("crcs");
 
             // Drain what we used from the buffer
@@ -142,8 +147,14 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
             bytes_left -= processed as usize;
             if bytes_left == 0 {
                 block.is_last = true;
+                break;
             }
         }
+        // Done with RLE1
+        timer.mark("rle1");
+
+        // Set the block end
+        block.end = block.data.len() as u32;
 
         // We reached the block size we wanted, so process this block
         // Update the block sequence counter and inform the user

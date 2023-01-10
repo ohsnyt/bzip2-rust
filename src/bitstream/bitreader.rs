@@ -236,7 +236,9 @@ mod test {
     #[test]
     fn loc_test() {
         let x = "Hello, world!".as_bytes();
-        let br = BitReader::new(x);
+        let mut br = BitReader::new(x);
+        br.bytes(5);
+        br.bit();
         assert_eq!(br.loc(), "[5.1]");
         }
     

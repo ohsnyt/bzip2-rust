@@ -168,18 +168,44 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
                 selector_count = max_selectors;
             }
 
+            // Time to reverse the MTF on the selectors that we received
             // Create an index vec for the number of tables we need
             let mut table_idx: Vec<usize> = (0..table_count as usize).collect();
             // Undo the move to the front.
+            //----------------------------------------------------------------
+            // iterate through the input
             for (i, &selector) in raw_selector_map.iter().enumerate() {
-                selector_map[i] = table_idx[selector as usize];
-                // use swaps instead of remove/insert as it tends to be faster when items are near the front.
-                for i in 0..selector as usize {
-                    table_idx.swap(i, selector as usize);
+                // Create index from the selector
+                let mut idx = selector as usize;
+
+                // Save the selector from the MTF index
+                selector_map[i] = table_idx[idx];
+
+                // Check if the data is correct
+                // if check(i) != table_idx[idx] {
+                //     println!("Element {}: {} != {}.  Pause here...", i, idx, check(idx))
+                // };
+
+                // Shift each index at the front of mtfa "forward" one. Do this first in blocks for speed.
+                let temp_sym = table_idx[idx];
+
+                while idx > 2 {
+                    table_idx[idx] = table_idx[idx - 1];
+                    table_idx[idx - 1] = table_idx[idx - 2];
+                    table_idx[idx - 2] = table_idx[idx - 3];
+                    idx -= 3;
                 }
+                // ...then clean up any odd ones
+                while idx > 0 {
+                    table_idx[idx] = table_idx[idx - 1];
+                    idx -= 1;
+                }
+                // ...and finally move this index to the front.
+                table_idx[0] = temp_sym;
             }
+
             info!(
-                "Decoded the {} selectors for the {} tables in block {}.",
+                "Decoded {} selectors for the {} tables in block {}.",
                 selector_count, table_count, block_counter
             );
         }
@@ -202,7 +228,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
             let mut l: i32 = br.bint(5).expect(EOF_MESSAGE) as i32;
             // For each known symbol at this level (including a repeat of the origin we just read)
             // calculate the symbol length based on the relative bit length from the base symbol we just read.
-            for symbol in 0..symbols as u16 + 1{
+            for symbol in 0..symbols as u16 + 1 {
                 let mut diff: i32 = 0;
                 //loop {
                 // Look for offset pairs
@@ -239,7 +265,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
                 huf_decode_map(&map),
                 map.iter().map(|(s, _)| *s).collect::<Vec<u16>>(),
             );
-            trace!("\nFound huffman maps at {}", mark_loc);
+            trace!("\rFound huffman maps at {}.  ", mark_loc);
         }
 
         // We are now ready to read the data and decode it.
@@ -291,23 +317,9 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
                     let sym = symbol_index
                         [(level[depth].offset + code - level[depth].start_code) as usize];
 
-
                     // Put it into the output vec.
                     out[block_index] = sym;
-
-                    // Update the block index
-                    block_index += 1;
-
-                    // Update the level variables if we are starting a new chunk.
-                    if block_index % CHUNK_SIZE == 0 {
-                        let (l, s) = &huf_decode_maps[selector_map[block_index / 50]];
-                        level = l;
-                        symbol_index = s;
-                    }
-
-                    // Reset the depth index and code.
-                    depth = 0;
-                    code = 0;
+                    trace!("\r\x1b[43m{:>6}: {:>3}     \x1b[0m", block_index, sym);
 
                     // Check if we have reached the end of block
                     if sym == eob {
@@ -320,10 +332,24 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
                             ));
                         }
                         // Adjust the vec length to the block_index plus 1
-                        out.truncate(block_index);
+                        out.truncate(block_index + 1);
                         // All done.
                         break;
                     }
+
+                    // Update the block index
+                    block_index += 1;
+
+                    // Update the level variables if we are starting a new chunk.
+                    if block_index % CHUNK_SIZE == 0 {
+                        let (l, s) = &huf_decode_maps[selector_map[block_index / 50]];
+                        level = l;
+                        symbol_index = s;
+                    }
+
+                    // Reset the depth index and code before looking for the next symbol.
+                    depth = 0;
+                    code = 0;
                 }
             }
         }

@@ -3,66 +3,101 @@ Stream orient Run Length Encoder. Being stream oriented allows this encoder to w
 the logic that divides a block so that the BWT encoding can received as close to the
 maximum block size as possible without overrunning the 19 byte buffer.
 
+This maximum block size must be considered for both the data BWT will see as well as the
+data the RLE1 output will receive. Remember, while RLE1 output is usually smaller than the BWT
+data, it can be as much as 25% larger than the BWT data.
+
 Logic: Iterate through the input, counting how far we go before we hit a sequence of 4 identical bytes.
-(Extending a vec should be faster than pushing data at each byte. Searching for 4 bytes at a time should
+(Extending a vec is faster than pushing data at each byte. Searching for 4 bytes at a time is
 be faster than counting pairs in a loop.) When you find a duplicate sequence, output all the bytes
  you skipped over, go count how many bytes are identical, output the identical bytes (you can only
 do 260 at a time, hence the divide and mod math), then adjust the index and start location.*/
 
-/// Encode runs of for our more identical bytes, pre-BWT. Returns number of bytes consumed and the RLE1 data. 
-pub fn rle_encode(v: &[u8], size: u32) -> (u32, Vec<u8>) {
-    if v.len() < 4 || size < 4 {
-        return (v.len().min(size as usize) as u32, v.to_vec());
+use log::error;
+
+use crate::compression::compress::Block;
+
+/// Encode runs of for our more identical bytes, pre-BWT. Returns a block full indicator, the number
+/// of bytes consumed, and the RLE1 data.
+pub fn rle_encode(data: &[u8], block_size: u32) -> (bool, u32, Vec<u8>) {
+    let mut block_full = false;
+    // Skip RLE1 if the data is less than 4 bytes
+    if data.len() < 4 {
+        return (block_full, data.len() as u32, data.to_vec());
     }
-    let mut skip_start: usize = 0;
-    //let mut idx = 0;
-    let mut out = Vec::with_capacity(v.len());
 
-    let data_end = v.len() - 3;
-    //let mut consumed_dups = 0;
-    let mut idx = 0;
+    // Pushing a byte at a time to the output is slower than extending by chunks
+    // Therefore remember where we are starting the next chunk so we can go faster
+    let mut start: usize = 0;
 
-    while idx < data_end  {
-        if out.len() + (idx - skip_start) >= size as usize  {
-            break
+    // It is possible that the data will expand a maximum of 25%
+    let mut out = Vec::with_capacity(data.len() * 5 / 4);
+
+    // Set maximum chunk size to the lesser of the block size or the data length
+    let data_end = (block_size as usize).min(data.len());
+
+    // idx is the position in the input where we are looking for 4 identical previous bytes
+    let mut idx = 3;
+
+    // As long as we have data, search up until the begining 4 identical bytes
+    while idx < data_end {
+        // Remembering that RLE1 can possibly expand the data, watch out for this
+        if (out.len() + idx - start) >= block_size as usize {
+            block_full = true;
+            break;
         }
-        if v[idx] == v[idx + 1] && v[idx] == v[idx + 2] && v[idx] == v[idx + 3] {
-            out.extend_from_slice(&v[skip_start..idx]);
-            let dups = count_dups(v, idx);
-            out.extend_from_slice(&v[idx..=idx + 3]);
-            out.push(dups as u8);
-            idx += dups + 4;
-            skip_start = idx;
-            //consumed_dups += dups;
+
+        // Look at the next 4 bytes to see if they are identical
+        if data[idx] == data[idx - 1] && data[idx] == data[idx - 2] && data[idx] == data[idx - 3] {
+            // If they are, write out everything from the last start until the end of the run of 4
+            out.extend_from_slice(&data[start..=idx]);
+            // Get the count of duplicates following (0-255)
+            let dups = count_dups(data, idx);
+            // Write that out
+            out.push(dups);
+            // Move the index past the 4 identical bytes and the duplicates we counted
+            idx += 1 + dups as usize;
+            // Reset start to this new index
+            start = idx;
         } else {
+            // Otherwise just increment the index
             idx += 1;
         }
     }
-    // If we are nearly at the end of the data, fix idx
-    if v.len() - idx <= 3 || v.len() < idx {
-        idx = v.len()
+
+    // // Reserve a varible to report how much data we processed
+    // let processed;
+
+    // // If we ran out of data, we will process all we had
+    // if idx >= data_end {
+    //     processed = data_end;
+    // } else {
+    //     // otherwise we must have expanded data and reached our limit
+    //     processed = out.len() + idx - start;
+    // }
+
+    // Did we happen to run out of data at the same time as we hit the limit?
+    if idx == block_size as usize {
+        block_full = true
     }
 
-    // If needed, write what we skipped
-    if skip_start < v.len() {
-        out.extend_from_slice(&v[skip_start..idx]);
-    }
-    (idx as u32, out)
+    // Write out any pending data.
+        out.extend_from_slice(&data[start..idx]);
+    
+    // The data we processed is idx+3 or the end of data, whichever is less.
+    (block_full, idx as u32, out)
 }
 
 /// Helper function for rel1_encode to count how many duplicate bytes occur.
-fn count_dups(v: &[u8], i: usize) -> usize {
-    let mut count = 0;
-    for j in i + 3..v.len() - 1 {
-        if v[j] != v[j + 1] {
-            return count;
-        }
-        count += 1;
-        if count == 255 {
-            break;
-        }
-    }
-    count
+fn count_dups(data: &[u8], i: usize) -> u8 {
+    // i is the position of the last of four identical bytes. We need to count
+    // identical bytes *after* that position. If position returns None, then return
+    // the number of bytes to the end of the data we have taken.
+    data.iter()
+        .skip(i + 1)
+        .take(255)
+        .position(|&x| x != data[i])
+        .unwrap_or(data.len() - i - 1) as u8
 }
 
 /*
@@ -75,35 +110,35 @@ and loop until that decrements to zero.
 Perhaps I should have use the while idx strategy rather than a for loop, but...
 */
 /// Unencodes runs of four or more characters from the RLE1 phase
-pub fn rle1_decode(v: &[u8]) -> Vec<u8> {
+pub fn rle1_decode(data: &[u8]) -> Vec<u8> {
     // Initialize our start counter and jump_past_search counter
     let mut start: usize = 0;
-    let mut jump_past_search = 0;
-    // Create a vec with the same capacity as the input
-    let mut out = Vec::with_capacity(v.len());
+    // Create a vec with 10% more capacity as the input
+    let mut out = Vec::with_capacity(data.len() * 11 / 10);
     // loop until we get within 4 bytes of the end
-    for i in 0..v.len() - 4 {
+    for i in 0..data.len() - 4 {
         // If we found a sequence of 4 identical bytes, we need to get past it
-        if jump_past_search > 0 {
+        if i < start {
+            continue;
             // decrement the jump counter by one
-            jump_past_search -= 1;
+            //jump_past_search -= 1;
             // If not, look for a sequence of 4
-        } else if v[i] == v[i + 1] && v[i] == v[i + 2] && v[i] == v[i + 3] {
+        } else if data[i] == data[i + 1] && data[i] == data[i + 2] && data[i] == data[i + 3] {
             // If we found a sequence of 4, first write out everything from start to now.
-            out.extend_from_slice(&v[start..i + 4]);
+            out.extend_from_slice(&data[start..i + 4]);
             // Create a vec of the identical characters, sizing the vec on the counter byte
             // after sequence of 4 we found
-            let tmp = vec![v[i]; v[i + 4].into()];
+            let tmp = vec![data[i]; data[i + 4].into()];
             // ...and write that out
             out.extend(tmp);
             // Set the jump past variable to get us past the 4 plus count byte
-            jump_past_search = 5;
+            //jump_past_search = 5;
             // and reset the start to be at the point just past the jump_past counter.
-            start = i + jump_past_search;
+            start = i + 5;
         }
     }
     // Don't forget to write out any stuff we have skipped since the last start counter
-    out.extend_from_slice(&v[start..v.len()]);
+    out.extend_from_slice(&data[start..data.len()]);
     // Return the transformed data
     out
 }

@@ -1,4 +1,4 @@
-use log::{debug, error, info, trace};
+use log::{error, info, trace};
 
 use crate::bitstream::bitwriter::BitWriter;
 
@@ -149,9 +149,9 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         );
 
         if iter == iterations - 1 {
-            debug!("Final tables:",);
+            trace!("Final tables:",);
             for (i, table) in tables.iter().enumerate().take(table_count) {
-                debug!(
+                trace!(
                     "\n      {}: {:?}",
                     i,
                     table
@@ -187,14 +187,15 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
       we can use the code_from_length function to quickly generate codes.
     */
 
-    // Next are the symbol maps, 16 bit L1 + 0-16 words of 16 bit L2 maps.
+    // Write out the the symbol maps, 16 bit L1 + 0-16 words of 16 bit L2 maps.
     trace!("\r\x1b[43mSymbol maps written at {}.     \x1b[0m", bw.loc());
     for word in &block.sym_map {
         bw.out16(*word);
+        trace!("\r\x1b[43m{:0>16b}     \x1b[0m", word);
     }
 
     // Symbol maps are followed by a 3 bit number of Huffman trees that exist
-    trace!("\r\x1b[Table count written at {}.     \x1b[0m", bw.loc());
+    trace!("\r\x1b[43mTable count written at {}.     \x1b[0m", bw.loc());
     bw.out24((3 << 24) | table_count as u32);
 
     // Then a 15 bit number indicating the how many selectors are used
@@ -215,7 +216,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
     HOWEVER, the selectors are written after a Move-To-Front transform, to save space.
     */
 
-    // Initialize an index to the tables to do a MTF transform for the selectors
+    // Initialize an index to the selector tables in preparation for the MTF transform for the selectors
     let mut table_idx = vec![0, 1, 2, 3, 4, 5];
 
     // Prepare the output selector vec
@@ -223,27 +224,35 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
 
     // ...then do the MTF transform of the selector vector
     for i in 0..selector_count {
-        let selector = selectors[i];
-        let mut idx = table_idx.iter().position(|c| c == &selector).unwrap();
+        // Get the index of the next selector
+        let mut idx = table_idx.iter().position(|c| c == &selectors[i]).unwrap();
+        // Write it to the MTF version of the selector vector
         mtf_selectors[i as usize] = idx;
-        // If the index is not already at the front of the table, do a MTF
-        if table_idx[idx] != 0 {
-            // Shift each index at the front of selector "forward" one. Do blocks of 3 for speed.
-            let temp_sel = table_idx[idx as usize];
+        // Adjust the  table index
+        // For speed, don't take time to adjust the index if we don't need to.
+        match idx {
+            0 => {}
+            1 => {
+                table_idx.swap(0, 1);
+            }
+            _ => {
+                // Shift each index at the front of selector "forward" one. Do blocks of 3 for speed.
+                let temp_sel = table_idx[idx as usize];
 
-            while idx > 2 {
-                table_idx[idx as usize] = table_idx[idx as usize - 1];
-                table_idx[idx as usize - 1] = table_idx[idx as usize - 2];
-                table_idx[idx as usize - 2] = table_idx[idx as usize - 3];
-                idx -= 3;
+                while idx > 2 {
+                    table_idx[idx as usize] = table_idx[idx as usize - 1];
+                    table_idx[idx as usize - 1] = table_idx[idx as usize - 2];
+                    table_idx[idx as usize - 2] = table_idx[idx as usize - 3];
+                    idx -= 3;
+                }
+                // ...then clean up any odd ones
+                while idx > 0 {
+                    table_idx[idx as usize] = table_idx[idx as usize - 1];
+                    idx -= 1;
+                }
+                // ...and finally put the "new" symbol index at the front of the index.
+                table_idx[0] = temp_sel;
             }
-            // ...then clean up any odd ones
-            while idx > 0 {
-                table_idx[idx as usize] = table_idx[idx as usize - 1];
-                idx -= 1;
-            }
-            // ...and finally put the "new" symbol index at the front of the index.
-            table_idx[0] = temp_sel;
         }
     }
 
@@ -266,6 +275,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
     }
     // All done with mtf_selectors.
     drop(mtf_selectors);
+
     /*
     Now create the huffman codes. We need to convert our weights to huffman codes.
     (And later we will want to use the BitWriter with those codes also.)
@@ -364,17 +374,24 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         // The len_sym vec now needs to be sorted by symbol, not length
         len_sym.sort_unstable_by(|a, b| a.1.cmp(&b.1));
 
-        trace!("\r\x1b[43mWriting huffman map {} at {}.   \x1b[0m", i, bw.loc());
         // We write the origin as a five bit int
         let mut origin = len_sym[0].0;
+        trace!(
+            "\r\x1b[43mWriting origin {} for huffman map {} at {}.   \x1b[0m",
+            origin,
+            i,
+            bw.loc()
+        );
         bw.out24((5 << 24) | origin as u32);
 
         // ... and iterate through the entire symbol list writing the deltas
         for entry in len_sym.iter() {
             trace!(
-                "\r\x1b[43mDelta for {} is {}.     \x1b[0m",
+                "\r\x1b[43mIndex for {} is {} (Delta = {}), written at {}.     \x1b[0m",
                 entry.1,
-                entry.0
+                entry.0,
+                origin as i32 - entry.0 as i32,
+                bw.loc(),
             );
             // get the next length
             let (l, _) = entry;
@@ -423,7 +440,12 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         let table_idx = selectors[idx];
         chunk.iter().for_each(|symbol| {
             bw.out24(out_code_tables[table_idx][*symbol as usize].1);
-            trace!("\r\x1b[43mRLE2 {} ({}) written at {}.   \x1b[0m", index, *symbol, bw.loc());
+            trace!(
+                "\r\x1b[43mRLE2 {} ({}) written at {}.   \x1b[0m",
+                index,
+                *symbol,
+                bw.loc()
+            );
             index += 1;
         })
     }
@@ -832,7 +854,7 @@ fn init_tables(freqs: &[u32], table_count: usize, eob: u16) -> [[u32; 258]; 6] {
     let mut tables = [[15_u32; 258]; 6];
 
     // Then set the soft limits to divide the data out to the tables.
-    let portion_limit: u32 = freqs.iter().sum::<u32>() / table_count as u32;
+    let mut portion_limit: u32 = freqs.iter().sum::<u32>() / table_count as u32;
     /* How this works is a bit weird.
     We initially make tables based on the frequency of the symbols. For example, say we
     have enough data for six tables. Some symbols will have greater frequency than other
@@ -884,6 +906,10 @@ fn init_tables(freqs: &[u32], table_count: usize, eob: u16) -> [[u32; 258]; 6] {
                 portion = 0;
             }
         };
+        // EXPERIMENTAL for case of huge frequency in one item
+        // if f > &portion_limit {
+        //     portion_limit = (freqs.iter().sum::<u32>() - *f) / (table_count - 1) as u32;
+        // }
     }
     tables
 }

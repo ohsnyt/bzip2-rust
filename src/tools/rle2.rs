@@ -22,8 +22,8 @@ hopes of signficant speed advantages of direct indexing instead of searches.)
 
 use crate::compression::compress::Block;
 
-/// Does run-length-encoding only on byte 0_u8. Output (a Vec<u16>) is encoded in a unique Bzip2 way 
-/// and placed in temp_vec within Block
+/// Does run-length-encoding only on byte 0_u8. Output (a Vec<u16>) is encoded in a unique Bzip2 way
+/// and placed in rle2 within Block
 pub fn rle2_encode(block: &mut Block) {
     let mut zeros: u32 = 0;
 
@@ -40,7 +40,9 @@ pub fn rle2_encode(block: &mut Block) {
             // We didn't find a zero. So If we have any pending zeros to put out
             if zeros > 0 {
                 // write out the pending zeros using the special bzip2 coding
-                block.temp_vec.extend(rle2_encode_runs(zeros, &mut block.freqs).iter());
+                block
+                    .rle2
+                    .extend(rle2_encode_runs(zeros, &mut block.freqs).iter());
                 // and reset the zeros counter
                 zeros = 0;
             }
@@ -48,18 +50,20 @@ pub fn rle2_encode(block: &mut Block) {
             // This requires us to move from u8 to u16 (at least)
             let tmp = el as u16 + 1;
             //Write out the pending character with the value incremented by 1
-            block.temp_vec.push(tmp);
+            block.rle2.push(tmp);
             // Increment the frequency counts
             block.freqs[tmp as usize] += 1;
             // Alway look for the largest value so we can mark the eob as +1
             block.eob = block.eob.max(tmp);
         }
     }
-    block.temp_vec.extend(rle2_encode_runs(zeros, &mut block.freqs).iter());
+    block
+        .rle2
+        .extend(rle2_encode_runs(zeros, &mut block.freqs).iter());
     // Increment the eob symbol to be one more than the largest symbol we found.
     block.eob += 1;
     // Write out the EOB to the stream.
-    block.temp_vec.push(block.eob);
+    block.rle2.push(block.eob);
 }
 
 /// Unique encoding for any run of 0_u8
@@ -86,7 +90,7 @@ fn rle2_encode_runs(r: u32, counts: &mut [u32]) -> Vec<u16> {
     out
 }
 
-/* 
+/*
 /// Does run-length-decoding from rle2_encode.
 pub fn rle2_decode(v: &[u16]) -> Vec<u8> {
     // Initialize counters
@@ -156,7 +160,7 @@ fn rle2_run_encode_5() {
     let mut counts = vec![0, 0];
     assert_eq!(rle2_encode_runs(5, &mut counts), [0, 1])
 }
-/* 
+/*
 // For decode tests, we have to reduce the output by one byte because the
 // decoder removes the last byte (assuming it is an eof symbol).
 #[test]

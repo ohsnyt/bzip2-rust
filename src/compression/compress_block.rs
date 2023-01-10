@@ -13,7 +13,6 @@ use log::{debug, info, trace};
 
 use crate::compression::compress::Block;
 use crate::huffman_coding::huffman::huf_encode;
-//use crate::tools::{mtf::mtf_encode, rle2::rle2_encode};
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Called by Compress, this handles one block and writes out to the output stream.
@@ -23,17 +22,15 @@ pub fn compress_block(
     block: &mut Block,
     block_size: u8,
     algorithm: Algorithms,
-    qs: &mut QsortData,
     iterations: usize,
     timer: &mut Timer,
 ) {
-    // Adjust qs fields  // ONLY needed in Julian algorithm - should be moved
-    qs.end = block.end as usize;
-    qs.budget = block.budget;
-
     // If this is the first block, write the stream header
     if block.seq == 1 {
-        trace!("\r\x1b[43mWriting BZh signature header at {}.    \x1b[0m", bw.loc());
+        trace!(
+            "\r\x1b[43mWriting BZh signature header at {}.    \x1b[0m",
+            bw.loc()
+        );
         // Put the header onto the bit stream
         bw.out8(b'B');
         bw.out8(b'Z');
@@ -85,7 +82,7 @@ pub fn compress_block(
         // Using julians algorithm
         Algorithms::Julian => {
             info!("Using Julians algorithm.");
-            block_sort(block, qs)
+            block_sort(block)
         }
     };
 
@@ -105,7 +102,6 @@ pub fn compress_block(
     rle2_mtf_encode(block);
     timer.mark("mtf");
 
-
     // Now for the compression - the Huffman encoding (which also writes out data)
     let _result = huf_encode(bw, block, iterations);
     // SHOULD HANDLE RESULT ERROR
@@ -113,7 +109,7 @@ pub fn compress_block(
     debug!(
         "\n         {} bytes in block, {} after MTF & RLE2 coding, {} syms in use",
         block.end,
-        &block.temp_vec.len(),
+        &block.rle2.len(),
         block.eob + 1,
     );
 

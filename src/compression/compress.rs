@@ -9,8 +9,7 @@ use crate::tools::crc::{do_crc, do_stream_crc};
 use crate::Timer;
 
 use super::compress_block::compress_block;
-use crate::julian::primary::main_sort::QsortData;
-use crate::tools::cli::{Algorithms, BzOpts};
+use crate::tools::cli::BzOpts;
 use crate::tools::rle1::rle_encode;
 
 /*
@@ -29,7 +28,7 @@ use crate::tools::rle1::rle_encode;
 pub struct Block {
     // Add in block data, sym_map, index, temp vec for data work???
     pub data: Vec<u8>,
-    pub temp_vec: Vec<u16>,
+    pub rle2: Vec<u16>,
     pub end: u32,
     pub key: u32,
     pub freqs: [u32; 258],
@@ -48,12 +47,10 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
     // Initialize the size of the data vec to the block size to avoid resizing
     let mut bw = BitWriter::new(opts.block_size as usize * 100000);
 
-    /* Julian took 19 off the block size.
-     */
-    // Initialize the block struct used by every block
+    // Initialize the block struct used by every block. Julian took 19 off the block.
     let mut block = Block {
         data: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
-        temp_vec: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
+        rle2: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
         end: opts.block_size as u32 * 100000 - 19,
         key: 0,
         freqs: [0; 258],
@@ -65,13 +62,6 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
         budget: 30,
         is_last: false,
     };
-
-    // Initialize the struct for Julian's main sorting algorithm, cutting back vec sizes if not needed
-    let mut temp_end = block.end as usize;
-    if opts.algorithm != Algorithms::Julian {
-        temp_end = 0;
-    }
-    let mut qs = QsortData::new(temp_end, block.budget);
 
     // THE ROUTINES BELOW FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE
     // FILE METADATA AND ALL I/O ERRORS.
@@ -104,7 +94,7 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
 
     while bytes_left > 0 {
         block.data.clear();
-        block.temp_vec.clear();
+        block.rle2.clear();
 
         // Calculate how much data we need for this next block.
         //   We can't exceed the input file size, though.
@@ -175,7 +165,6 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
             &mut block,
             opts.block_size,
             opts.algorithm.clone(),
-            &mut qs,
             opts.iterations,
             timer,
         );

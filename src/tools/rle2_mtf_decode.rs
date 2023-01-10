@@ -87,7 +87,7 @@ pub fn rle2_mtf_decode(data_in: &[u16], mtf_index: &mut Vec<u8>, size: usize) ->
 
 /// Does Move-To-Front transforma and Run-Length-Encoding 2 prior to the huffman stage.
 /// Gets BWT output from block.data.
-/// Puts transformed u16 data into block.temp_vec and frequency count into block.freqs.
+/// Puts transformed u16 data into block.rle2 and frequency count into block.freqs.
 pub fn rle2_mtf_encode(block: &mut Block) {
     // Create a custom index of the input, using an array for speed
     // Start by finding every u8 in the input.
@@ -126,10 +126,10 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     // With the index, we can do the MTF (and RLE2)
     // Initialize a zero counter
     let mut zeros = 0_usize;
-    // Initialize an index into the output vec (block.temp_vec)
+    // Initialize an index into the output vec (block.rle2)
     let mut out_idx = 0_usize;
-    // Size the temp_vec
-    block.temp_vec = vec![0_u16; block.data.len() + 1];
+    // Size the rle2
+    block.rle2 = vec![0_u16; block.data.len() + 1];
     // Set an initial max value for updating the mtf index
     //let mut last_index = 0_usize;
 
@@ -144,14 +144,14 @@ pub fn rle2_mtf_encode(block: &mut Block) {
         match zeros {
             0 => {} // Do nothing.
             1 => {
-                block.temp_vec[out_idx] = 0;
+                block.rle2[out_idx] = 0;
                 block.freqs[0] += 1;
                 out_idx += 1;
                 // Reset zeros counter
                 zeros = 0;
             }
             2 => {
-                block.temp_vec[out_idx] = 1;
+                block.rle2[out_idx] = 1;
                 block.freqs[1] += 1;
                 out_idx += 1;
                 // Reset zeros counter
@@ -161,7 +161,7 @@ pub fn rle2_mtf_encode(block: &mut Block) {
                 n -= 1;
                 loop {
                     // Output the appropriate RUNA/RUNB
-                    block.temp_vec[out_idx] = (n & 1) as u16;
+                    block.rle2[out_idx] = (n & 1) as u16;
                     // Update the appropriate RUNA/RUNB frequency count
                     block.freqs[n & 1] += 1;
                     // Update the output index
@@ -179,7 +179,7 @@ pub fn rle2_mtf_encode(block: &mut Block) {
         // Update the frequency count
         block.freqs[idx] += 1;
         // Then output the data
-        block.temp_vec[out_idx] = idx as u16 + 1;
+        block.rle2[out_idx] = idx as u16 + 1;
         out_idx += 1;
 
         // DEBUGGING TEST
@@ -221,12 +221,12 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     match zeros {
         0 => {} // Do nothing.
         1 => {
-            block.temp_vec[out_idx] = 0;
+            block.rle2[out_idx] = 0;
             block.freqs[0] += 1;
             out_idx += 1;
         }
         2 => {
-            block.temp_vec[out_idx] = 1;
+            block.rle2[out_idx] = 1;
             block.freqs[1] += 1;
             out_idx += 1;
         }
@@ -234,7 +234,7 @@ pub fn rle2_mtf_encode(block: &mut Block) {
             n -= 1;
             loop {
                 // Output the appropriate RUNA/RUNB
-                block.temp_vec[out_idx] = (n & 1) as u16;
+                block.rle2[out_idx] = (n & 1) as u16;
                 // Update the appropriate RUNA/RUNB frequency count
                 block.freqs[n & 1] += 1;
                 // Update the output index
@@ -248,7 +248,7 @@ pub fn rle2_mtf_encode(block: &mut Block) {
         }
     }
     // Add the EOB symbol to the end
-    block.temp_vec[out_idx] = block.eob;
+    block.rle2[out_idx] = block.eob;
     out_idx += 1;
 
     // DEBUGGING TEST
@@ -257,7 +257,7 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     }
 
     // Truncate the vec to the actual data.
-    block.temp_vec.truncate(out_idx);
+    block.rle2.truncate(out_idx);
     block.end = out_idx as u32;
 }
 

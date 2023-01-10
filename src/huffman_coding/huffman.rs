@@ -46,7 +46,7 @@ impl PartialOrd for Node {
 /// Data is returned via the block.
 pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> Result<(), Error> {
     // Get the length of this RLE2 compressed block
-    let vec_end = block.temp_vec.len();
+    let vec_end = block.rle2.len();
     // We can have 2-6 coding tables depending on how much data we have coming in.
     let table_count: usize = match vec_end {
         0..=199 => 2,
@@ -60,7 +60,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
     let mut tables = init_tables(&block.freqs, table_count, block.eob);
 
     // And initialize a count of how many selectors we need, a vec to store them,
-    let selector_count = (block.temp_vec.len() / 50) + 1;
+    let selector_count = (block.rle2.len() / 50) + 1;
     let mut selectors = vec![0_usize; selector_count];
 
     /*
@@ -100,46 +100,42 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         of data, and record that in the selector table.
         */
 
-        block
-            .temp_vec
-            .chunks(50)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                // the cost array helps us find which table is best for each 50 byte chunk
-                let mut cost = [0; 6];
+        block.rle2.chunks(50).enumerate().for_each(|(i, chunk)| {
+            // the cost array helps us find which table is best for each 50 byte chunk
+            let mut cost = [0; 6];
 
-                // Find the best table for the next chunk
-                // For each symbol, iterate through each table and calculate that tables cost for the symbol
-                chunk.iter().for_each(|symbol| {
-                    (0..table_count).for_each(|t| cost[t] += tables[t][*symbol as usize])
-                });
-
-                // Get the position of the lowest non-zero cost (or first if several have the same low cost)
-                let bt = cost
-                    .iter()
-                    .position(|n| n == cost[0..table_count as usize].iter().min().unwrap())
-                    .unwrap() as usize;
-
-                // Add that lowest cost to total_cost for the entire input data set
-                total_cost += cost[bt];
-
-                // For reporting only, increment the appropriate fave array with the index
-                // so we know how many times this table was chosen as "best"
-                favorites[bt] += 1;
-
-                // Now that we know the best table, go get the frequency counts for
-                // the symbols in this group of 50 bytes and store the freq counts into rfreq.
-                // As we go through an iteration, this becomes cumulative.
-                // This is used to improve the tables for the next iteration.
-                chunk
-                    .iter()
-                    .for_each(|&symbol| rfreq[bt as usize][symbol as usize] += 1);
-
-                // On the last iteration, collect the selector list
-                if iter == iterations - 1 {
-                    selectors[i] = bt;
-                } // End of the for_each loop, we've gone through the entire input (again).
+            // Find the best table for the next chunk
+            // For each symbol, iterate through each table and calculate that tables cost for the symbol
+            chunk.iter().for_each(|symbol| {
+                (0..table_count).for_each(|t| cost[t] += tables[t][*symbol as usize])
             });
+
+            // Get the position of the lowest non-zero cost (or first if several have the same low cost)
+            let bt = cost
+                .iter()
+                .position(|n| n == cost[0..table_count as usize].iter().min().unwrap())
+                .unwrap() as usize;
+
+            // Add that lowest cost to total_cost for the entire input data set
+            total_cost += cost[bt];
+
+            // For reporting only, increment the appropriate fave array with the index
+            // so we know how many times this table was chosen as "best"
+            favorites[bt] += 1;
+
+            // Now that we know the best table, go get the frequency counts for
+            // the symbols in this group of 50 bytes and store the freq counts into rfreq.
+            // As we go through an iteration, this becomes cumulative.
+            // This is used to improve the tables for the next iteration.
+            chunk
+                .iter()
+                .for_each(|&symbol| rfreq[bt as usize][symbol as usize] += 1);
+
+            // On the last iteration, collect the selector list
+            if iter == iterations - 1 {
+                selectors[i] = bt;
+            } // End of the for_each loop, we've gone through the entire input (again).
+        });
 
         info!(
             " pass {}: best cost is {}, grp uses are {:?}",
@@ -436,7 +432,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
 
     // For debugging
     let mut index = 0;
-    for (idx, chunk) in block.temp_vec.chunks(50).enumerate() {
+    for (idx, chunk) in block.rle2.chunks(50).enumerate() {
         let table_idx = selectors[idx];
         chunk.iter().for_each(|symbol| {
             bw.out24(out_code_tables[table_idx][*symbol as usize].1);
@@ -464,7 +460,7 @@ pub fn huf_encode_old(
     iterations: usize,
 ) -> Result<(), Error> {
     // Get the length of this RLE2 compressed block
-    let vec_end = block.temp_vec.len();
+    let vec_end = block.rle2.len();
     // We can have 2-6 coding tables depending on how much data we have coming in.
     let table_count = match vec_end {
         0..=199 => 2,
@@ -587,7 +583,7 @@ pub fn huf_encode_old(
 
             // Read through the next chunk of 50 symbols (of input) to find the best
             // table for these 50 symbols
-            for &byte in block.temp_vec.iter().take(end as usize).skip(start) {
+            for &byte in block.rle2.iter().take(end as usize).skip(start) {
                 // For each table...
                 for t in 0..table_count as usize {
                     // increment the appropriate cost array with the weight of the symbol
@@ -617,7 +613,7 @@ pub fn huf_encode_old(
             // Now that we know the best table, go get the frequency counts for
             // the symbols in this group of 50 bytes and store the freq counts into rfreq.
             // as we go through an iteration, this becomes cumulative.
-            for &symbol in block.temp_vec.iter().take(end as usize).skip(start) {
+            for &symbol in block.rle2.iter().take(end as usize).skip(start) {
                 rfreq[bt as usize][symbol as usize] += 1;
             }
 
@@ -834,7 +830,7 @@ pub fn huf_encode_old(
     // and a table index that we can change every 50 symbols as needed.
     let mut table_idx = 0;
 
-    for (progress, symbol) in block.temp_vec.iter().enumerate() {
+    for (progress, symbol) in block.rle2.iter().enumerate() {
         // Switch the tables based on how many groups of 50 symbols we have done
         // Be sure to use the NON-MTF TABLES!
         if progress % 50 == 0 {

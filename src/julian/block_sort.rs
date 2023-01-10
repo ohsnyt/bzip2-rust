@@ -7,7 +7,10 @@ use super::primary::main_sort::{main_sort, QsortData};
 
 /// Primary entry into Julian's BWT sorting system. This receives a ref to the block,  and the work factor.
 /// It returns the key (usize) and data. NOT FULLY OPTIMIZED.
-pub fn block_sort(block: &mut Block, qs: &mut QsortData) {
+pub fn block_sort(block: &mut Block) {
+    // Initialize the struct for Julian's main sorting algorithm, cutting back vec sizes if not needed
+    let mut qs = QsortData::new(block.end as usize, block.budget);
+
     // If the size of the block us under 10k, use the fallbackSort function.
     if block.end < 10000 {
         fallback_sort(block)
@@ -31,7 +34,7 @@ pub fn block_sort(block: &mut Block, qs: &mut QsortData) {
         block.budget = block.end as i32 * ((block.budget as i32 - 1) / 3);
         let budget_init = block.budget;
 
-        main_sort(block, qs);
+        main_sort(block, &mut qs);
 
         trace!(
             "\nWork depleated: {}, block size: {}.",

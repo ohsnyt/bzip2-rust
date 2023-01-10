@@ -1,10 +1,10 @@
 //use crate::lib::bwt_ds::bwt_encode;
 
 use crate::bitstream::bitwriter::BitWriter;
-use crate::tools::rle2_mtf_decode::rle2_mtf_encode;
+use crate::tools::rle2_mtf::rle2_mtf_encode;
 use crate::{bwt_ribzip::*, Timer};
 
-use crate::julian::{block_sort::block_sort, primary::main_sort::QsortData};
+use crate::julian::{block_sort::block_sort};
 use crate::snyder::bwt_ds::bwt_encode;
 use crate::snyder::bwt_ds_big::bwt_encode_big;
 use crate::snyder::bwt_ds_par::bwt_encode_par;

@@ -1,28 +1,5 @@
 const BIT_MASK: u16 = 0x8000;
 
-/// Similar to makeMaps_e
-/// Takes an array (or slice) of all symbols used in the input and creates the unique
-/// bzip2 symbol map. Assumes at least one symbol exists.
-pub fn encode_sym_map(symbols: &[u8]) -> Vec<u16> {
-    let mut symbol_maps: Vec<u16> = vec![0; 17];
-
-    // Find the end of the symbols if this is an array with trailing zeros. Assumes at least one symbol.
-    let end = symbols.iter().skip(1).position(|&n| n == 0).unwrap_or(255) + 1;
-
-    // This works even if end is greater than the length of symbols
-    for byte in symbols.iter().take(end) {
-        let l1 = byte >> 4; // Divide by 16 (>>4) to find which map set the bit mask belongs to
-        symbol_maps[0] |= BIT_MASK >> l1; // Mask the appropriate set
-        symbol_maps[1 + l1 as usize] |= BIT_MASK >> (byte & 15); // (&15 = %16) index to the map, and set the mask there
-    }
-    // Get ready to return only those vecs that have bits set.
-    for idx in (0..17).rev() {
-        if symbol_maps[idx] == 0 {
-            symbol_maps.remove(idx);
-        }
-    }
-    symbol_maps
-}
 
 /// Takes the unique bzip2 symbol map and returns a sorted vec of all
 /// u8s used in the input.
@@ -60,22 +37,6 @@ pub fn decode_sym_map(symbol_map: &[u16]) -> Vec<u8> {
 
 
 #[test]
-fn encode_symbol_map_test() {
-    let mut x = "If Peter Piper picked a peck of pickled peppers, where's the peck of pickled peppers Peter Piper picked?".as_bytes().to_vec();
-    x.push(0x1);
-    x.sort_unstable();
-    x.dedup();
-    let x = Vec::from(x);
-    let idx = vec![48896, 16384, 33032, 1, 64, 32768, 24281, 47360];
-    assert_eq!(idx, encode_sym_map(&x))
-}
-#[test]
-fn encode_symbol_map_full_test() {
-    let x = (0..=255).collect::<Vec<u8>>();
-    let idx = vec![0xffff; 17];
-    assert_eq!(idx, encode_sym_map(&x))
-}
-#[test]
 fn decode_symbol_map_test() {
     let maps = vec![11008, 32770, 4, 17754, 6208];
     let mut compare = "Making a silly test.".as_bytes().to_vec();
@@ -89,14 +50,4 @@ fn decode_symbol_map_full_test() {
     let maps = vec![0xffff; 17];
     let compare = (0..=255).collect::<Vec<u8>>();
     assert_eq!(compare, decode_sym_map(&maps));
-}
-
-#[test]
-fn roundtrip_symbol_map_test() {
-    let mut x = "Decode this.".as_bytes().to_vec();
-    x.sort_unstable();
-    x.dedup();
-    let y = Vec::from(x.clone());
-    let rt = encode_sym_map(&y);
-    assert_eq!(decode_sym_map(&rt), x)
 }

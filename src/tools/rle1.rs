@@ -13,10 +13,6 @@ be faster than counting pairs in a loop.) When you find a duplicate sequence, ou
  you skipped over, go count how many bytes are identical, output the identical bytes (you can only
 do 260 at a time, hence the divide and mod math), then adjust the index and start location.*/
 
-use log::error;
-
-use crate::compression::compress::Block;
-
 /// Encode runs of for our more identical bytes, pre-BWT. Returns a block full indicator, the number
 /// of bytes consumed, and the RLE1 data.
 pub fn rle_encode(data: &[u8], block_size: u32) -> (bool, u32, Vec<u8>) {

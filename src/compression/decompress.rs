@@ -4,7 +4,7 @@ use crate::{
     snyder::bwt_ds::bwt_decode_test,
     tools::{
         crc::{do_crc, do_stream_crc},
-        rle2_mtf_decode::rle2_mtf_decode_fast,
+        rle2_mtf::rle2_mtf_decode_fast,
     },
     Timer,
 };

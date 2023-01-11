@@ -12,7 +12,7 @@ pub enum NodeData {
     Kids(Box<Node>, Box<Node>),
     Leaf(u16),
 }
-#[derive(Eq, PartialEq, Ord, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Node {
     pub weight: u32,
     pub depth: u8,
@@ -33,12 +33,22 @@ impl Node {
 impl PartialOrd for Node {
     /// Sort Nodes by decreasing weight and decreasing symbol value
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if other.weight == self.weight {
-            return Some(other.syms.cmp(&self.syms));
-        }
-        Some(other.weight.cmp(&self.weight))
+        Some((other.weight, other.syms).cmp(&(self.weight, self.syms)))
     }
 }
+impl Ord for Node {
+    /// Sort Nodes by decreasing weight and decreasing symbol value
+    fn cmp(&self, other: &Self) -> Ordering {
+        (other.weight, other.syms).cmp(&(self.weight, self.syms))
+    }
+}
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        (self.weight, self.syms) == (other.weight, other.syms)
+    }
+}
+
+impl Eq for Node {}
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Encode MTF/RLE2 data using Julian's multi-table system.

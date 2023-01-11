@@ -124,6 +124,8 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
             // Add the data to block
             block.data.extend(new_data.iter());
             timer.mark("rle1");
+            // Update the block end.
+            block.end = block.data.len() as u32;
 
             if processed > buf.len() as u32 {
                 println!("Pause here...")
@@ -142,9 +144,6 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
         }
         // Done with RLE1
         timer.mark("rle1");
-
-        // Set the block end
-        block.end = block.data.len() as u32;
 
         // We reached the block size we wanted, so process this block
         // Update the block sequence counter and inform the user

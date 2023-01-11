@@ -94,6 +94,7 @@ impl BzOpts {
 }
 
 /// NOT YET IMPLEMENTED. Used during the library mode by the calling program.
+#[allow(dead_code)] 
 #[derive(Debug)]
 pub enum Status {
     Init,

@@ -1,5 +1,5 @@
 use core::cmp::Ordering;
-use log::{error, trace};
+use log::{error, trace, warn};
 use rayon::prelude::*;
 use std::mem;
 
@@ -31,15 +31,15 @@ impl BwtKey {
 }
 
 impl PartialOrd for BwtKey {
-    /// Sort based on sort value only.
+    /// Sort based on sort and index values.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.sort.cmp(&other.sort))
+        Some((self.sort, self.index).cmp(&(other.sort, other.index)))
     }
 }
 impl Ord for BwtKey {
-    /// Sort based on sort value only.
+    /// Sort based on sort and index values.
     fn cmp(&self, other: &Self) -> Ordering {
-        self.sort.cmp(&other.sort)
+        (self.sort, self.index).cmp(&(other.sort, other.index))
     }
 }
 impl PartialEq for BwtKey {
@@ -65,8 +65,14 @@ pub fn bwt_encode_par(block: &mut Block) {
 
     // Repeatedly sort the data as long as we find identical sequences in it.
     let mut sub_depth = 1;
+    // subsorting returns false if no more sequences to sort
     while subsorting(&mut bwt_data, sub_depth, &udata) {
         sub_depth += 1;
+        warn!("Depth is now {}\r\x1B[1A", sub_depth);
+        if sub_depth >= (bwt_data.len() / std::mem::size_of::<usize>()) as u32 {
+            warn!("We exhaustively subsorted to the end of the data");
+            break;
+        }
     }
     // Return key and sorted data via block
     // Logic for parallel vs sequential
@@ -119,6 +125,11 @@ fn subsorting(data: &mut [BwtKey], rundepth: u32, udata: &Vec<usize>) -> bool {
             }
         }
 
+        // Check for runs at the end of the input
+        if run > 1 {
+            seqs.push((data.len() - run, data.len()));
+        }
+
         //Exit with false if we didn't find any runs
         if seqs.is_empty() {
             return false;
@@ -132,7 +143,7 @@ fn subsorting(data: &mut [BwtKey], rundepth: u32, udata: &Vec<usize>) -> bool {
             data[*start..*end].par_sort();
             trace!("\n{} par keys. ", end - start);
         } else {
-            data[*start..*end].sort();
+            data[*start..*end].sort_unstable();
         }
     });
 

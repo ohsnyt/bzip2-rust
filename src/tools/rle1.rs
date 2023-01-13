@@ -13,13 +13,11 @@ be faster than counting pairs in a loop.) When you find a duplicate sequence, ou
  you skipped over, go count how many bytes are identical, output the identical bytes (you can only
 do 260 at a time, hence the divide and mod math), then adjust the index and start location.*/
 
-/// Encode runs of for our more identical bytes, pre-BWT. Returns a block full indicator, the number
-/// of bytes consumed, and the RLE1 data.
-pub fn rle_encode(data: &[u8], block_size: u32) -> (bool, u32, Vec<u8>) {
-    let mut block_full = false;
+/// Encode runs of for our more identical bytes, pre-BWT. Returns how many bytes we used and the RLE1 data.
+pub fn rle_encode(data: &[u8], free_space: usize) -> (usize, Vec<u8>) {
     // Skip RLE1 if the data is less than 4 bytes
     if data.len() < 4 {
-        return (block_full, data.len() as u32, data.to_vec());
+        return (data.len(), data.to_vec());
     }
 
     // Pushing a byte at a time to the output is slower than extending by chunks
@@ -29,17 +27,13 @@ pub fn rle_encode(data: &[u8], block_size: u32) -> (bool, u32, Vec<u8>) {
     // It is possible that the data will expand a maximum of 25%
     let mut out = Vec::with_capacity(data.len() * 5 / 4);
 
-    // Set maximum chunk size to the lesser of the block size or the data length
-    let data_end = (block_size as usize).min(data.len());
-
     // idx is the position in the input where we are looking for 4 identical previous bytes
     let mut idx = 3;
 
     // As long as we have data, search up until the begining 4 identical bytes
-    while idx < data_end {
+    while idx < data.len() {
         // Remembering that RLE1 can possibly expand the data, watch out for this
-        if (out.len() + idx - start) >= block_size as usize {
-            block_full = true;
+        if (out.len() + idx - start) >= free_space {
             break;
         }
 
@@ -72,16 +66,11 @@ pub fn rle_encode(data: &[u8], block_size: u32) -> (bool, u32, Vec<u8>) {
     //     processed = out.len() + idx - start;
     // }
 
-    // Did we happen to run out of data at the same time as we hit the limit?
-    if idx == block_size as usize {
-        block_full = true
-    }
-
     // Write out any pending data.
-        out.extend_from_slice(&data[start..idx]);
-    
-    // The data we processed is idx+3 or the end of data, whichever is less.
-    (block_full, idx as u32, out)
+    out.extend_from_slice(&data[start..idx]);
+
+    // Report how much of the input was processed and return the output
+    (idx, out)
 }
 
 /// Helper function for rel1_encode to count how many duplicate bytes occur.

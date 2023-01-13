@@ -89,47 +89,47 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
     //----- Prepare to loop through blocks of data and process it.
     //let mut bytes_processed = 0;
     let mut bytes_left = fin_metadata.size() as usize;
-    // We need a read buffer that exists throughout the process
-    let mut buf = vec![];
+    // We need a read buffer that exists throughout the process. Initially it must be empty.
+    let mut buf = Vec::with_capacity((block.end as usize).min(bytes_left));
 
     while bytes_left > 0 {
+        // Make sure the block data vecs do not have old data
         block.data.clear();
         block.rle2.clear();
 
-        // Calculate how much data we need for this next block.
-        //   We can't exceed the input file size, though.
-        let bytes_desired = bytes_left.min(block.end as usize) as u32;
-        let mut block_full = false;
-        let mut processed = 0;
+        // Set the maximum free space available in this block. Initally block.end is the max block size.
+        let mut free_space = block.end as usize;
+
+        // Count how much of the input buffer have we processed used so far
+        let mut processed: usize = 0;
 
         // Get data and do the RLE1. We may need more than one read to fill the buffer
-        while !block_full {
+        while free_space > 0 {
+            // If we don't have any data in the buffer, go read some more data
             if buf.is_empty() {
-                //   Read 20% more than we need, if we have enough data left.
-                buf = vec![0; (block.end as usize * 5 / 4).min(bytes_left)];
+                // First allocate space for the read buffer
+                buf = vec![0_u8; bytes_left.min(block.end as usize)];
+                //   Read a whole block worth of data, or until the end of the input file.
                 fin.read_exact(&mut buf)
                     .expect("Could not read enough bytes.");
+                // New buffer read, so we haven't processed any of it yet
                 processed = 0;
             }
 
-            // Do the rle on a glob of data - hopefully more than we need
-            let (bfull, used, new_data) =
-                rle_encode(&buf, bytes_desired - processed - block.data.len() as u32);
-            block_full = bfull;
-            processed += used;
+            // Do the rle1 on a glob of data
+            let (used, new_data) = rle_encode(&buf, free_space);
+            processed += used as usize;
 
-            // // Subtract what we got from what we wanted, safely (must be done before append!)
-            // bytes_desired = bytes_desired.saturating_sub(new_data.len() as u32);
+            // Calculate how much free space is left, the max of what we processed vs what we got back
+            free_space -= processed.max(new_data.len());
 
-            // Add the data to block
+            // Add the rle1 data to block.data
             block.data.extend(new_data.iter());
             timer.mark("rle1");
-            // Update the block end.
+
+            // Update the block end to the actual block size
             block.end = block.data.len() as u32;
 
-            if processed > buf.len() as u32 {
-                println!("Pause here...")
-            }
             // Do CRC on what we got each time
             block.block_crc = do_crc(block.block_crc, &buf[0..used as usize]);
             timer.mark("crcs");

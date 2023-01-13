@@ -4,7 +4,7 @@ use crate::bitstream::bitwriter::BitWriter;
 use crate::tools::rle2_mtf::rle2_mtf_encode;
 use crate::{bwt_ribzip::*, Timer};
 
-use crate::julian::{block_sort::block_sort};
+use crate::julian::block_sort::block_sort;
 use crate::snyder::bwt_ds::bwt_encode;
 use crate::snyder::bwt_ds_big::bwt_encode_big;
 use crate::snyder::bwt_ds_par::bwt_encode_par;
@@ -91,20 +91,11 @@ pub fn compress_block(
     bw.out24(0x18_000000 | block.key as u32); // and 24 bit key
     timer.mark("bwt");
 
-    // // Now send the BTW data off for the MTF transform...
-    // mtf_encode(block);
-    // timer.mark("mtf");
-
-    // // ...followed by the RLE2 transform. These two may later be combined.
-    // rle2_encode(block);
-    // timer.mark("rle");
-
     rle2_mtf_encode(block);
     timer.mark("mtf");
 
     // Now for the compression - the Huffman encoding (which also writes out data)
     let _result = huf_encode(bw, block, iterations);
-    // SHOULD HANDLE RESULT ERROR
 
     debug!(
         "\n         {} bytes in block, {} after MTF & RLE2 coding, {} syms in use",

@@ -95,6 +95,10 @@ fn subsorting(data: &mut [BwtKey], rundepth: u32, udata: &Vec<usize>) -> bool {
                 run = 1;
             }
         }
+        // Check for runs at the end of the input
+        if run > 1 {
+            seqs.push((data.len() - run, data.len()));
+        }
 
         //Exit with false if we didn't find any runs
         if seqs.is_empty() {

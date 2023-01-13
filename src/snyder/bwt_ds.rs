@@ -10,11 +10,13 @@ pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     }
 
     // Sort index (par_sort_by is 3x faster than .sort_by)
-    index[..].par_sort_by(|a, b| block_compare(*a as usize, *b as usize, orig));
+    if orig.len() > 40000 {
+        index[..].par_sort_unstable_by(|a, b| block_compare(*a as usize, *b as usize, orig));
+    } else {
+        index[..].sort_unstable_by(|a, b| block_compare(*a as usize, *b as usize, orig));
+    }
     // Tried radix sort, but it was slower
     //rdxsort::RdxSort::rdxsort(&mut index);
-    //info!("Known good index: {:?}", index);
-
     // Get key and BWT output (assumes u32 is 4 bytes)
     let mut key = 0_u32;
     let mut bwt = vec![0; orig.len()];
@@ -47,9 +49,8 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
     result
 }
 
-
 /// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
-pub fn bwt_decode_test(key: u32, bwt_in: &[u8],  freq_in: &[u32]) -> Vec<u8> {
+pub fn bwt_decode_test(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
     // Calculate end once.
     let end = bwt_in.len();
 
@@ -74,7 +75,7 @@ pub fn bwt_decode_test(key: u32, bwt_in: &[u8],  freq_in: &[u32]) -> Vec<u8> {
     // This is the slowest portion of this function - I assume cache misses causes problems
     // It slows down when t_vec is over about 500k.
     let mut keys = vec![0_u32; end];
-    let  key = key;
+    let key = key;
 
     // Assign to keys[0] to avoid a temporary assignment below
     keys[0] = t_vec[key as usize];

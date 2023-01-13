@@ -34,11 +34,12 @@
                 //"src/test.txt",
                 //"src/IMG_7.tiff",
                 //"src/IMG.tiff",
-                "src/Peter.txt",
+                //"src/Peter.txt",
                 //"src/Highwayman.txt",
                 //"src/small_idiot.txt",
                 //"src/idiot.txt.bz2",
                 //"src/allbytes.txt",
+                "src/genetic_small.txt",
                 "-z",
                 "-v4",
                 //"src/Peter_Julian1.bz2",
@@ -49,6 +50,7 @@
                 //"simple",
                 //"sais",
                 //"parallel"
+                "big",
             ],
             "cwd": "${workspaceFolder}"
         },

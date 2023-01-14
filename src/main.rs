@@ -1,11 +1,6 @@
 //Enable more cargo lint tests
-//#![feature(slice_swap_unchecked)]
 #![warn(rust_2018_idioms)]
-//#![allow(unused)]
 #![warn(clippy::disallowed_types)]
-//#[global_allocator]
-//static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-#![allow(special_module_name)]
 mod bitstream;
 mod bwt_ribzip;
 mod compression;

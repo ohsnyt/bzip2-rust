@@ -71,12 +71,14 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
     //let input = data_in::init(opts)?;
 
     // Prepare to read the data.
-    let fname = opts.file.as_ref().unwrap().clone();
+    let fname = opts.files[0].clone();
+    info!("Output should be {}", opts.files[0]);
+
     let mut fin = File::open(&fname)?;
     let fin_metadata = fs::metadata(&fname)?;
 
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
-    let mut fname = opts.file.as_ref().unwrap().clone();
+    let mut fname = opts.files[0].clone();
     fname.push_str(".bz2");
     let mut f_out = OpenOptions::new()
         .write(true)

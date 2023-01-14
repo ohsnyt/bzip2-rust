@@ -20,7 +20,7 @@ use crate::huffman_coding::huffman::huf_encode;
 pub fn compress_block(
     bw: &mut BitWriter,
     block: &mut Block,
-    block_size: u8,
+    block_size: usize,
     algorithm: Algorithms,
     iterations: usize,
     timer: &mut Timer,

@@ -13,10 +13,12 @@ use std::time::{Duration, Instant};
 
 use compression::compress::*;
 use compression::decompress::decompress;
-use tools::cli::{init_bz_opts, BzOpts, Mode};
+use tools::cli::Mode;
 
 use log::{info, log_enabled, warn, LevelFilter};
 use simplelog::{Config, TermLogger, TerminalMode};
+
+use crate::tools::cli::bzopts_init;
 
 pub struct Timer {
     pub cli: Duration,
@@ -131,14 +133,14 @@ fn main() -> Result<(), std::io::Error> {
     )
     .unwrap();
 
-    let mut options = BzOpts::new();
-    init_bz_opts(&mut options);
+    let mut options = bzopts_init();
     timer.mark("cli");
 
     //----- Figure how what we need to do
     let result = match options.op_mode {
         Mode::Zip => compress(&mut options, &mut timer),
         Mode::Unzip => decompress(&options, &mut timer),
+        Mode::Test => Ok(()),
     };
 
     if log_enabled!(log::Level::Debug) {

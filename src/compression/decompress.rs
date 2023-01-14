@@ -27,7 +27,7 @@ const HEADER: [u8; 6] = [0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59];
 /// Decompress the file specified in opts (BzOpts). Current version also requires a Timer.
 pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
     // Start bitreader from input file in the command line
-    let mut br = BitReader::new(File::open(opts.file.as_ref().unwrap())?);
+    let mut br = BitReader::new(File::open(opts.files[0].clone())?);
 
     // We will eventually need to mark the output file with the timestamp of the compresssed file.
     //let metadata = std::fs::metadata(opts.file.as_ref().unwrap().to_string())?;
@@ -38,7 +38,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
     } else {
         error!(
             "Fatal error: {} is not a valid bzip2 compressed file.",
-            opts.file.as_ref().unwrap()
+            opts.files[0]
         );
         return Err(Error::new(io::ErrorKind::Other, "Invalid compressed file."));
     }
@@ -54,7 +54,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
     // Good so far. Prepare to write the data. (Drop temp variables after this block)
     let mut f_out: File;
     {
-        let mut fname = opts.file.as_ref().unwrap().clone();
+        let mut fname = opts.files[0].clone();
         fname = fname.split(".bz2").map(|s| s.to_string()).collect(); // strip off the .bz2
         fname.push_str(".txt"); // for my testing purposes.
         f_out = OpenOptions::new()

@@ -1,22 +1,17 @@
 use rayon::prelude::*;
 
-///Burrows-Wheeler-Transform. Uses rayon to multi-thread.
+///Burrows-Wheeler-Transform. Uses rayon to multi-thread. Great for non-repeating ascii data
 /// Transforms a u8 sli&ce using bwt. The key is u32.
 pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
-    let mut index = vec![0; orig.len()];
-    for i in 0..index.len() {
-        index[i as usize] = i as u32;
-    }
+    let mut index = (0_u32..orig.len() as u32).collect::<Vec<u32>>();
 
-    // Sort index (par_sort_by is 3x faster than .sort_by)
+    // Sort index
     if orig.len() > 40000 {
         index[..].par_sort_unstable_by(|a, b| block_compare(*a as usize, *b as usize, orig));
     } else {
         index[..].sort_unstable_by(|a, b| block_compare(*a as usize, *b as usize, orig));
     }
-    // Tried radix sort, but it was slower
-    //rdxsort::RdxSort::rdxsort(&mut index);
     // Get key and BWT output (assumes u32 is 4 bytes)
     let mut key = 0_u32;
     let mut bwt = vec![0; orig.len()];
@@ -38,14 +33,40 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
     let min = std::cmp::min(block[a..].len(), block[b..].len());
 
     // Lexicographical comparison
-    let result = block[a..a + min].cmp(&block[b..b + min]);
+    let mut result = block[a..a + min].cmp(&block[b..b + min]);
 
     // Implement wraparound if needed
+    // let mut works = None;
+    // if result == std::cmp::Ordering::Equal {
+    //     [&block[a + min..], &block[0..a]]
+    //         .concat()
+    //         .cmp(&[&block[b + min..], &block[0..b]].concat());
+    // }
+    /*  Might be faster to compare the bit remaining to the end with the start of the
+        other bit. If those are also equal, then compare the next chunks to get full
+        wrap around. This avoids the append and allocation time.
+    */
+    // Implement wraparound if needed
     if result == std::cmp::Ordering::Equal {
-        return [&block[a + min..], &block[0..a]]
-            .concat()
-            .cmp(&[&block[b + min..], &block[0..b]].concat());
+        if a < b {
+            let to_end = block.len() - a - min;
+            result = block[(a + min)..].cmp(&block[..to_end]);
+            if result == std::cmp::Ordering::Equal {
+                let rest_of_block = block.len() - to_end;
+                return block[..rest_of_block].cmp(&block[to_end..(to_end + rest_of_block)]);
+            }
+        } else {
+            let to_end = block.len() - b - min;
+            result = block[..to_end].cmp(&block[(b + min)..]);
+            if result == std::cmp::Ordering::Equal {
+                let rest_of_block = block.len() - to_end;
+                return block[to_end..(to_end + rest_of_block)].cmp(&block[..rest_of_block]);
+            }
+        }
     }
+    // if works.is_some() {
+    //     println!("Works == new: {:?}", works == Some(result));
+    // }
     result
 }
 

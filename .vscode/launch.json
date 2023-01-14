@@ -47,10 +47,10 @@
                 //"src/monster_idiot.txt.bz2",
                 //"src/Peter.txt",
                 "9",
-                //"simple",
+                "simple",
                 //"sais",
                 //"parallel"
-                "big",
+                //"big",
             ],
             "cwd": "${workspaceFolder}"
         },

@@ -14,6 +14,7 @@ pub enum Verbosity {
     Warnings,
     Info,
     Debug,
+    Trace,
 }
 #[derive(Debug)]
 
@@ -146,6 +147,15 @@ pub fn bzopts_init() -> BzOpts {
         } else if arg.starts_with('-') {
             arg.remove(0);
             while !arg.is_empty() {
+                if arg.starts_with("vvvvv") {
+                    cli.verbose = Verbosity::Trace;
+                    arg.remove(0);
+                    arg.remove(0);
+                    arg.remove(0);
+                    arg.remove(0);
+                    arg.remove(0);
+                    continue;
+                }
                 if arg.starts_with("vvvv") {
                     cli.verbose = Verbosity::Debug;
                     arg.remove(0);
@@ -281,6 +291,7 @@ pub fn bzopts_init() -> BzOpts {
         Verbosity::Warnings => log::set_max_level(log::LevelFilter::Warn),
         Verbosity::Info => log::set_max_level(log::LevelFilter::Info),
         Verbosity::Debug => log::set_max_level(log::LevelFilter::Debug),
+        Verbosity::Trace => log::set_max_level(log::LevelFilter::Trace),
     };
     cli
 }
@@ -321,6 +332,7 @@ fn help() {
      --sais
      --big
      --parallel
+     -vvvvv (trace level debugging information)
    "
     );
     exit(0);

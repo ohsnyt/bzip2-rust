@@ -1,7 +1,6 @@
 use log::error;
-use rayon::prelude::*;
-
 use crate::compression::compress::Block;
+use super::freq_count::freqs;
 
 const RUNA: u16 = 0;
 const RUNB: u16 = 1;
@@ -287,20 +286,8 @@ pub fn rle2_mtf_decode_fast(
     // (Index is incremented after writing the symbol, so must be decremented by one here.)
     out.truncate(index);
 
-    //Create the freq vec using a parallel approach
-    let freq = out
-        .par_iter()
-        .fold(
-            || vec![0_u32; 256],
-            |mut freqs, &el| {
-                freqs[el as usize] += 1;
-                freqs
-            },
-        )
-        .reduce(
-            || vec![0_u32; 256],
-            |s, f| s.iter().zip(&f).map(|(a, b)| a + b).collect::<Vec<u32>>(),
-        );
+    //Create the freq vec
+    let freq = freqs(&out);
 
     (out, freq)
 }

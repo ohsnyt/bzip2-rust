@@ -9,7 +9,7 @@ use crate::tools::crc::{do_crc, do_stream_crc};
 use crate::Timer;
 
 use super::compress_block::compress_block;
-use crate::tools::cli::BzOpts;
+use crate::tools::cli::{Algorithms, BzOpts};
 use crate::tools::rle1::rle_encode;
 
 /*
@@ -76,6 +76,22 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
 
     let mut fin = File::open(&fname)?;
     let fin_metadata = fs::metadata(&fname)?;
+
+    // Read test of data in order to set the appropriate algorithm. Minimal overhead.
+    if opts.algorithm.is_none() {
+        let mut diversity_file = File::open(&fname)?;
+        let bytes_left = fin_metadata.size() as usize;
+        let mut diversity_buf = vec![0_u8; 5000.min(bytes_left)];
+
+        diversity_file
+            .read_exact(&mut diversity_buf)
+            .expect("Error reading input file");
+        match diversity(&diversity_buf) {
+            0..=20 => opts.algorithm = Some(Algorithms::Sais),
+            21..=128 => opts.algorithm = Some(Algorithms::Simple),
+            _ => opts.algorithm = Some(Algorithms::Julian),
+        }
+    }
 
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.files[0].clone();
@@ -161,14 +177,25 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
         );
         timer.mark("crcs");
         // Do the compression, allowing choice between sorting algorithms for the BWTransform
-        compress_block(
-            &mut bw,
-            &mut block,
-            opts.block_size,
-            opts.algorithm.clone(),
-            opts.iterations,
-            timer,
-        );
+        if opts.algorithm.is_none() {
+            compress_block(
+                &mut bw,
+                &mut block,
+                opts.block_size,
+                Algorithms::Simple,
+                opts.iterations,
+                timer,
+            );
+        } else {
+            compress_block(
+                &mut bw,
+                &mut block,
+                opts.block_size,
+                opts.algorithm.as_ref().to_owned().unwrap().clone(),
+                opts.iterations,
+                timer,
+            );
+        }
 
         info!(
             "Wrote block. Bitstream length is {} bytes. CRC is {}.\n",
@@ -187,4 +214,18 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+pub fn diversity(data: &[u8]) -> usize {
+    //Test data for variety of input values
+    //let freq = freq(data);
+    data[..data.len().min(5000)]
+        .iter()
+        .fold(vec![false; 256], |mut freqs, &el| {
+            freqs[el as usize] = true;
+            freqs
+        })
+        .iter()
+        .filter(|&b| *b)
+        .count()
 }

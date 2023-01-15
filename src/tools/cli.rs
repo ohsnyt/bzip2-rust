@@ -53,7 +53,7 @@ pub enum Status {
 #[derive(Debug)]
 pub struct BzOpts {
     /// Algorithm used
-    pub algorithm: Algorithms,
+    pub algorithm: Option<Algorithms>,
     /// Maximum input block size to process during each loop
     pub block_size: usize,
     /// Vec of names of files to read for input
@@ -81,7 +81,7 @@ pub struct BzOpts {
 impl BzOpts {
     pub fn new() -> Self {
         Self {
-            algorithm: Algorithms::Simple,
+            algorithm: None,
             block_size: 9,
             files: vec![],
             force_overwrite: false,
@@ -137,11 +137,11 @@ pub fn bzopts_init() -> BzOpts {
                 "--fast" => cli.block_size = 1,
                 "--best" => cli.block_size = 9,
 
-                "--simple" => cli.algorithm = Algorithms::Simple,
-                "--julian" => cli.algorithm = Algorithms::Julian,
-                "--sais" => cli.algorithm = Algorithms::Sais,
-                "--big" => cli.algorithm = Algorithms::Big,
-                "--parallel" => cli.algorithm = Algorithms::Parallel,
+                "--simple" => cli.algorithm = Some(Algorithms::Simple),
+                "--julian" => cli.algorithm = Some(Algorithms::Julian),
+                "--sais" => cli.algorithm = Some(Algorithms::Sais),
+                "--big" => cli.algorithm = Some(Algorithms::Big),
+                "--parallel" => cli.algorithm = Some(Algorithms::Parallel),
                 other => eprintln!("Bad command line argument: {}", other),
             }
         } else if arg.starts_with('-') {

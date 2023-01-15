@@ -35,7 +35,7 @@
                 //"src/IMG_7.tiff",
                 //"src/IMG.tiff",
                 //"src/Peter.txt",
-                //"src/Highwayman.txt",
+                "src/Highwayman.txt",
                 //"src/small_idiot.txt",
                 //"src/idiot.txt.bz2",
                 //"src/allbytes.txt",
@@ -51,6 +51,7 @@
                 //"--sais",
                 //"--parallel"
                 //"--big",
+                "--julian"
             ],
             "cwd": "${workspaceFolder}"
         },

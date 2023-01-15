@@ -1,12 +1,10 @@
-
+use crate::{compression::compress::Block, tools::freq_count::freqs};
 use log::info;
-use crate::compression::compress::Block;
 
 use super::fallback_q_sort3::fallback_q_sort3;
 
 /// Sort function for blocks of less than 10k size and highly repetitive data.
-pub fn fallback_sort(block: &mut Block)  {
-
+pub fn fallback_sort(block: &mut Block) {
     // This algorithm actually needs to use 257 distinct symbols, so we need to convert
     // the input to a u16 format.
     let mut block_data = block.data.iter().map(|b| *b as u16).collect::<Vec<u16>>();
@@ -66,21 +64,29 @@ pub fn fallback_sort(block: &mut Block)  {
 
     info!("     bucket sorting ...");
     // Build frequency table
-    let freq = block_data.iter().fold(vec![0_u32; 256], |mut v, b| {
-        v[*b as usize] += 1;
-        v
+    let mut sum_freq = freqs(&block.data);
+
+    // Turn the freq count into a cumulative sum. Iter_mut is 4x faster than for loop
+    sum_freq.iter_mut().fold(0, |acc, x| {
+        *x += acc;
+        *x
     });
 
-    // Create a cumulative sum frequency table
-    let (mut sum_freq, _) =
-        freq.iter()
-            .enumerate()
-            .fold((vec![0_u32; 256], 0), |(mut v, mut sum), (i, f)| {
-                sum += f;
-                v[i] = sum;
-                (v, sum)
-            });
-    // sum_freq (ftab) needs to be one entry longer to work with loops below.
+    // let freq = block_data.iter().fold(vec![0_u32; 256], |mut v, b| {
+    //     v[*b as usize] += 1;
+    //     v
+    // });
+
+    // // Create a cumulative sum frequency table
+    // let (mut sum_freq, _) =
+    //     freq.iter()
+    //         .enumerate()
+    //         .fold((vec![0_u32; 256], 0), |(mut v, mut sum), (i, f)| {
+    //             sum += f;
+    //             v[i] = sum;
+    //             (v, sum)
+    //         });
+    // // sum_freq (ftab) needs to be one entry longer to work with loops below.
     sum_freq.push(sum_freq[sum_freq.len() - 1]);
 
     /*
@@ -181,8 +187,8 @@ pub fn fallback_sort(block: &mut Block)  {
             }
             // If bucket bndry indicates a bucket that has 32 members, increment bndry by 32
             if (bhtab[bndry as usize >> 5] & (1 << (bndry & 31)) as u32) == 0 {
-                    bndry += 32;
-                }
+                bndry += 32;
+            }
             // Otherwise increment by 1 by 1 in this loop until we find how big the bucket is
             while (bhtab[bndry as usize >> 5] & (1 << (bndry & 31)) as u32) == 0 {
                 bndry += 1;
@@ -245,8 +251,7 @@ pub fn fallback_sort(block: &mut Block)  {
             bwt_data[i] = block.data[freq_map[i] as usize - 1] as u8
         }
     }
-        // Shift ownership of bwt_data to block.data
+    // Shift ownership of bwt_data to block.data
     block.data.clear();
     block.data = bwt_data;
-
 }

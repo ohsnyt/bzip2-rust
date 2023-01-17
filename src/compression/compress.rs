@@ -116,6 +116,7 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
         block.rle2.clear();
 
         // Set the maximum free space available in this block. Initally block.end is the max block size.
+        block.end = opts.block_size as u32 * 100000 - 19;
         let mut free_space = block.end as usize;
 
         // Count how much of the input buffer have we processed used so far

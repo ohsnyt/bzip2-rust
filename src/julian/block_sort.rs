@@ -31,18 +31,18 @@ pub fn block_sort(block: &mut Block) {
         };
 
         // budget_init(ial) is used to provide user statistics below
-        block.budget = block.end as i32 * ((block.budget as i32 - 1) / 3);
-        let budget_init = block.budget;
+        let budget_init = block.end as i32 * ((block.budget as i32 - 1) / 3);
+        let mut budget = budget_init;
 
-        main_sort(block, &mut qs);
+        main_sort(block, &mut qs, &mut budget);
 
         trace!(
             "\nWork depleated: {}, block size: {}.",
-            budget_init - block.budget,
+            budget_init - budget,
             block.end,
         );
-        if block.budget < 0 {
-            warn!("    too repetitive; using fallback sorting algorithm");
+        if budget < 0 {
+            warn!("    Too repetitive; using fallback sorting algorithm");
             fallback_sort(block);
         }
     };

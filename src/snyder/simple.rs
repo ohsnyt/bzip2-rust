@@ -2,7 +2,7 @@ use rayon::prelude::*;
 
 ///Burrows-Wheeler-Transform. Uses rayon to multi-thread. Great for non-repeating ascii data
 /// Transforms a u8 sli&ce using bwt. The key is u32.
-pub fn bwt_encode(orig: &[u8]) -> (u32, Vec<u8>) {
+pub fn bwt_encode_simple(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
     let mut index = (0_u32..orig.len() as u32).collect::<Vec<u32>>();
 
@@ -35,17 +35,6 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
     // Lexicographical comparison
     let mut result = block[a..a + min].cmp(&block[b..b + min]);
 
-    // Implement wraparound if needed
-    // let mut works = None;
-    // if result == std::cmp::Ordering::Equal {
-    //     [&block[a + min..], &block[0..a]]
-    //         .concat()
-    //         .cmp(&[&block[b + min..], &block[0..b]].concat());
-    // }
-    /*  Might be faster to compare the bit remaining to the end with the start of the
-        other bit. If those are also equal, then compare the next chunks to get full
-        wrap around. This avoids the append and allocation time.
-    */
     // Implement wraparound if needed
     if result == std::cmp::Ordering::Equal {
         if a < b {

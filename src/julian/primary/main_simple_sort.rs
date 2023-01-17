@@ -1,7 +1,7 @@
 use super::{main_gtu::main_gtu, main_sort::QsortData};
 
 /// Simple sort for buckets of 20 or less, or depth greather than 14.
-pub fn main_simple_sort(qs: &mut QsortData, lo: i32, hi: i32, d: i32) {
+pub fn main_simple_sort(qs: &mut QsortData, lo: i32, hi: i32, d: i32, budget: &mut i32) {
     // It seems to me that we never use anything other than the first three values because of
     // the test "if i (lo + hp_incr > hi, break". After the break, we reduce the index by one.
     // Saved a few ms by making INCS a constant.
@@ -33,6 +33,7 @@ pub fn main_simple_sort(qs: &mut QsortData, lo: i32, hi: i32, d: i32) {
                 (qs.bwt_ptr[(j - hp_incr) as usize] as i32 + d) as usize,
                 (tmp_v as i32 + d) as usize,
                 qs,
+                budget
             ) {
                 qs.bwt_ptr[j as usize] = qs.bwt_ptr[(j - hp_incr) as usize];
                 j -= hp_incr;
@@ -53,6 +54,7 @@ pub fn main_simple_sort(qs: &mut QsortData, lo: i32, hi: i32, d: i32) {
                 (qs.bwt_ptr[(j - hp_incr) as usize] as i32 + d) as usize,
                 (tmp_v as i32 + d) as usize,
                 qs,
+                budget
             ) {
                 qs.bwt_ptr[j as usize] = qs.bwt_ptr[(j - hp_incr) as usize];
                 j -= hp_incr;
@@ -73,6 +75,7 @@ pub fn main_simple_sort(qs: &mut QsortData, lo: i32, hi: i32, d: i32) {
                 (qs.bwt_ptr[(j - hp_incr) as usize] as i32 + d) as usize,
                 (tmp_v as i32 + d) as usize,
                 qs,
+                budget
             ) {
                 qs.bwt_ptr[j as usize] = qs.bwt_ptr[(j - hp_incr) as usize];
                 j -= hp_incr;
@@ -82,7 +85,7 @@ pub fn main_simple_sort(qs: &mut QsortData, lo: i32, hi: i32, d: i32) {
             }
             qs.bwt_ptr[j as usize] = tmp_v;
             i += 1;
-            if qs.budget < 0 {
+            if *budget < 0 {
                 return;
             };
         }

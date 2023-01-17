@@ -1,4 +1,4 @@
-use log::{error, warn};
+use log::{error, debug};
 
 use super::{main_simple_sort::main_simple_sort, main_sort::QsortData};
 const MAIN_QSORT_STACK_SIZE: usize = 100;
@@ -6,7 +6,7 @@ const MAIN_QSORT_SMALL_THRESH: i32 = 20;
 const MAIN_QSORT_DEPTH_THRESH: i32 = 14;
 //const OVERSHOOT: usize = 34;
 
-pub(crate) fn main_q_sort3(mut qs: &mut QsortData) {
+pub(crate) fn main_q_sort3(qs: &mut QsortData, budget: &mut i32) {
     while !qs.stack.is_empty() {
         if qs.stack.len() >= MAIN_QSORT_STACK_SIZE - 2 {
             error!("Excessive stack size in main_q_sort3.")
@@ -18,17 +18,15 @@ pub(crate) fn main_q_sort3(mut qs: &mut QsortData) {
         // Use main_simple_sort if the context is simple (small, not deep)
         if ((hi - lo) < MAIN_QSORT_SMALL_THRESH) || (d > MAIN_QSORT_DEPTH_THRESH) {
             // Save and reset budget every time we call this function
-            let budget = qs.budget;
-            main_simple_sort(qs, lo, hi, d);
+            //let budget = qs.budget;
+            main_simple_sort(qs, lo, hi, d, budget);
             // If sorting took too long, go use the fallback sorting algorithm
-            if qs.budget < 0 {
-                warn!("Falling back to secondary sort algorithm");
-                // Reset budget.
-                qs.budget = budget;
+            if *budget < 0 {
+                debug!("Falling back to secondary sort algorithm");
                 return;
             };
             // Reset budget.
-            qs.budget = budget;
+            //qs.budget = budget;
             continue;
         }
         // Get the approximate median value from the block data in this bucket

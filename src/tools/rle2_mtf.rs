@@ -104,9 +104,9 @@ pub fn rle2_mtf_encode(block: &mut Block) {
         out_idx += 1;
 
         // DEBUGGING TEST
-        if out_idx as usize > 900019 {
-            println!("{}", out_idx);
-        }
+        //if out_idx as usize > 900019 {
+        //    println!("{}", out_idx);
+        //}
 
         // Shift each index in front of the current byte index. Do this first in blocks for speed.
         let temp_sym = mtf_index[idx as usize];
@@ -173,9 +173,9 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     out_idx += 1;
 
     // DEBUGGING TEST
-    if out_idx as usize > 900019 {
-        println!("{}", out_idx);
-    }
+    // if out_idx as usize > 900019 {
+    //     println!("{}", out_idx);
+    // }
 
     // Truncate the vec to the actual data.
     block.rle2.truncate(out_idx);

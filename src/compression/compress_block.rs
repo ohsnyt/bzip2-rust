@@ -5,7 +5,7 @@ use crate::tools::rle2_mtf::rle2_mtf_encode;
 use crate::{bwt_ribzip::*, Timer};
 
 use crate::julian::block_sort::block_sort;
-use crate::snyder::bwt_ds::bwt_encode;
+use crate::snyder::simple::bwt_encode_simple;
 use crate::snyder::bwt_ds_big::bwt_encode_big;
 use crate::snyder::bwt_ds_par::bwt_encode_par;
 use crate::tools::cli::Algorithms;
@@ -59,7 +59,7 @@ pub fn compress_block(
         // Using simple DS algorithm
         Algorithms::Simple => {
             info!("Using DS simple algorithm.");
-            let result = bwt_encode(&block.data);
+            let result = bwt_encode_simple(&block.data);
             (block.key, block.data) = result
         }
         // Using SAIS algorithm from ribzip2

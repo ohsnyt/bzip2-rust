@@ -1,9 +1,9 @@
-use log::{error};
+use log::error;
 
 use super::main_sort::QsortData;
 
 /// Revised C version - Rust iterated versions were slower
-pub fn main_gtu(mut a: usize, mut b: usize, qs: &mut QsortData) -> bool {
+pub fn main_gtu(mut a: usize, mut b: usize, qs: &mut QsortData, budget: &mut i32) -> bool {
     if a == b {
         error!("mainGtU error")
     }
@@ -63,7 +63,7 @@ pub fn main_gtu(mut a: usize, mut b: usize, qs: &mut QsortData) -> bool {
         a %= qs.end;
         b %= qs.end;
         k -= 8;
-        qs.budget -= 1;
+        *budget -= 1;
     }
     false
 }

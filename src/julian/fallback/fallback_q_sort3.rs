@@ -34,12 +34,11 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
             // ...but only if it is a valid, non-empty slice
             if hi > 0 && lo >= 0 && hi - lo > 0 {
                 freq_map[(lo as usize)..=(hi as usize)]
-                    .sort_by(|a, b| block_data[*a as usize].cmp(&block_data[*b as usize]));
+                    .sort_unstable_by(|a, b| block_data[*a as usize].cmp(&block_data[*b as usize]));
             }
             continue;
         }
         // Use the following to sort larger slices
-
         /* Julian's notes:
         Random partitioning.  Median of 3 sometimes fails to avoid bad cases.
         Median of 9 seems to help but looks rather expensive.  This too seems to

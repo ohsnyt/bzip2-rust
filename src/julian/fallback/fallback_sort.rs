@@ -7,24 +7,25 @@ use super::fallback_q_sort3::fallback_q_sort3;
 pub fn fallback_sort(block: &mut Block) {
     // This algorithm actually needs to use 257 distinct symbols, so we need to convert
     // the input to a u16 format.
+    // Julian used what I think I called block.temp_vec - the 16 bit vec the size of the input data.
     let mut block_data = block.data.iter().map(|b| *b as u16).collect::<Vec<u16>>();
 
     // Create and initialize vecs for the transformed data and frequency tables
-    let mut bhtab: Vec<u32> = vec![0_u32; 4 + (block.end as usize / 32)];
-    let mut freq_map = vec![0_u32; block.end as usize];
+    let mut bhtab: Vec<u32> = vec![0_u32; 4 + (block_data.len() / 32)];
+    //let mut freq_map = vec![0_u32; block_data.len()];
 
     /*
     bhtab sets the bucket tables for the radix sorting algorithm.
 
     The 5 bit shift does this: We can multilple store "sentinels" (bucket edges) in each u32.
     There are 256 different u8 symbols. Each u32 here allows for defining 32 of those symbols.
-    This means we should at max see 8 entries in this table. Julian says we can have 2+block.end/32, or
+    This means we should at max see 8 entries in this table. Julian says we can have 2+block_data.len()/32, or
     a max of 10 entries.
 
     These are built in three places:
     1: from the sum_freq table
-    2: to set sentinel bits for block-block.end detection (together with clear_bh)
-        for i in 0..32 { set_bh!(block.end + 2 * i); clear_bh!(block.end + 2 * i + 1); }
+    2: to set sentinel bits for block-block_data.len() detection (together with clear_bh)
+        for i in 0..32 { set_bh!(block_data.len() + 2 * i); clear_bh!(block_data.len() + 2 * i + 1); }
     3: to scan each processed bucket and generate header bits that will indicate every time
         within a bucket when a new sort group is found
 
@@ -34,12 +35,12 @@ pub fn fallback_sort(block: &mut Block) {
     */
     macro_rules! set_bh {
         ($zz:expr) => {
-            bhtab[$zz as usize >> 5] |= (1 << ($zz & 31));
+            bhtab[$zz as usize >> 5] |= (1 << ($zz & 31))
         };
     }
     macro_rules! clear_bh {
         ($zz:expr) => {
-            bhtab[$zz as usize >> 5] &= !(1 << ($zz & 31));
+            bhtab[$zz as usize >> 5] &= !(1 << ($zz & 31))
         };
     }
     macro_rules! is_set_bh {
@@ -58,7 +59,7 @@ pub fn fallback_sort(block: &mut Block) {
     // I'm not sure it is still relevant in the Rust version. ds
     macro_rules! unaligned_bh {
         ($zz:expr) => {
-            $zz & 0x1f != 0
+            $zz & 0x1f > 0
         };
     }
 
@@ -72,46 +73,32 @@ pub fn fallback_sort(block: &mut Block) {
         *x
     });
 
-    // let freq = block_data.iter().fold(vec![0_u32; 256], |mut v, b| {
-    //     v[*b as usize] += 1;
-    //     v
-    // });
-
-    // // Create a cumulative sum frequency table
-    // let (mut sum_freq, _) =
-    //     freq.iter()
-    //         .enumerate()
-    //         .fold((vec![0_u32; 256], 0), |(mut v, mut sum), (i, f)| {
-    //             sum += f;
-    //             v[i] = sum;
-    //             (v, sum)
-    //         });
-    // // sum_freq (ftab) needs to be one entry longer to work with loops below.
+    // sum_freq (ftab) needs to be one entry longer to work with loops below.
     sum_freq.push(sum_freq[sum_freq.len() - 1]);
 
     /*
     Now build the map/index. This requires us to read a byte from the input, look it up in the
     sum_freq table, reduce the table by the one we found, and put the index sequence into the map.
     */
-    for (idx, byte) in block_data.iter().enumerate() {
-        let tmp = sum_freq[*byte as usize] - 1;
-        sum_freq[*byte as usize] = tmp;
-        freq_map[tmp as usize] = idx as u32;
-    }
+    let mut freq_map = block_data.iter().enumerate().fold(
+        vec![0_u32; block_data.len()],
+        |mut map, (idx, byte)| {
+            map[(sum_freq[*byte as usize] - 1) as usize] = idx as u32;
+            sum_freq[*byte as usize] -= 1;
+            map
+        },
+    );
 
     // Set a count-change marker for each change in sum_freq.
-    for i in 0..256_usize {
-        set_bh!(sum_freq[i]);
-    }
+    sum_freq.iter().for_each(|&el| set_bh!(el as usize));
 
     /*--
-    Set sentinel bits (bh = header bits / bit headers) for block-block.end detection.
+    Set sentinel bits (bh = header bits / bit headers) for block-block_data.len() detection.
     (This sets a sequence of marks and space bits (101010...) in bhtab 3, 4 and 5.) --*/
-    for i in 0..32 {
-        set_bh!(block.end + 2 * i);
-        clear_bh!(block.end + 2 * i + 1);
-    }
-
+    (0..32).for_each(|i| {
+        set_bh!(block_data.len() + 2 * i);
+        clear_bh!(block_data.len() + 2 * i + 1)
+    });
     /*--
     Julian's note: Inductively refine the buckets.  Kind-of an "exponential radix
     sort" (!), inspired by the  Manber-Myers suffix array construction algorithm.
@@ -126,7 +113,7 @@ pub fn fallback_sort(block: &mut Block) {
         let mut j = 0;
 
         // Iterate through every byte of the input data and update the input data
-        for i in 0..block.end {
+        for i in 0..block_data.len() {
             // If a count-change marker is set for this index number, note this index number
             if is_set_bh!(i) {
                 j = i
@@ -136,9 +123,9 @@ pub fn fallback_sort(block: &mut Block) {
             What this should do is point to the byte previous to this byte (previous by the loop level)
             */
             let mut offset = freq_map[i as usize] as i32 - depth;
-            // if this offset is less than zero, wrap around the block.end of the input string
+            // if this offset is less than zero, wrap around the block_data.len() of the input string
             if offset < 0 {
-                offset += block.end as i32;
+                offset += block_data.len() as i32;
             };
             /*
             Update the input data at the offset we calculated to be equal to the bucket transition index
@@ -150,6 +137,9 @@ pub fn fallback_sort(block: &mut Block) {
             */
             block_data[offset as usize] = j as u16;
         }
+        let end=block_data.len() as u32;
+        let mut last_byte = 0;
+        (0..end).for_each(|i| {if is_set_bh!(i) { last_byte = i}; block_data[((end + freq_map[i as usize] - depth as u32)%end) as usize] = last_byte as u16 });
 
         // Begin to count how many lines are not fully sorted
         // Initialize a counter to count how many unsorted lines exist at this level - used in reporting
@@ -177,7 +167,7 @@ pub fn fallback_sort(block: &mut Block) {
 
             // Set the "left" boundary of the bucket to sort
             let left = bndry - 1;
-            if left >= block.end as i32 {
+            if left >= block_data.len() as i32 {
                 break;
             };
             // Look for the right boundary of the bucket. If we are not at a boundary and we
@@ -195,7 +185,7 @@ pub fn fallback_sort(block: &mut Block) {
             }
             // Set the right boundary for the bucket
             right = bndry - 1;
-            if right >= block.end as i32 {
+            if right >= block_data.len() as i32 {
                 break;
             }
 
@@ -228,25 +218,24 @@ pub fn fallback_sort(block: &mut Block) {
         }
 
         info!(
-            "depth {}{} has {} unresolved strings",
-            if depth < 10 { " " } else { "" },
-            depth,
-            not_done_count
+            "depth {:>7} has {} unresolved strings",
+            depth, not_done_count
         );
 
-        depth *= 2;
-        if depth > block.end as i32 || not_done_count == 0 {
+        //depth *= 2;
+        depth <<= 1;
+        if depth > block_data.len() as i32 || not_done_count == 0 {
             break;
         };
     }
 
     // Generate the burrow-wheeler data.
     info!("        building burrow-wheeler-transform data ...\n");
-    let mut bwt_data = vec![0; block.end as usize];
-    for i in 0..block.end as usize {
+    let mut bwt_data = vec![0; block_data.len()];
+    for i in 0..block_data.len() {
         if freq_map[i] == 0 {
             block.key = i as u32;
-            bwt_data[i] = block.data[block.end as usize - 1] as u8;
+            bwt_data[i] = block.data[block_data.len() - 1] as u8;
         } else {
             bwt_data[i] = block.data[freq_map[i] as usize - 1] as u8
         }

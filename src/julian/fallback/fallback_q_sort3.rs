@@ -36,6 +36,11 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
                 freq_map[(lo as usize)..=(hi as usize)]
                     .sort_unstable_by(|a, b| block_data[*a as usize].cmp(&block_data[*b as usize]));
             }
+
+            // DEBUG
+            if freq_map[6553] == 0 {
+                println!("Pause here")
+            }
             continue;
         }
         // Use the following to sort larger slices
@@ -97,6 +102,7 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
             if un_lo > un_hi {
                 break;
             };
+
             freq_map.swap(un_lo as usize, un_hi as usize);
             //info!("c Swapped freq_map indecies {} and {}", un_lo, un_hi);
             un_lo += 1;
@@ -113,12 +119,12 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
 
         let n = (lt_lo - lo).min(un_lo - lt_lo);
         for i in 0..n {
-            freq_map.swap((i + lo) as usize, (i + un_lo - n) as usize)
+            freq_map.swap((i + lo) as usize, (i + un_lo - n) as usize);
         }
 
         let m = (hi - gt_hi).min(gt_hi - un_hi);
         for i in 0..m {
-            freq_map.swap((i + un_lo) as usize, (i + hi - m + 1) as usize)
+            freq_map.swap((i + un_lo) as usize, (i + hi - m + 1) as usize);
         }
 
         let n = lo + un_lo - lt_lo - 1;

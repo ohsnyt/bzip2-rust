@@ -41,21 +41,18 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
             let to_end = block.len() - a - min;
             result = block[(a + min)..].cmp(&block[..to_end]);
             if result == std::cmp::Ordering::Equal {
-                let rest_of_block = block.len() - to_end;
+                let rest_of_block = block.len() - to_end - min;
                 return block[..rest_of_block].cmp(&block[to_end..(to_end + rest_of_block)]);
             }
         } else {
             let to_end = block.len() - b - min;
             result = block[..to_end].cmp(&block[(b + min)..]);
             if result == std::cmp::Ordering::Equal {
-                let rest_of_block = block.len() - to_end;
+                let rest_of_block = block.len() - to_end - min;
                 return block[to_end..(to_end + rest_of_block)].cmp(&block[..rest_of_block]);
             }
         }
     }
-    // if works.is_some() {
-    //     println!("Works == new: {:?}", works == Some(result));
-    // }
     result
 }
 

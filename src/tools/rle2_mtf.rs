@@ -1,6 +1,6 @@
-use log::error;
-use crate::compression::compress::Block;
 use super::freq_count::freqs;
+use crate::compression::compress::Block;
+use log::error;
 
 const RUNA: u16 = 0;
 const RUNB: u16 = 1;
@@ -10,6 +10,17 @@ const ZERO_BOMB: usize = 2 * 1024 * 1024;
 /// Gets BWT output from block.data.
 /// Puts transformed u16 data into block.rle2 and frequency count into block.freqs.
 pub fn rle2_mtf_encode(block: &mut Block) {
+    // DEBUGGING
+    // let mut file = std::fs::OpenOptions::new()
+    //     .write(true)
+    //     .create(true)
+    //     .append(false)
+    //     .open(&"test.data")
+    //     .expect("failed to open");
+    // std::io::Write::write_all(&mut file, &block.data);
+
+    //println!("Test is good: {:?}", test(&block.data));
+
     // Create a custom index of the input, using an array for speed
     // Start by finding every u8 in the input.
     let mut bool_array = vec![false; 256];
@@ -325,4 +336,18 @@ fn encode_sym_map_from_bool_map(symbols: &[bool]) -> Vec<u16> {
     // Return only those vecs that have bits set.
     sym_maps.retain(|&map| map > 0);
     sym_maps
+}
+
+fn test(data: &[u8]) -> bool {
+    let mut test_data: Vec<u8> = vec![0_u8;70000];
+    let mut file = std::fs::File::open("test.data").unwrap();
+    test_data.truncate(data.len());
+    std::io::Read::read(&mut file, &mut test_data);
+
+    for i in 0..data.len() {
+        if data[i] != test_data[i] {
+            println!("Mismatch at {}: '{}|{}'", i, data[i], test_data[i]);
+        }
+    }
+    &test_data == data
 }

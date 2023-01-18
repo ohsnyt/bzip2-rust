@@ -1,4 +1,4 @@
-use log::{trace, warn};
+use log::{debug, trace, warn};
 
 use crate::compression::compress::Block;
 
@@ -36,14 +36,17 @@ pub fn block_sort(block: &mut Block) {
 
         main_sort(block, &mut qs, &mut budget);
 
-        trace!(
-            "\nWork depleated: {}, block size: {}.",
-            budget_init - budget,
-            block.end,
-        );
         if budget < 0 {
             warn!("    Too repetitive; using fallback sorting algorithm");
             fallback_sort(block);
+        } else {
+            debug!(
+                "\nInitial budget: {}, Used: {}, Left: {}, block size: {}.",
+                budget_init,
+                budget_init - budget,
+                budget,
+                block.end,
+            );
         }
     };
 }

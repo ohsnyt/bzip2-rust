@@ -12,7 +12,4 @@ src/timeseries_export2.csv
 target/.rustc_info.json
 Cargo.lock
 .gitignore
-
-
 .vscode/settings.json
-target/.rustc_info.json

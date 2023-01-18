@@ -171,8 +171,8 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
                         num_q_sorted += hi - lo + 1;
 
                         // if the sorting was too "expensive", we fail out and try the fallback method
-                        if qs.budget < 0 {
-                            block.budget = qs.budget;
+                        if *budget < 0 {
+                            block.budget = *budget;
                             return;
                         };
                     }

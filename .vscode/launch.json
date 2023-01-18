@@ -39,20 +39,22 @@
                 //"src/small_idiot.txt",
                 //"src/idiot.txt.bz2",
                 //"src/allbytes.txt",
-                "src/genetic_med.txt",
+                //"src/genetic_med.txt",
                 //"src/49.txt",
+                //"src/49_small.txt",
+                "src/49_tiny.txt",
                 "-z",
-                "-vvv",
+                "-vvvv",
                 //"src/Peter_Julian1.bz2",
                 //"src/Big_peter.txt.bz2",
                 //"src/monster_idiot.txt.bz2",
                 //"src/Peter.txt",
                 //"9",
-                //"--simple",
+                "--simple",
                 //"--sais",
                 //"--parallel"
                 //"--big",
-                "--julian"
+                //"--julian"
             ],
             "cwd": "${workspaceFolder}"
         },

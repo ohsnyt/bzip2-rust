@@ -1,7 +1,7 @@
 use log::{error, info, trace, warn};
 
 use crate::{
-    snyder::simple::bwt_decode_test,
+    snyder::native::bwt_decode_test,
     tools::{
         crc::{do_crc, do_stream_crc},
         rle2_mtf::rle2_mtf_decode_fast,
@@ -14,7 +14,7 @@ use crate::bitstream::bitreader::BitReader;
 use crate::tools::{cli::BzOpts, rle1::rle1_decode, symbol_map::decode_sym_map};
 
 use std::{
-    fs::{File, OpenOptions},
+    fs::File,
     io::{self, Error, Write},
 };
 
@@ -57,12 +57,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
         let mut fname = opts.files[0].clone();
         fname = fname.split(".bz2").map(|s| s.to_string()).collect(); // strip off the .bz2
         fname.push_str(".txt"); // for my testing purposes.
-        f_out = OpenOptions::new()
-            .write(true)
-            .create(true)
-            //.append(true)
-            .open(&fname)
-            .expect("Can't open file for writing.");
+        f_out = File::create(fname)?;
     }
     timer.mark("setup");
 
@@ -385,11 +380,10 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
             info!("Block {} CRCs matched.", block_counter);
         } else {
             error!(
-                "Block {} CRC failed!!! Found {} looking for {}. (Continuing...)",
-                block_counter,
-                this_block_crc,
-                block_crc // Perhaps this should be a fatal error as the data is corrupt.
+                "Block {} CRC failed!!! Found {} looking for {}.",
+                block_counter, this_block_crc, block_crc
             );
+            panic!("Block {} CRC failed!!!", block_counter);
         }
 
         timer.mark("crcs");
@@ -409,7 +403,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
             "Stream CRC failed!!! Found {} looking for {}. (Data may be corrupt.)",
             stream_crc, final_crc
         );
-        // Perhaps this should be a fatal error as the data is corrupt.
+        panic!("Stream CRC failed!!!");
         // This should never happen unless a block CRC also failed - or unless there is a missing block.
     }
     timer.mark("cleanup");

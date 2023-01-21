@@ -7,7 +7,7 @@
 
 /*---------------------------------------------*/
 
-/* /// Sorts small bucket - could be slice between hi..lo if I reworked it.
+/// Sorts small bucket - could be slice between hi..lo if I reworked it.
 pub fn fallback_simple_sort(freq_map: &mut [u32], block_data: &[u16], lo: i32, hi: i32, _h: i32) {
     //info!("f {:?}", &freq_map);
 
@@ -42,8 +42,7 @@ pub fn fallback_simple_sort(freq_map: &mut [u32], block_data: &[u16], lo: i32, h
     }
 } 
 
-/// Sorts slice using Rust's fast .sort_unstable_by
-pub fn fallback_simple_sort2(map_slice: &mut [u32], block_data: &[u16]) {
-    map_slice.sort_unstable_by(|a, b| block_data[*a as usize].cmp(&block_data[*b as usize]) );
-}
-*/
+// /// Sorts slice using Rust's fast .sort_unstable_by
+// pub fn fallback_simple_sort2(map_slice: &mut [u32], block_data: &[u16]) {
+//     map_slice.sort_unstable_by(|a, b| block_data[*a as usize].cmp(&block_data[*b as usize]) );
+// }

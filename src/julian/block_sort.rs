@@ -1,8 +1,10 @@
-use log::{debug, trace, warn};
+use log::{debug, warn};
 
 use crate::compression::compress::Block;
+use crate::julian::fallback::fallback_sort::fallback_sort;
 
-use super::fallback::fallback_sort::fallback_sort;
+//use super::fallback::fallback_sort::fallback_sort;
+use super::fallback::fallback_sort_ds::fallback_sort_ds;
 use super::primary::main_sort::{main_sort, QsortData};
 
 /// Primary entry into Julian's BWT sorting system. This receives a ref to the block,  and the work factor.
@@ -12,8 +14,8 @@ pub fn block_sort(block: &mut Block) {
     let mut qs = QsortData::new(block.end as usize, block.budget);
 
     // If the size of the block us under 10k, use the fallbackSort function.
-    if block.end < 10000 {
-        fallback_sort(block)
+    if block.end < 100000 {
+        fallback_sort_ds(block)
     } else {
         /* Julian note:
            (block.budget-1) / 3 puts the default-factor-30
@@ -38,7 +40,7 @@ pub fn block_sort(block: &mut Block) {
 
         if budget < 0 {
             warn!("    Too repetitive; using fallback sorting algorithm");
-            fallback_sort(block);
+            fallback_sort_ds(block);
         } else {
             debug!(
                 "\nInitial budget: {}, Used: {}, Left: {}, block size: {}.",

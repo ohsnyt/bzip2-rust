@@ -1,5 +1,7 @@
 use log::error;
 
+use crate::julian::fallback::fallback_simple_sort::fallback_simple_sort;
+
 /// Three-way quick sort used by fallback_sort
 pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi_st: i32) {
     const FALLBACK_QSORT_SMALL_THRESH: usize = 10;
@@ -33,13 +35,10 @@ pub fn fallback_q_sort3(freq_map: &mut [u32], block_data: &[u16], lo_st: i32, hi
         if hi - lo < 10 + FALLBACK_QSORT_SMALL_THRESH as i32 {
             // ...but only if it is a valid, non-empty slice
             if hi > 0 && lo >= 0 && hi - lo > 0 {
-                freq_map[(lo as usize)..=(hi as usize)]
-                    .sort_unstable_by(|a, b| block_data[*a as usize].cmp(&block_data[*b as usize]));
-            }
+                fallback_simple_sort(freq_map, block_data, lo, hi, 0);
 
-            // DEBUG
-            if freq_map[6553] == 0 {
-                println!("Pause here")
+                // freq_map[(lo as usize)..=(hi as usize)]
+                //     .sort_unstable_by(|a, b| block_data[*a as usize].cmp(&block_data[*b as usize]));
             }
             continue;
         }

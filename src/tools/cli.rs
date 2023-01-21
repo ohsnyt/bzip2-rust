@@ -76,6 +76,8 @@ pub struct BzOpts {
     pub verbose: Verbosity,
     /// Optional setting used for oddly constructed data - may be depricated
     pub work_factor: usize,
+    /// FOR DEBUGGING ONLY
+    pub debug: bool,
 }
 
 impl BzOpts {
@@ -93,6 +95,7 @@ impl BzOpts {
             status: Status::Init,
             verbose: Verbosity::Errors,
             work_factor: 30,
+            debug: false,
         }
     }
 }
@@ -137,11 +140,12 @@ pub fn bzopts_init() -> BzOpts {
                 "--fast" => cli.block_size = 1,
                 "--best" => cli.block_size = 9,
 
-                "--simple" => cli.algorithm = Some(Algorithms::Simple),
+                "--native" => cli.algorithm = Some(Algorithms::Native),
                 "--julian" => cli.algorithm = Some(Algorithms::Julian),
                 "--sais" => cli.algorithm = Some(Algorithms::Sais),
                 "--big" => cli.algorithm = Some(Algorithms::Big),
                 "--parallel" => cli.algorithm = Some(Algorithms::Parallel),
+                "--debug" => cli.debug = true,
                 other => eprintln!("Bad command line argument: {}", other),
             }
         } else if arg.starts_with('-') {
@@ -327,12 +331,13 @@ fn help() {
    short flags, so `-v -4' means the same as -v4 or -4v, &c.
 
    Temporarily, you can specify one of these alogrithms for the BWT
-     --simple
+     --native
      --julian
      --sais
      --big
      --parallel
      -vvvvv (trace level debugging information)
+     --debug for debugging special purposes (will change during development)
    "
     );
     exit(0);
@@ -369,8 +374,8 @@ pub enum Algorithms {
     Julian,
     /// Use SAIS based Burrow Wheeler Transform algorithm when compressing
     Sais,
-    /// Use simple Burrow Wheeler Transform algorithm when compressing
-    Simple,
+    /// Use naive sorting based Burrow Wheeler Transform algorithm when compressing
+    Native,
     // Parallel - uses custom BWT sorting alorithm with Rayon when compressing
     Parallel,
     // Big sequential - uses custom BWT sorting alorithm without Rayon

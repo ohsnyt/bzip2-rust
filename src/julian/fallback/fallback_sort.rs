@@ -137,6 +137,7 @@ pub fn fallback_sort(block: &mut Block) {
             */
             block_data[offset as usize] = j as u16;
         }
+        // WHAT IS THIS BLOCK?
         let end=block_data.len() as u32;
         let mut last_byte = 0;
         (0..end).for_each(|i| {if is_set_bh!(i) { last_byte = i}; block_data[((end + freq_map[i as usize] - depth as u32)%end) as usize] = last_byte as u16 });

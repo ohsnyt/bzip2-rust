@@ -9,7 +9,11 @@ mod julian;
 mod snyder;
 mod tools;
 
-use std::time::{Duration, Instant};
+use std::{
+    fs::{self, File},
+    io::{Read, Write},
+    time::{Duration, Instant},
+};
 
 use compression::compress::*;
 use compression::decompress::decompress;
@@ -136,7 +140,14 @@ fn main() -> Result<(), std::io::Error> {
     let mut options = bzopts_init();
     timer.mark("cli");
 
-    //----- Figure how what we need to do
+    // If we are debugging, do that instead of normal operations
+    if options.debug {
+        debug(&mut options, &mut timer);
+        // quit the program
+        return Ok(());
+    }
+
+    //----- Figure how what we need to do and go do it
     let result = match options.op_mode {
         Mode::Zip => compress(&mut options, &mut timer),
         Mode::Unzip => decompress(&options, &mut timer),
@@ -187,4 +198,58 @@ fn main() -> Result<(), std::io::Error> {
 
     info!("Done.\n");
     result
+}
+
+/// Create a known problem test file and extend it a byte at a time until compression fails.
+fn debug(opts: &mut tools::cli::BzOpts, timer: &mut Timer) {
+    let sourcefile = "src/49_tiny.txt";
+    let testfile = "src/growing_test.txt";
+    let compfile = "src/growing_test.tst";
+
+    //let mut fin = File::open(sourcefile).expect("Can't find source file");
+    let fin_metadata = fs::metadata(sourcefile).expect("Can't read source metadata");
+
+    for size in 5..fin_metadata.len() as usize {
+        println!("----------------------------------");
+        println!("Testing size: {}", size);
+        println!("----------------------------------");
+
+        let mut buf = vec![0_u8; size];
+        let mut fin = File::open(sourcefile).expect("Can't find source file");
+
+        fin.read_exact(&mut buf).expect("Error reading source file");
+
+        {
+            // Prepare to write the test file. Do this first because we may need to loop and write data multiple times.
+            let fname = testfile;
+            let mut f_out = File::create(fname).expect("Error creating test file");
+            f_out.write_all(&buf).expect("Can't write test file");
+
+            // Prepare to write the compare file. Do this first because we may need to loop and write data multiple times.
+            let fname = compfile;
+            let mut f_out = File::create(fname).expect("Error creating compare file");
+            f_out.write_all(&buf).expect("Can't write compare file");
+        }
+        // Set the BzOpts input to the test file
+        opts.files = vec![testfile.to_string()];
+
+        // TODO: call compress, then decompress, then compare
+        compress(opts, timer).expect("Can't compress test file");
+        // Set the BzOpts input to the test.bz file
+        let mut test_bz = testfile.to_owned();
+        test_bz.push_str(".bz2");
+        opts.files = vec![test_bz.clone()];
+
+        // Execute official bzip2 decompress
+        let bzd = std::process::Command::new("bzip2")
+            .arg("-dkf")
+            .arg(test_bz)
+            .status()
+            .expect("Could not run bzip2 decompress command");
+
+        if !bzd.success() {
+            println!("Error occured at byte length: {}!", size);
+            panic!("Error occured at byte length: {}!", size)
+        }
+    }
 }

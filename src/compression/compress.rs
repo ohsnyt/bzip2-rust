@@ -1,4 +1,4 @@
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::os::unix::prelude::MetadataExt;
 
@@ -88,7 +88,7 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
             .expect("Error reading input file");
         match diversity(&diversity_buf) {
             0..=20 => opts.algorithm = Some(Algorithms::Sais),
-            21..=128 => opts.algorithm = Some(Algorithms::Simple),
+            21..=128 => opts.algorithm = Some(Algorithms::Native),
             _ => opts.algorithm = Some(Algorithms::Julian),
         }
     }
@@ -96,12 +96,8 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.files[0].clone();
     fname.push_str(".bz2");
-    let mut f_out = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .append(true)
-        .open(&fname)?;
-
+    let mut f_out = File::create(fname)
+        .expect("Can't create .bz2 file");
     timer.mark("setup");
 
     //----- Prepare to loop through blocks of data and process it.
@@ -183,7 +179,7 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
                 &mut bw,
                 &mut block,
                 opts.block_size,
-                Algorithms::Simple,
+                Algorithms::Native,
                 opts.iterations,
                 timer,
             );

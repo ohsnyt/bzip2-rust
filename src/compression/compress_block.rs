@@ -1,11 +1,11 @@
 //use crate::lib::bwt_ds::bwt_encode;
 
 use crate::bitstream::bitwriter::BitWriter;
+use crate::snyder::native::bwt_encode_native;
 use crate::tools::rle2_mtf::rle2_mtf_encode;
 use crate::{bwt_ribzip::*, Timer};
 
 use crate::julian::block_sort::block_sort;
-use crate::snyder::simple::bwt_encode_simple;
 use crate::snyder::bwt_ds_big::bwt_encode_big;
 use crate::snyder::bwt_ds_par::bwt_encode_par;
 use crate::tools::cli::Algorithms;
@@ -56,10 +56,10 @@ pub fn compress_block(
     timer.mark("setup");
 
     match algorithm {
-        // Using simple DS algorithm
-        Algorithms::Simple => {
-            info!("Using DS simple algorithm.");
-            let result = bwt_encode_simple(&block.data);
+        // Using native DS algorithm
+        Algorithms::Native => {
+            info!("Using DS native algorithm.");
+            let result = bwt_encode_native(&block.data);
             (block.key, block.data) = result
         }
         // Using SAIS algorithm from ribzip2
@@ -85,6 +85,9 @@ pub fn compress_block(
             block_sort(block)
         }
     };
+
+    // println!("Key: {}", &block.key);
+    // println!("Block: {:?}", &block.data);
 
     // Now that we have the key, we can write the 24bit BWT key
     trace!("\r\x1b[43mWriting key at {}.    \x1b[0m", bw.loc());

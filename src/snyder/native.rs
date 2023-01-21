@@ -1,8 +1,12 @@
 use rayon::prelude::*;
+/*
+I tried a varient that uses a double length block to avoid the nested equality checks
+in block_compare, but it was barely faster.
+*/
 
 ///Burrows-Wheeler-Transform. Uses rayon to multi-thread. Great for non-repeating ascii data
 /// Transforms a u8 sli&ce using bwt. The key is u32.
-pub fn bwt_encode_simple(orig: &[u8]) -> (u32, Vec<u8>) {
+pub fn bwt_encode_native(orig: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
     let mut index = (0_u32..orig.len() as u32).collect::<Vec<u32>>();
 

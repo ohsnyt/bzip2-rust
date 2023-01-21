@@ -338,16 +338,16 @@ fn encode_sym_map_from_bool_map(symbols: &[bool]) -> Vec<u16> {
     sym_maps
 }
 
-fn test(data: &[u8]) -> bool {
-    let mut test_data: Vec<u8> = vec![0_u8;70000];
-    let mut file = std::fs::File::open("test.data").unwrap();
-    test_data.truncate(data.len());
-    std::io::Read::read(&mut file, &mut test_data);
+// fn test(data: &[u8]) -> bool {
+//     let mut test_data: Vec<u8> = vec![0_u8;70000];
+//     let mut file = std::fs::File::open("test.data").unwrap();
+//     test_data.truncate(data.len());
+//     std::io::Read::read(&mut file, &mut test_data).expect("Couldn't read test data");
 
-    for i in 0..data.len() {
-        if data[i] != test_data[i] {
-            println!("Mismatch at {}: '{}|{}'", i, data[i], test_data[i]);
-        }
-    }
-    &test_data == data
-}
+//     for i in 0..data.len() {
+//         if data[i] != test_data[i] {
+//             println!("Mismatch at {}: '{}|{}'", i, data[i], test_data[i]);
+//         }
+//     }
+//     test_data == data
+// }

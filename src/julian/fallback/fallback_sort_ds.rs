@@ -147,7 +147,7 @@ pub fn fallback_sort_ds(block: &mut Block) {
             let mut compare = block.data[index[left]];
             set_sentinel!(left);
 
-            for i in (left + 1..right) {
+            for i in left + 1..right {
                 if compare != block.data[index[i]] {
                     set_sentinel!(i);
                     compare = block.data[index[i]];
@@ -170,24 +170,24 @@ pub fn fallback_sort_ds(block: &mut Block) {
     }
 
     info!("        building burrow-wheeler-transform data ...\n");
-    // Rebuild the original data so we can generate the output. Put it into the block.rle2 vec
-    block.rle2 = vec![0; end];
+    // Rebuild the original data so we can generate the output.
+    let mut data = vec![0; end];
     let mut j = 0;
-    for i in 0..end {
+    index.iter().for_each(|&idx| {
         while freqs[j] == 0 {
             j += 1
         }
         freqs[j] -= 1;
-        block.rle2[index[i]] = j as u16;
-    }
+        data[idx] = j as u16
+    });
 
     // Generate key and put the BWT output into block.data
     index.iter().enumerate().for_each(|(i, &el)| {
         if el == 0 {
             block.key = i as u32;
-            block.data[i] = block.rle2[end - 1] as u8
+            block.data[i] = data[end - 1] as u8
         } else {
-            block.data[i] = block.rle2[el - 1] as u8
+            block.data[i] = data[el - 1] as u8
         };
     });
 

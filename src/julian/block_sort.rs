@@ -14,7 +14,7 @@ pub fn block_sort(block: &mut Block) {
     let mut qs = QsortData::new(block.end as usize, block.budget);
 
     // If the size of the block us under 10k, use the fallbackSort function.
-    if block.end < 100000 {
+    if block.end < 1000000 {
         fallback_sort_ds(block)
     } else {
         /* Julian note:

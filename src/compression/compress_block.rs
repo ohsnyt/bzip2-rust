@@ -86,9 +86,6 @@ pub fn compress_block(
         }
     };
 
-    // println!("Key: {}", &block.key);
-    // println!("Block: {:?}", &block.data);
-
     // Now that we have the key, we can write the 24bit BWT key
     trace!("\r\x1b[43mWriting key at {}.    \x1b[0m", bw.loc());
     bw.out24(0x18_000000 | block.key as u32); // and 24 bit key

@@ -24,10 +24,17 @@ fn orchestrate_build_suffix_array(text: &[usize], alphabet_size: usize) -> Vec<O
     let bucket_sizes = get_bucket_sizes(text, alphabet_size);
     let n = text.len();
     let mut suffix_array = vec![None; n + 1];
-
+    // DEBUG
+    //println!("{:?}", suffix_array);
     identify_lms_characters(&mut suffix_array, text, &suffix_types, &bucket_sizes);
+    // DEBUG
+    //println!("{:?}", suffix_array);
     induction_sort_l(&mut suffix_array, text, &suffix_types, &bucket_sizes);
+    // DEBUG
+    //println!("{:?}", suffix_array);
     induction_sort_s(&mut suffix_array, text, &suffix_types, &bucket_sizes);
+    // DEBUG
+    //println!("{:?}", suffix_array);
     let summary = reduce_problem(&mut suffix_array, text, &suffix_types);
     let summary_suffix_array = build_summary_suffix_array(&summary);
 

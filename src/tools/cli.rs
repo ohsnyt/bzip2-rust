@@ -1,9 +1,4 @@
-//use super::options::{BzOpts, Mode, Output, WorkFactor};
-//use clap::Parser;
-//use log::info;
-//use log::warn;
 use std::{fmt::Display, fmt::Formatter};
-
 use std::process::exit;
 
 /// Verbosity of user information
@@ -141,12 +136,12 @@ pub fn bzopts_init() -> BzOpts {
                 "--best" => cli.block_size = 9,
 
                 "--native" => cli.algorithm = Some(Algorithms::Native),
-                "--julian" => cli.algorithm = Some(Algorithms::Julian),
+                //"--julian" => cli.algorithm = Some(Algorithms::Julian),
                 "--sais" => cli.algorithm = Some(Algorithms::Sais),
-                "--big" => cli.algorithm = Some(Algorithms::Big),
+                "--sais3" => cli.algorithm = Some(Algorithms::Sais3),
                 "--parallel" => cli.algorithm = Some(Algorithms::Parallel),
                 "--debug" => cli.debug = true,
-                other => eprintln!("Bad command line argument: {}", other),
+                other => eprintln!("Unexpected command line argument: {}", other),
             }
         } else if arg.starts_with('-') {
             arg.remove(0);
@@ -334,6 +329,7 @@ fn help() {
      --native
      --julian
      --sais
+     --ss
      --big
      --parallel
      -vvvvv (trace level debugging information)
@@ -368,18 +364,18 @@ fn version() {
 }
 
 /// Define the alternate compression algorithms
-#[derive(Clone, Debug, PartialEq, Eq, clap::Subcommand)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Algorithms {
     /// Use original Bzip2 Burrow Wheeler Transform algorithm when compressing
     Julian,
-    /// Use SAIS based Burrow Wheeler Transform algorithm when compressing
+    /// Use RiBzip SAIS based algorithm when compressing
     Sais,
+    /// Use sentinel based ds implemented SAIS based Burrow Wheeler Transform algorithm when compressing
+    Sais3,
     /// Use naive sorting based Burrow Wheeler Transform algorithm when compressing
     Native,
-    // Parallel - uses custom BWT sorting alorithm with Rayon when compressing
+    // Parallel - uses custom usize BWT sorting alorithm with Rayon when compressing
     Parallel,
-    // Big sequential - uses custom BWT sorting alorithm without Rayon
-    Big,
 }
 /*
 /// Defines a "fallback" mode for worst case data - may be depricated
@@ -413,213 +409,4 @@ pub struct BzOptsOld {
     /// Iterations used to test/optimize small block compression
     pub iterations: usize,
 }
-
-impl BzOptsOld {
-    /// Set default parameters on program start
-    pub fn new() -> Self {
-        Self {
-            file: None,
-            block_size: 9,
-            op_mode: Mode::Zip,
-            keep_input_files: false,
-            work_factor: WorkFactor::Normal,
-            force_overwrite: false,
-            output: Output::File,
-            status: Status::Init,
-            algorithm: Algorithms::Julian,
-            iterations: 4,
-        }
-    }
-}
-
-/// Command Line Interpretation - uses external CLAP crate.
-#[derive(Parser, Debug)]
-#[clap(
-    author = "    David M. Snyder <david.snyder@stillwaiting.org>",
-    version = "version 0.3.0",
-    about = "A Rust implementation of Bzip2",
-    long_about = "
-    Bzip2 was developed by Julian Seward. The algorithm is based on Huffman encoding of data.
-    This version retains the features (and quirks) of the original, but adds some options
-    to allow alternate encoding implementations as well as a few tweaks to test/alter
-    the encoding.
-
-    It is done in the spirit of learning, both learning Rust and learning compression techniques."
-)]
-pub struct Args {
-    /// Filename of file to process
-    #[clap()]
-    filename: Option<String>,
-    /// Perform compression on the input file
-    #[clap(short = 'z', long = "zip")]
-    compress: bool,
-
-    /// Perform decompression on the input file
-    #[clap(short = 'd', long = "decompress")]
-    decompress: bool,
-
-    ///Force overwriting output file
-    #[clap(short = 'f', long = "force")]
-    force: bool,
-
-    /// Keep input file
-    #[clap(short = 'k', long = "keep")]
-    keep: bool,
-
-    /// Send output to the terminal
-    #[clap(short = 'c', long = "stdout")]
-    stdout: bool,
-
-    /// Shift into fallback mode, useful for highly repetitive data
-    #[clap(long = "workfactor")]
-    workfactor: bool,
-
-    /// Reduce memory requirements
-    #[clap(short = 's', long = "small")]
-    small: bool,
-
-    /// Test compressed file integrity
-    #[clap(short = 't', long = "test")]
-    test: bool,
-
-    /// Alias for 100k block mode
-    #[clap(long = "fast")]
-    fast: bool,
-
-    /// Alias for 900k block mode
-    #[clap(long = "best")]
-    best: bool,
-
-    /// Sets verbosity. -v1 shows very little, -v5 is chatty
-    #[clap(short = 'v', default_value_t = 3)]
-    v: u8,
-
-    /// Displays version information
-    #[clap(short = 'V', long = "version")]
-
-    /// Displays license information
-    #[clap(short = 'L', long)]
-    license: bool,
-
-    /// 1..9 - Set the block size from 100-900k. 900k is the default
-    #[clap()]
-    block_size: Option<u8>,
-
-    /// Sort algorithm choice
-    #[clap(subcommand)]
-    algorithm: Option<Algorithms>,
-
-    /// Compression block iterations. -i4 is the only value used in the original algorithm.
-    #[clap(short = 'i', long, default_value_t = 4)]
-    iterations: usize,
-}
-
-/// Official license statement for Bzip2
-fn license_old() -> String {
-    "
-bzip2, a block-sorting file compressor.
-Copyright (C) 1996-2010 by Julian Seward; 2010-2021 by various; 2022 by David Snyder.
-
-This program is free software; you can redistribute it and/or modify
-it under the terms set out in the LICENSE file, which is included
-in the bzip2-1.0.6 source distribution.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-LICENSE file for more details.
-
-"
-    .to_string()
-}
-
-/// Put command line information from CLAP into our internal structure.
-/// NOTE: refactoring may find a way to avoid this step.
-pub fn init_bz_opts(bz_opts_old: &mut BzOptsOld) {
-    let args = Args::parse();
-
-    if args.filename.is_some() {
-        bz_opts_old.file = Some(args.filename.as_ref().unwrap().to_string())
-    };
-
-    if args.compress {
-        bz_opts_old.op_mode = Mode::Zip
-    };
-
-    if args.decompress {
-        bz_opts_old.op_mode = Mode::Unzip
-    };
-
-    bz_opts_old.force_overwrite = args.force;
-
-    bz_opts_old.keep_input_files = args.keep;
-
-    if args.stdout {
-        bz_opts_old.output = Output::Stdout
-    };
-
-    if args.workfactor {
-        bz_opts_old.work_factor = WorkFactor::Fallback
-    };
-
-    if args.small {
-        bz_opts_old.block_size = 2
-    };
-
-    // if args.test {
-    //     bz_opts.op_mode = Mode::Test
-    // };
-
-    if args.fast {
-        bz_opts_old.block_size = 2
-    };
-
-    if args.best {
-        bz_opts_old.block_size = 9
-    };
-
-    // Set the log level
-    match args.v {
-        0 => log::set_max_level(log::LevelFilter::Off),
-        1 => log::set_max_level(log::LevelFilter::Error),
-        2 => log::set_max_level(log::LevelFilter::Warn),
-        3 => log::set_max_level(log::LevelFilter::Info),
-        4 => log::set_max_level(log::LevelFilter::Debug),
-        _ => log::set_max_level(log::LevelFilter::Trace),
-    };
-
-    // NOTE: This overwrites the best and small flags!
-    if args.block_size.is_some() {
-        bz_opts_old.block_size = args.block_size.unwrap()
-    };
-
-    if args.license {
-        info!("{}", license_old())
-    };
-
-    bz_opts_old.iterations = args.iterations;
-
-    bz_opts_old.algorithm = args.algorithm.unwrap_or(Algorithms::Julian);
-
-    // Below we report initialization status to the user
-    info!("---- Bzip2 Initialization Start ----",);
-    info!("Verbosity set to {}", log::max_level());
-    //log::trace!("Testing trace level");
-    info!("Operational mode set to {}", bz_opts_old.op_mode);
-    match &bz_opts_old.file {
-        Some(s) => info!("Getting input from the file {}", s),
-        None => warn!("Sending output to stdout"),
-    }
-    info!("Block size set to {}", bz_opts_old.block_size);
-    if bz_opts_old.force_overwrite {
-        info!("Forcing file overwriting")
-    };
-    if bz_opts_old.keep_input_files {
-        info!("Keeping input files")
-    };
-    if bz_opts_old.iterations != 4 {
-        info!("Iterations set to {}", bz_opts_old.iterations)
-    };
-    info!("---- Bzip2 Initialization End ----\n");
-}
- */
+*/

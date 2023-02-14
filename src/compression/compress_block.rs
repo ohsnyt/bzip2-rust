@@ -2,11 +2,11 @@
 
 use crate::bitstream::bitwriter::BitWriter;
 use crate::snyder::native::bwt_encode_native;
+use crate::snyder::ss3::entry;
 use crate::tools::rle2_mtf::rle2_mtf_encode;
 use crate::{bwt_ribzip::*, Timer};
 
 use crate::julian::block_sort::block_sort;
-use crate::snyder::bwt_ds_big::bwt_encode_big;
 use crate::snyder::bwt_ds_par::bwt_encode_par;
 use crate::tools::cli::Algorithms;
 use log::{debug, info, trace};
@@ -62,6 +62,16 @@ pub fn compress_block(
             let result = bwt_encode_native(&block.data);
             (block.key, block.data) = result
         }
+        // Using rayon and DS algorithm
+        Algorithms::Parallel => {
+            info!("Using DS parallel algorithm.");
+            bwt_encode_par(block);
+        }
+        // Using julians algorithm
+        Algorithms::Julian => {
+            info!("Using Julians algorithm.");
+            block_sort(block)
+        }
         // Using SAIS algorithm from ribzip2
         Algorithms::Sais => {
             info!("Using SAIS algorithm.");
@@ -69,22 +79,12 @@ pub fn compress_block(
             let result = bwt_internal::bwt(&block.data);
             (block.key, block.data) = result
         }
-        // Using rayon and DS algorithm
-        Algorithms::Parallel => {
-            info!("Using DS parallel algorithm.");
-            bwt_encode_par(block);
+        Algorithms::Sais3 => {
+                info!("Using Faster SA-IS algorithm.");
+            let result = entry(&block.data);
+            (block.key, block.data) = result
         }
-        // Using sequential only DS algorithm
-        Algorithms::Big => {
-            info!("Using DS sequential algorithm.");
-            bwt_encode_big(block);
-        }
-        // Using julians algorithm
-        Algorithms::Julian => {
-            info!("Using Julians algorithm.");
-            block_sort(block)
-        }
-    };
+};
 
     // Now that we have the key, we can write the 24bit BWT key
     trace!("\r\x1b[43mWriting key at {}.    \x1b[0m", bw.loc());

@@ -29,6 +29,8 @@ pub fn bwt_encode_native(orig: &[u8]) -> (u32, Vec<u8>) {
             bwt[i] = orig[(index[i] as usize) - 1];
         }
     }
+    // println!("Key is: {}", key);
+    // println!("BWT is: {:?}", bwt);
     (key, bwt)
 }
 

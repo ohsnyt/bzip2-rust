@@ -202,9 +202,9 @@ fn main() -> Result<(), std::io::Error> {
 
 /// Create a known problem test file and extend it a byte at a time until compression fails.
 fn debug(opts: &mut tools::cli::BzOpts, timer: &mut Timer) {
-    let sourcefile = "src/49_tiny.txt";
-    let testfile = "src/growing_test.txt";
-    let compfile = "src/growing_test.tst";
+    let sourcefile = "src/Peter.txt";
+    let testfile = "src/peter_test.txt";
+    let compfile = "src/peter_test.tst";
 
     //let mut fin = File::open(sourcefile).expect("Can't find source file");
     let fin_metadata = fs::metadata(sourcefile).expect("Can't read source metadata");

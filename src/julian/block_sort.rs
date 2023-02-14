@@ -1,7 +1,7 @@
 use log::{debug, warn};
 
 use crate::compression::compress::Block;
-use crate::julian::fallback::fallback_sort::fallback_sort;
+//use crate::julian::fallback::fallback_sort::fallback_sort;
 
 //use super::fallback::fallback_sort::fallback_sort;
 use super::fallback::fallback_sort_ds::fallback_sort_ds;

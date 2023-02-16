@@ -1,5 +1,3 @@
-//use crate::lib::bwt_ds::bwt_encode;
-
 use crate::bitstream::bitwriter::BitWriter;
 use crate::snyder::native::bwt_encode_native;
 use crate::snyder::ss3::entry;
@@ -53,8 +51,6 @@ pub fn compress_block(
     );
     bw.out24(0x01_000000); // One zero bit
 
-    timer.mark("setup");
-
     match algorithm {
         // Using native DS algorithm
         Algorithms::Native => {
@@ -92,7 +88,7 @@ pub fn compress_block(
     timer.mark("bwt");
 
     rle2_mtf_encode(block);
-    timer.mark("mtf");
+    timer.mark("rle_mtf");
 
     // Now for the compression - the Huffman encoding (which also writes out data)
     let _result = huf_encode(bw, block, iterations);

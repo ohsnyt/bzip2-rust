@@ -27,12 +27,12 @@ pub fn rle_encode(data: &[u8], free_space: usize) -> (usize, Vec<u8>) {
     // It is possible that the data will expand a maximum of 25%
     let mut out = Vec::with_capacity(data.len() * 5 / 4);
 
-    // idx is the position in the input where we are looking for 4 identical previous bytes
+    // idx is the position in the input where we are looking for 3 identical *previous* bytes to this one
     let mut idx = 3;
 
-    // As long as we have data, search up until the begining 4 identical bytes
+    // As long as we have data, search
     while idx < data.len() {
-        // Remembering that RLE1 can possibly expand the data, watch out for this
+        // Remembering that RLE1 can possibly expand the data, watch out that we don't make our blocks too big
         if (out.len() + idx - start) >= free_space {
             break;
         }
@@ -54,17 +54,6 @@ pub fn rle_encode(data: &[u8], free_space: usize) -> (usize, Vec<u8>) {
             idx += 1;
         }
     }
-
-    // // Reserve a varible to report how much data we processed
-    // let processed;
-
-    // // If we ran out of data, we will process all we had
-    // if idx >= data_end {
-    //     processed = data_end;
-    // } else {
-    //     // otherwise we must have expanded data and reached our limit
-    //     processed = out.len() + idx - start;
-    // }
 
     // Write out any pending data.
     out.extend_from_slice(&data[start..idx]);
@@ -105,8 +94,6 @@ pub fn rle1_decode(data: &[u8]) -> Vec<u8> {
         // If we found a sequence of 4 identical bytes, we need to get past it
         if i < start {
             continue;
-            // decrement the jump counter by one
-            //jump_past_search -= 1;
             // If not, look for a sequence of 4
         } else if data[i] == data[i + 1] && data[i] == data[i + 2] && data[i] == data[i + 3] {
             // If we found a sequence of 4, first write out everything from start to now.
@@ -116,8 +103,6 @@ pub fn rle1_decode(data: &[u8]) -> Vec<u8> {
             let tmp = vec![data[i]; data[i + 4].into()];
             // ...and write that out
             out.extend(tmp);
-            // Set the jump past variable to get us past the 4 plus count byte
-            //jump_past_search = 5;
             // and reset the start to be at the point just past the jump_past counter.
             start = i + 5;
         }

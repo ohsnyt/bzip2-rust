@@ -140,11 +140,11 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
 
             // Add the rle1 data to block.data
             block.data.extend(new_data.iter());
-            timer.mark("rle1");
-
+            
             // Update the block end to the actual block size
             block.end = block.data.len() as u32;
-
+            timer.mark("rle1");
+            
             // Do CRC on what we got each time
             block.block_crc = do_crc(block.block_crc, &buf[0..used as usize]);
             timer.mark("crcs");

@@ -1,5 +1,5 @@
-use std::{fmt::Display, fmt::Formatter};
 use std::process::exit;
+use std::{fmt::Display, fmt::Formatter};
 
 /// Verbosity of user information
 #[derive(Debug)]
@@ -153,6 +153,10 @@ pub fn bzopts_init() -> BzOpts {
                     arg.remove(0);
                     arg.remove(0);
                     arg.remove(0);
+                    // And remove any excess v's
+                    while arg.starts_with("v") {
+                        arg.remove(0);
+                    }
                     continue;
                 }
                 if arg.starts_with("vvvv") {
@@ -278,6 +282,8 @@ pub fn bzopts_init() -> BzOpts {
                     arg.remove(0);
                     continue;
                 }
+                eprintln!("Unexpected command line argument: {}", arg);
+                help()
             }
         } else {
             cli.files.push(arg);

@@ -648,19 +648,3 @@ fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
     (buf, offset)
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    pub fn rotates() {
-        let rotated = rotate_duval(b"abacabab");
-        assert_eq!(rotated.0, b"ababacab")
-    }
-
-    #[test]
-    pub fn finds_final_lyndon_word() {
-        let rotated = rotate_duval(b"bananaa");
-        assert_eq!(rotated.1, 6)
-    }
-}

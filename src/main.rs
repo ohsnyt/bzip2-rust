@@ -154,45 +154,46 @@ fn main() -> Result<(), std::io::Error> {
         Mode::Test => Ok(()),
     };
 
-    if log_enabled!(log::Level::Debug) {
+    if log_enabled!(log::Level::Warn) {
         timer.mark("misc");
+        println!("{:>14} Function", "Microseconds");
+        println!("{:>14} CLI", timer.cli.as_micros());
+        println!("{:>14} Setup", timer.setup.as_micros());
+        println!("{:>14} RLE1", timer.rle1.as_micros());
+        println!("{:>14} CRCs", timer.crcs.as_micros());
+        println!("{:>14} BWT", timer.bwt.as_micros());
+        println!("{:>14} RLE2-MTF", timer.rle_mtf.as_micros());
+        println!("{:>14} Huffman", timer.huffman.as_micros());
+        println!("{:>14} Cleanup", timer.cleanup.as_micros());
+        println!("{:>14} Total", timer.total.as_micros());
         println!();
-        println!("CLI\t\t{:?}", timer.cli);
-        println!("BWT\t\t{:?}", timer.bwt);
-        println!("Huffman:\t{:?}", timer.huffman);
-        println!("MTF:\t\t{:?}", timer.mtf);
-        println!("CRCs:\t\t{:?}", timer.crcs);
-        println!("RLE:\t\t{:?}", timer.rle);
-        println!("RLE1:\t\t{:?}", timer.rle1);
-        println!("Setup:\t\t{:?}", timer.setup);
-        println!("Cleanup:\t{:?}", timer.cleanup);
-        println!("Total:\t\t{:?}\n", timer.total);
         println!(
-            "Missing: {:?}",
-            timer.total
+            "{:>14} Missing",
+            timer.total.as_micros()
                 - (timer.cli
-                    + timer.bwt
-                    + timer.huffman
-                    + timer.crcs
-                    + timer.rle1
-                    + timer.rle
                     + timer.setup
+                    + timer.rle1
+                    + timer.crcs
+                    + timer.bwt
+                    + timer.rle_mtf
+                    + timer.huffman
                     + timer.cleanup)
+                    .as_micros()
         );
 
         // Print out the results
         println!("\nTimer results table:");
         println!(
             "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?}",
-            timer.cli,
-            timer.bwt,
-            timer.huffman,
-            timer.rle,
-            timer.mtf,
-            timer.rle1,
-            timer.setup,
-            timer.cleanup,
-            timer.total
+            timer.cli.as_micros(),
+            timer.setup.as_micros(),
+            timer.rle1.as_micros(),
+            timer.crcs.as_micros(),
+            timer.bwt.as_micros(),
+            timer.rle_mtf.as_micros(),
+            timer.huffman.as_micros(),
+            timer.cleanup.as_micros(),
+            timer.total.as_micros()
         );
     }
 

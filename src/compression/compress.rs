@@ -179,7 +179,7 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
                 &mut bw,
                 &mut block,
                 opts.block_size,
-                Algorithms::Native,
+                Algorithms::Julian,
                 opts.iterations,
                 timer,
             );

@@ -14,7 +14,7 @@ pub fn block_sort(block: &mut Block) {
     let mut qs = QsortData::new(block.end as usize, block.budget);
 
     // If the size of the block us under 10k, use the fallbackSort function.
-    if block.end < 1000000 {
+    if block.end < 10000 {
         fallback_sort_ds(block)
     } else {
         /* Julian note:
@@ -38,17 +38,21 @@ pub fn block_sort(block: &mut Block) {
 
         main_sort(block, &mut qs, &mut budget);
 
+        debug!(
+            "\nInitial budget: {}, Used: {}, Left: {}, block size: {}.",
+            budget_init,
+            budget_init - budget,
+            budget,
+            block.end,
+        );
+        debug!("\n{} work, {} block, {:.2} ratio.",
+            budget_init - budget,
+            block.end,
+            ((budget_init - budget) as f64 / block.end.max(1) as f64),
+        );
         if budget < 0 {
             warn!("    Too repetitive; using fallback sorting algorithm");
             fallback_sort_ds(block);
-        } else {
-            debug!(
-                "\nInitial budget: {}, Used: {}, Left: {}, block size: {}.",
-                budget_init,
-                budget_init - budget,
-                budget,
-                block.end,
-            );
         }
     };
 }

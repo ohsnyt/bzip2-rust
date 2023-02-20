@@ -89,7 +89,7 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
         match diversity(&diversity_buf) {
             0..=20 => opts.algorithm = Some(Algorithms::Sais),
             21..=128 => opts.algorithm = Some(Algorithms::Native),
-            _ => opts.algorithm = Some(Algorithms::Julian),
+            _ => opts.algorithm = Some(Algorithms::Native),
         }
     }
 

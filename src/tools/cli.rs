@@ -136,7 +136,7 @@ pub fn bzopts_init() -> BzOpts {
                 "--best" => cli.block_size = 9,
 
                 "--native" => cli.algorithm = Some(Algorithms::Native),
-                //"--julian" => cli.algorithm = Some(Algorithms::Julian),
+                "--julian" => cli.algorithm = Some(Algorithms::Julian),
                 "--sais" => cli.algorithm = Some(Algorithms::Sais),
                 "--sais3" => cli.algorithm = Some(Algorithms::Sais3),
                 "--parallel" => cli.algorithm = Some(Algorithms::Parallel),

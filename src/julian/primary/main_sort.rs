@@ -48,6 +48,8 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
     let mut copy_start = vec![0_i32; 256];
     let mut copy_end = vec![0_i32; 256];
 
+    // Julian initializes the qualndrants and block data area
+
     // We need to convert the input to a u16 format
     qs.block_data = block.data.iter().map(|b| *b as u16).collect::<Vec<u16>>();
     // And wrap the beginning data around OVERSHOOT length at the end.
@@ -95,16 +97,12 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
     // Initialize big_done
     let mut big_done = vec![false; 256];
     // Initialize running_order as a vec with values 0, 1, 2... 255
-    let mut running_order = (0..=255_u8).fold(vec![], |mut v: Vec<u8>, n| {
-        v.push(n);
-        v
-    });
+    let mut running_order = (0..=255_u8).collect::<Vec<_>>();
 
     let mut h = 364;
-
     // Initialization done.
     info!("   bucket sorting ...");
-
+    
     // Do a rough, partial sort of running_order based on data in big_freq
     // running_order is the "big bucket" in which the little buckets reside
     while h != 1 {
@@ -113,7 +111,7 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
             let vv = running_order[i] as usize;
             let mut j = i;
             'outer: while big_freq(&freq_tab, running_order[(j - h) as usize] as u32)
-                > big_freq(&freq_tab, vv as u32)
+            > big_freq(&freq_tab, vv as u32)
             {
                 running_order[j] = running_order[j - h];
                 j -= h;
@@ -128,23 +126,23 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
     // Initialize how many "rows" have been quick sorted - zero in the beginning of course!
     let mut num_q_sorted = 0;
     /*--
-       Process buckets, starting with the least full.
-       Basically this is a 3-step process in which we call
-       mainQSort3 to sort the small buckets [ss, j], but
-       also make a big effort to avoid the calls if we can.
+    Process buckets, starting with the least full.
+    Basically this is a 3-step process in which we call
+    mainQSort3 to sort the small buckets [ss, j], but
+    also make a big effort to avoid the calls if we can.
     --*/
     for (i, &ss) in running_order.iter().enumerate() {
         /*--
-           Step 1:
-           Complete the big bucket [ss] by quicksorting
-           any unsorted small buckets [ss, j], for j != ss.
-           Hopefully previous pointer-scanning phases have already
-           completed many of the small buckets [ss, j], so
-           we don't have to sort them at all.
+        Step 1:
+        Complete the big bucket [ss] by quicksorting
+        any unsorted small buckets [ss, j], for j != ss.
+        Hopefully previous pointer-scanning phases have already
+        completed many of the small buckets [ss, j], so
+        we don't have to sort them at all.
         --*/
         const SETMASK: u32 = 1 << 21;
         const CLEARMASK: u32 = !SETMASK;
-
+        
         for j in 0..=255 {
             if j != ss {
                 // This moves ss into the second byte of sb, and j into the first.
@@ -169,7 +167,7 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
                         main_q_sort3(qs, budget);
                         // Update our count of rows that are now sorted
                         num_q_sorted += hi - lo + 1;
-
+                        
                         // if the sorting was too "expensive", we fail out and try the fallback method
                         if *budget < 0 {
                             block.budget = *budget;
@@ -181,13 +179,13 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
             }
         }
         /*--
-         Step 2:
-         Now scan this big bucket [ss] so as to synthesise the
-         sorted order for small buckets [t, ss] for all t,
-         including, magically, the bucket [ss,ss] too.
-         This will avoid doing Real Work in subsequent Step 1's.
+        Step 2:
+        Now scan this big bucket [ss] so as to synthesise the
+        sorted order for small buckets [t, ss] for all t,
+        including, magically, the bucket [ss,ss] too.
+        This will avoid doing Real Work in subsequent Step 1's.
         --*/
-
+        
         // Since copy_start and copy_end are fully overwritten, no need to initialize them
         // Set bucket start and end marks
         (0..256).for_each(|i| {
@@ -195,7 +193,7 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
             copy_start[i] = (freq_tab[idx] & CLEARMASK) as i32;
             copy_end[i] = (freq_tab[idx + 1] & CLEARMASK) as i32 - 1;
         });
-
+        
         {
             let mut j = (freq_tab[(ss as usize) << 8] & CLEARMASK) as i32;
             while j < copy_start[ss as usize] {
@@ -217,7 +215,7 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
                     k += qs.end as i32
                 }
                 let c1 = qs.block_data[k as usize];
-
+                
                 if !big_done[c1 as usize] {
                     qs.bwt_ptr[copy_end[c1 as usize] as usize] = k as u32;
                     copy_end[c1 as usize] -= 1;
@@ -231,86 +229,87 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
         48.5 million of character 251; 1.0.0/1.0.1 will then die here.
         */
         if (copy_start[ss as usize] - 1 != copy_end[ss as usize])
-            || ((copy_start[ss as usize] == 0) && copy_end[ss as usize] == qs.end as i32 - 1)
+        || ((copy_start[ss as usize] == 0) && copy_end[ss as usize] == qs.end as i32 - 1)
         {
             error!("Massive 251 attack detected!")
         }
-
+        
         for j in 0..256_usize {
             freq_tab[(j << 8) + ss as usize] |= SETMASK;
         }
-
+        
         /*--
-         Step 3:
-         The [ss] big bucket is now done.  Record this fact,
-         and update the quadrant descriptors.  Remember to
-         update quadrants in the overshoot area too, if
-         necessary.  The "if (i < 255)" test merely skips
-         this updating for the last bucket processed, since
-         updating for the last bucket is pointless.
-
-         The quadrant array provides a way to incrementally
-         cache sort orderings, as they appear, so as to
-         make subsequent comparisons in fullGtU() complete
-         faster.  For repetitive blocks this makes a big
-         difference (but not big enough to be able to avoid
-         the fallback sorting mechanism, exponential radix sort).
-
-         The precise meaning is: at all times:
-
+        Step 3:
+        The [ss] big bucket is now done.  Record this fact,
+        and update the quadrant descriptors.  Remember to
+        update quadrants in the overshoot area too, if
+        necessary.  The "if (i < 255)" test merely skips
+        this updating for the last bucket processed, since
+        updating for the last bucket is pointless.
+        
+        The quadrant array provides a way to incrementally
+        cache sort orderings, as they appear, so as to
+        make subsequent comparisons in fullGtU() complete
+        faster.  For repetitive blocks this makes a big
+        difference (but not big enough to be able to avoid
+            the fallback sorting mechanism, exponential radix sort).
+            
+            The precise meaning is: at all times:
+            
             for 0 <= i < nblock and 0 <= j <= nblock
-
+            
             if block[i] != block[j],
-
-               then the relative values of quadrant[i] and
-                    quadrant[j] are meaningless.
-
-               else {
-                  if quadrant[i] < quadrant[j]
-                     then the string starting at i lexicographically
-                     precedes the string starting at j
-
-                  else if quadrant[i] > quadrant[j]
-                     then the string starting at j lexicographically
-                     precedes the string starting at i
-
+            
+            then the relative values of quadrant[i] and
+            quadrant[j] are meaningless.
+            
+            else {
+                if quadrant[i] < quadrant[j]
+                then the string starting at i lexicographically
+                precedes the string starting at j
+                
+                else if quadrant[i] > quadrant[j]
+                then the string starting at j lexicographically
+                precedes the string starting at i
+                
                   else
-                     the relative ordering of the strings starting
-                     at i and j has not yet been determined.
-               }
-        --*/
-        big_done[ss as usize] = true;
-
-        if i < 255 {
-            let bb_start = (freq_tab[(ss as usize) << 8] & CLEARMASK) as i32;
-            let bb_size = ((freq_tab[(ss as usize + 1) << 8] & CLEARMASK) as i32) - bb_start;
-            let mut shifts: u32 = 0;
-
-            while (bb_size >> shifts) > 65534 {
-                shifts += 1;
-            }
-
-            let mut j = bb_size - 1;
-            while j >= 0 {
-                let a2update = qs.bwt_ptr[bb_start as usize + j as usize] as usize;
-                let q_val = (j as u16) >> shifts;
-                qs.quadrant[a2update] = q_val;
-                if a2update < OVERSHOOT {
-                    qs.quadrant[a2update + qs.end] = q_val
+                  the relative ordering of the strings starting
+                  at i and j has not yet been determined.
                 }
-                j -= 1;
+                --*/
+                big_done[ss as usize] = true;
+                
+                if i < 255 {
+                    let bb_start = (freq_tab[(ss as usize) << 8] & CLEARMASK) as i32;
+                    let bb_size = ((freq_tab[(ss as usize + 1) << 8] & CLEARMASK) as i32) - bb_start;
+                    let mut shifts: u32 = 0;
+                    
+                    while (bb_size >> shifts) > 65534 {
+                        shifts += 1;
+                    }
+                    
+                    let mut j = bb_size - 1;
+                    while j >= 0 {
+                        let a2update = qs.bwt_ptr[bb_start as usize + j as usize] as usize;
+                        let q_val = (j as u16) >> shifts;
+                        qs.quadrant[a2update] = q_val;
+                        if a2update < OVERSHOOT {
+                            qs.quadrant[a2update + qs.end] = q_val
+                        }
+                        j -= 1;
+                    }
+                    if (bb_size - 1) >> shifts > 65535 {
+                        error!("Shifted too many times during BWT sort")
+                    };
+                }
             }
-            if (bb_size - 1) >> shifts > 65535 {
-                error!("Shifted too many times during BWT sort")
-            };
-        }
-    }
-    info!(
-        "{} pointers, {} sorted, {} scanned",
-        qs.end,
-        num_q_sorted,
-        qs.end as i32 - num_q_sorted
-    );
+            info!(
+                "{} pointers, {} sorted, {} scanned",
+                qs.end,
+                num_q_sorted,
+                qs.end as i32 - num_q_sorted
+            );
+            // PRETTY SURE WE ARE GOOD TO HERE. EQUIVALENT TO LINE 1195.                                     18 FEB 2023
 
     info!("        building burrow-wheeler-transform data ...\n");
     let mut bwt_data = vec![0; qs.end];

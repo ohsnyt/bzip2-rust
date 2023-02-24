@@ -1,5 +1,4 @@
 use super::freq_count::freqs;
-use crate::compression::compress::Block;
 use log::error;
 
 const RUNA: u16 = 0;
@@ -9,22 +8,11 @@ const ZERO_BOMB: usize = 2 * 1024 * 1024;
 /// Does Move-To-Front transforma and Run-Length-Encoding 2 prior to the huffman stage.
 /// Gets BWT output from block.data.
 /// Puts transformed u16 data into block.rle2 and frequency count into block.freqs.
-pub fn rle2_mtf_encode(block: &mut Block) {
-    // DEBUGGING
-    // let mut file = std::fs::OpenOptions::new()
-    //     .write(true)
-    //     .create(true)
-    //     .append(false)
-    //     .open(&"test.data")
-    //     .expect("failed to open");
-    // std::io::Write::write_all(&mut file, &block.data);
-
-    //println!("Test is good: {:?}", test(&block.data));
-
+pub fn rle2_mtf_encode(block: &[u8]) -> (Vec<u16>, [u32; 256], Vec<u16>) {
     // Create a custom index of the input, using an array for speed
     // Start by finding every u8 in the input.
     let mut bool_array = vec![false; 256];
-    for i in &block.data {
+    for i in block {
         bool_array[*i as usize] = true;
     }
     let (mut mtf_index, _) = bool_array.iter().enumerate().fold(
@@ -39,7 +27,7 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     );
 
     // Get the EOB value from the bool_array
-    block.eob = bool_array.iter().filter(|el| **el).count() as u16 + 1;
+    let eob = bool_array.iter().filter(|el| **el).count() as u16 + 1;
 
     // // For speed in doing the move-to-front, build an array of valid symbols in use
     // let mut entries = Vec::with_capacity(block.eob as usize);
@@ -50,7 +38,7 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     // });
 
     // Create the symbol map from the bool_array
-    block.sym_map = encode_sym_map_from_bool_map(&bool_array);
+    let sym_map = encode_sym_map_from_bool_map(&bool_array);
 
     // We are now done with the bool array
     drop(bool_array);
@@ -61,12 +49,12 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     // Initialize an index into the output vec (block.rle2)
     let mut out_idx = 0_usize;
     // Size the rle2
-    block.rle2 = vec![0_u16; block.data.len() + 1];
-    // Set an initial max value for updating the mtf index
-    //let mut last_index = 0_usize;
+    let mut rle2 = vec![0_u16; block.len() + 1];
+    // Initialize a frequency table
+    let mut freqs = [0_u32; 256];
 
     // ...then do the transform (VecDeque saves a tiny bit of time over a vec)
-    for byte in &block.data {
+    for byte in block {
         let mut idx = mtf_index.iter().position(|c| c == byte).unwrap();
         if idx == 0 {
             zeros += 1;
@@ -76,15 +64,15 @@ pub fn rle2_mtf_encode(block: &mut Block) {
         match zeros {
             0 => {} // Do nothing.
             1 => {
-                block.rle2[out_idx] = 0;
-                block.freqs[0] += 1;
+                rle2[out_idx] = 0;
+                freqs[0] += 1;
                 out_idx += 1;
                 // Reset zeros counter
                 zeros = 0;
             }
             2 => {
-                block.rle2[out_idx] = 1;
-                block.freqs[1] += 1;
+                rle2[out_idx] = 1;
+                freqs[1] += 1;
                 out_idx += 1;
                 // Reset zeros counter
                 zeros = 0;
@@ -93,9 +81,9 @@ pub fn rle2_mtf_encode(block: &mut Block) {
                 n -= 1;
                 loop {
                     // Output the appropriate RUNA/RUNB
-                    block.rle2[out_idx] = (n & 1) as u16;
+                    rle2[out_idx] = (n & 1) as u16;
                     // Update the appropriate RUNA/RUNB frequency count
-                    block.freqs[n & 1] += 1;
+                    freqs[n & 1] += 1;
                     // Update the output index
                     out_idx += 1;
                     // adjust the zeros counter
@@ -109,15 +97,11 @@ pub fn rle2_mtf_encode(block: &mut Block) {
             }
         }
         // Update the frequency count
-        block.freqs[idx] += 1;
+        freqs[idx] += 1;
         // Then output the data
-        block.rle2[out_idx] = idx as u16 + 1;
+        rle2[out_idx] = idx as u16 + 1;
         out_idx += 1;
 
-        // DEBUGGING TEST
-        //if out_idx as usize > 900019 {
-        //    println!("{}", out_idx);
-        //}
 
         // Shift each index in front of the current byte index. Do this first in blocks for speed.
         let temp_sym = mtf_index[idx as usize];
@@ -153,22 +137,22 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     match zeros {
         0 => {} // Do nothing.
         1 => {
-            block.rle2[out_idx] = 0;
-            block.freqs[0] += 1;
+            rle2[out_idx] = 0;
+            freqs[0] += 1;
             out_idx += 1;
         }
         2 => {
-            block.rle2[out_idx] = 1;
-            block.freqs[1] += 1;
+            rle2[out_idx] = 1;
+            freqs[1] += 1;
             out_idx += 1;
         }
         mut n => {
             n -= 1;
             loop {
                 // Output the appropriate RUNA/RUNB
-                block.rle2[out_idx] = (n & 1) as u16;
+                rle2[out_idx] = (n & 1) as u16;
                 // Update the appropriate RUNA/RUNB frequency count
-                block.freqs[n & 1] += 1;
+                freqs[n & 1] += 1;
                 // Update the output index
                 out_idx += 1;
                 // adjust the zeros counter
@@ -180,7 +164,7 @@ pub fn rle2_mtf_encode(block: &mut Block) {
         }
     }
     // Add the EOB symbol to the end
-    block.rle2[out_idx] = block.eob;
+    rle2[out_idx] = eob;
     out_idx += 1;
 
     // DEBUGGING TEST
@@ -189,8 +173,8 @@ pub fn rle2_mtf_encode(block: &mut Block) {
     // }
 
     // Truncate the vec to the actual data.
-    block.rle2.truncate(out_idx);
-    block.end = out_idx as u32;
+    rle2.truncate(out_idx);
+    (rle2, freqs, sym_map)
 }
 
 /// Watch for malicious input

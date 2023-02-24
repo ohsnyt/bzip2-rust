@@ -6,11 +6,12 @@ use log::{debug, info};
 
 use crate::bitstream::bitwriter::BitWriter;
 use crate::tools::crc::{do_crc, do_stream_crc};
-use crate::Timer;
 
 use super::compress_block::compress_block;
 use crate::tools::cli::{Algorithms, BzOpts};
-use crate::tools::rle1::rle_encode;
+use crate::tools::rle1::RLE1Block;
+
+use rayon::prelude::*;
 
 /*
     NOTE: I WILL EVENTUALLY CHANGE THIS SO IT WORKS WITH A C FFI.
@@ -25,146 +26,46 @@ use crate::tools::rle1::rle_encode;
     Again, this will iterate multiple times to get through the input file.
 */
 
-pub struct Block {
-    // Add in block data, sym_map, index, temp vec for data work???
-    pub data: Vec<u8>,
-    pub rle2: Vec<u16>,
-    pub end: u32,
-    pub key: u32,
-    pub freqs: [u32; 258],
-    pub sym_map: Vec<u16>,
-    pub eob: u16,
-    pub seq: u32,
-    pub block_crc: u32,
-    pub stream_crc: u32,
-    pub budget: i32,
-    pub is_last: bool,
-}
+/// Compress the input file defined in opts <BzOpts>. Modified for multi-core processing.
+pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
+    /*
+      Since this can be parallel, we may need to pass a reference to the u8 data as well as a sequence number.
+      We will receive back the compressed data and sequence number. We will then assemble the compressed
+      data segments and write them out to the output file.
 
-/// Compress the input file defined in opts <BzOpts>. Requires a Timer.
-pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
-    // Create the struct to pass data to compress_block.rs
-    // Initialize the size of the data vec to the block size to avoid resizing
-    let mut bw = BitWriter::new(opts.block_size as usize * 100000);
-
-    // Initialize the block struct used by every block. Julian took 19 off the block.
-    let mut block = Block {
-        data: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
-        rle2: Vec::with_capacity(opts.block_size as usize * 100000 - 19),
-        end: opts.block_size as u32 * 100000 - 19,
-        key: 0,
-        freqs: [0; 258],
-        sym_map: Vec::with_capacity(17),
-        eob: 0,
-        seq: 0,
-        block_crc: 0,
-        stream_crc: 0,
-        budget: 30,
-        is_last: false,
-    };
-
-    // THE ROUTINES BELOW FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE
-    // FILE METADATA AND ALL I/O ERRORS.
-    // NOTE: All writes append with out deleting existing files!!
-
-    // Initialize stuff to read the file
-    //let input = data_in::init(opts)?;
+      THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
+    */
 
     // Prepare to read the data.
     let fname = opts.files[0].clone();
-    info!("Output should be {}", opts.files[0]);
-
-    let mut fin = File::open(&fname)?;
+    let mut source_file = File::open(&fname)?;
     let fin_metadata = fs::metadata(&fname)?;
 
-    // Read test of data in order to set the appropriate algorithm. Minimal overhead.
-    if opts.algorithm.is_none() {
-        let mut diversity_file = File::open(&fname)?;
-        let bytes_left = fin_metadata.size() as usize;
-        let mut diversity_buf = vec![0_u8; 5000.min(bytes_left)];
-
-        diversity_file
-            .read_exact(&mut diversity_buf)
-            .expect("Error reading input file");
-        match diversity(&diversity_buf) {
-            0..=20 => opts.algorithm = Some(Algorithms::Sais),
-            21..=128 => opts.algorithm = Some(Algorithms::Native),
-            _ => opts.algorithm = Some(Algorithms::Native),
-        }
-    }
+    // Initialize the RLE1 reader/iterator. This reads the input file and creates blocks of the
+    // proper size to then be compressed.
+    let block_size = (opts.block_size as usize * 100000) - 19;
+    let mut block_reader = RLE1Block::new(source_file, block_size);
 
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.files[0].clone();
     fname.push_str(".bz2");
-    let mut f_out = File::create(fname)
-        .expect("Can't create .bz2 file");
-    timer.mark("setup");
+    let mut f_out = File::create(fname).expect("Can't create .bz2 file");
 
-    //----- Prepare to loop through blocks of data and process it.
-    //let mut bytes_processed = 0;
+    //----- Prepare to loop through blocks of data and process it.   PROBABLY DON'T NEED EITHER OF THESE
     let mut bytes_left = fin_metadata.size() as usize;
-    // We need a read buffer that exists throughout the process. Initially it must be empty.
-    let mut buf = Vec::with_capacity((block.end as usize).min(bytes_left));
+    let mut sequence = 1_usize;
 
-    while bytes_left > 0 {
-        // Make sure the block data vecs do not have old data
-        block.data.clear();
-        block.rle2.clear();
-
-        // Set the maximum free space available in this block. Initally block.end is the max block size.
-        block.end = opts.block_size as u32 * 100000 - 19;
-        let mut free_space = block.end as usize;
-
-        // Count how much of the input buffer have we processed used so far
-        let mut processed: usize = 0;
-
-        // Get data and do the RLE1. We may need more than one read to fill the buffer
-        while free_space > 0 {
-            // If we don't have any data in the buffer, go read some more data
-            if buf.is_empty() {
-                // First allocate space for the read buffer
-                buf = vec![0_u8; bytes_left.min(block.end as usize)];
-                //   Read a whole block worth of data, or until the end of the input file.
-                fin.read_exact(&mut buf)
-                    .expect("Could not read enough bytes.");
-                // New buffer read, so we haven't processed any of it yet
-                processed = 0;
-            }
-
-            // Do the rle1 on a glob of data
-            let (used, new_data) = rle_encode(&buf, free_space);
-            processed += used as usize;
-
-            // Calculate how much free space is left, the max of what we processed vs what we got back
-            free_space -= processed.max(new_data.len());
-
-            // Add the rle1 data to block.data
-            block.data.extend(new_data.iter());
-            
-            // Update the block end to the actual block size
-            block.end = block.data.len() as u32;
-            timer.mark("rle1");
-            
-            // Do CRC on what we got each time
-            block.block_crc = do_crc(block.block_crc, &buf[0..used as usize]);
-            timer.mark("crcs");
-
-            // Drain what we used from the buffer
-            buf.drain(0..processed as usize);
-            bytes_left -= processed as usize;
-            if bytes_left == 0 {
-                block.is_last = true;
-                break;
-            }
-        }
-        // Done with RLE1
-        timer.mark("rle1");
-
-        // We reached the block size we wanted, so process this block
-        // Update the block sequence counter and inform the user
-        block.seq += 1;
-        info!("Starting block {}", &block.seq);
-        timer.mark("setup");
+    // HOW DOES RAYON WORK WITH DOLIN THOSE OUT AND GETTIN THEM BACK FOR THE NEXT STEP?
+    // I THINK EACH SHOULD BUILD A BITWRITER AND RETURN THE COMPRESSED HUFFMAN VEC, WHICH WE THEN
+    // WRITE OUT IN SEQUENCE HERE.
+    let mut stream_crc = 0;
+    block_reader
+    .iter()
+    .for_each(|(crc, block)| {
+        stream_crc = do_stream_crc(stream_crc, crc);
+        compress_block(&block, crc , stream_crc, block_size, sequence, block.len() < block_size);
+        sequence +=1;
+        }).collect();
 
         // Update and record the stream crc
         block.stream_crc = do_stream_crc(block.stream_crc, block.block_crc);
@@ -181,7 +82,6 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
                 opts.block_size,
                 Algorithms::Julian,
                 opts.iterations,
-                timer,
             );
         } else {
             compress_block(
@@ -190,7 +90,6 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
                 opts.block_size,
                 opts.algorithm.as_ref().to_owned().unwrap().clone(),
                 opts.iterations,
-                timer,
             );
         }
 
@@ -206,23 +105,9 @@ pub fn compress(opts: &mut BzOpts, timer: &mut Timer) -> io::Result<()> {
         // Clear the bitstream buffer since we wrote out the data from this block
         bw.output.clear();
         block.block_crc = 0;
-
-        timer.mark("bwt");
-    }
+    
 
     Ok(())
 }
 
-pub fn diversity(data: &[u8]) -> usize {
-    //Test data for variety of input values
-    //let freq = freq(data);
-    data[..data.len().min(5000)]
-        .iter()
-        .fold(vec![false; 256], |mut freqs, &el| {
-            freqs[el as usize] = true;
-            freqs
-        })
-        .iter()
-        .filter(|&b| *b)
-        .count()
-}
+

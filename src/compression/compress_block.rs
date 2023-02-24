@@ -2,29 +2,31 @@ use crate::bitstream::bitwriter::BitWriter;
 use crate::snyder::native::bwt_encode_native;
 use crate::snyder::ss3::entry;
 use crate::tools::rle2_mtf::rle2_mtf_encode;
+use crate::tools::symbol_map;
 use crate::{bwt_ribzip::*, Timer};
 
 use crate::julian::block_sort::block_sort;
 use crate::snyder::bwt_ds_par::bwt_encode_par;
-use crate::tools::cli::Algorithms;
 use log::{debug, info, trace};
 
-use crate::compression::compress::Block;
 use crate::huffman_coding::huffman::huf_encode;
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Called by Compress, this handles one block and writes out to the output stream.
 /// Current version can call various BWT algorithms.
 pub fn compress_block(
-    bw: &mut BitWriter,
-    block: &mut Block,
-    block_size: usize,
-    algorithm: Algorithms,
-    iterations: usize,
-    timer: &mut Timer,
+    block: &[u8],
+    block_crc: u32,
+    stream_crc: u32,
+    block_size: u32,
+    sequence: u32,
+    is_last: bool,
 ) {
+    // Initialize A bitwriter vec to the block size to avoid resizing. Block.len is a very generous size.
+    let mut bw = BitWriter::new(block.len());
+
     // If this is the first block, write the stream header
-    if block.seq == 1 {
+    if sequence == 1 {
         trace!(
             "\r\x1b[43mWriting BZh signature header at {}.    \x1b[0m",
             bw.loc()
@@ -37,79 +39,48 @@ pub fn compress_block(
     }
 
     // For each block, write the block header:
-    // Six bytes of magic, 4 bytes of crc data, 1 bit for Randomized flag.
+    // Six bytes of magic, 4 bytes of block_crc data, 1 bit for Randomized flag.
     trace!(
-        "\r\x1b[43mWriting magic and CRC at {}.    \x1b[0m",
+        "\r\x1b[43mWriting magic and block_crc at {}.    \x1b[0m",
         bw.loc()
     );
     bw.out24(0x18_314159); // magic bits  1-24
     bw.out24(0x18_265359); // magic bits 25-48
-    bw.out32(block.block_crc); // crc
+    bw.out32(block_crc as u32); // block_crc
     trace!(
         "\r\x1b[43mWriting randomize bit at {}.    \x1b[0m",
         bw.loc()
     );
     bw.out24(0x01_000000); // One zero bit
 
-    match algorithm {
-        // Using native DS algorithm
-        Algorithms::Native => {
-            info!("Using DS native algorithm.");
-            let result = bwt_encode_native(&block.data);
-            (block.key, block.data) = result
-        }
-        // Using rayon and DS algorithm
-        Algorithms::Parallel => {
-            info!("Using DS parallel algorithm.");
-            bwt_encode_par(block);
-        }
-        // Using julians algorithm
-        Algorithms::Julian => {
-            info!("Using Julians algorithm.");
-            block_sort(block)
-        }
-        // Using SAIS algorithm from ribzip2
-        Algorithms::Sais => {
-            info!("Using SAIS algorithm.");
-            //block_sort(data, 30);
-            let result = bwt_internal::bwt(&block.data);
-            (block.key, block.data) = result
-        }
-        Algorithms::Sais3 => {
-                info!("Using Faster SA-IS algorithm.");
-            let result = entry(&block.data);
-            (block.key, block.data) = result
-        }
-};
+    // Using julians algorithm with sais as fallback
+    let (key, bwt_data) = block_sort(block);
 
     // Now that we have the key, we can write the 24bit BWT key
     trace!("\r\x1b[43mWriting key at {}.    \x1b[0m", bw.loc());
-    bw.out24(0x18_000000 | block.key as u32); // and 24 bit key
-    timer.mark("bwt");
+    bw.out24(0x18_000000 | key as u32); // and 24 bit key
 
-    rle2_mtf_encode(block);
-    timer.mark("rle_mtf");
+    let (rle2, freq, symbol_map) = rle2_mtf_encode(block);
+
+    // Calculate the eob character
+    let eob = (256 - freq.iter().rev().position(|b| b > &0).unwrap_or_default() + 1) as u16;
 
     // Now for the compression - the Huffman encoding (which also writes out data)
-    let _result = huf_encode(bw, block, iterations);
+    let result = huf_encode(&mut bw, &rle2, &freq, eob, &symbol_map);
 
     debug!(
         "\n         {} bytes in block, {} after MTF & RLE2 coding, {} syms in use",
-        block.end,
-        &block.rle2.len(),
-        block.eob + 1,
+        block.len(),
+        rle2.len(),
+        eob + 1,
     );
 
-    timer.mark("huffman");
-
-    // if this is the last block, write the stream footer magic and  crc and flush
+    // if this is the last block, write the stream footer magic and  block_crc and flush
     // the output buffer
-    if block.is_last {
+    if is_last {
         bw.out24(0x18_177245); // magic bits  1-24
         bw.out24(0x18_385090); // magic bits 25-48
-        bw.out32(block.stream_crc);
+        bw.out32(stream_crc as u32);
         bw.flush();
     }
-    debug!("\n         Bit stream now at {}", bw.loc());
-    timer.mark("misc");
 }

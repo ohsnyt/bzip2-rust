@@ -1,5 +1,4 @@
 use super::main_q_sort3::main_q_sort3;
-use crate::compression::compress::Block;
 use log::{error, info};
 
 //NOTE: This is based on the algorithm from Julian Seward.
@@ -41,7 +40,7 @@ impl QsortData {
     }
 }
 
-pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
+pub fn main_sort(block: &[u8], qs: &mut QsortData, budget: &mut i32) -> Option<(u32, Vec<u8>)> {
     info!("Main sort initialize.");
 
     // Initialize vecs for buckets
@@ -51,10 +50,10 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
     // Julian initializes the qualndrants and block data area
 
     // We need to convert the input to a u16 format
-    qs.block_data = block.data.iter().map(|b| *b as u16).collect::<Vec<u16>>();
+    qs.block_data = block.iter().map(|b| *b as u16).collect::<Vec<u16>>();
     // And wrap the beginning data around OVERSHOOT length at the end.
     qs.block_data.extend(
-        block.data[0..OVERSHOOT]
+        block[0..OVERSHOOT]
             .iter()
             .map(|b| *b as u16)
             .collect::<Vec<u16>>(),
@@ -63,9 +62,8 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
     // Build the two-byte freq_tab table
     // NOTE, Julian does this in blocks of 4 because loops are slower than sequential code.
     // Rust optimizes this automatically. Iter_mut is slightly faster than either for loop.
-    let mut j = (block.data[0] as u16) << 8;
+    let mut j = (block[0] as u16) << 8;
     let mut freq_tab = block
-        .data
         .iter()
         .rev()
         .fold(vec![0_u32; 65536 + 1], |mut vec, byte| {
@@ -170,8 +168,7 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
                         
                         // if the sorting was too "expensive", we fail out and try the fallback method
                         if *budget < 0 {
-                            block.budget = *budget;
-                            return;
+                            return None;
                         };
                     }
                 }
@@ -309,26 +306,20 @@ pub fn main_sort(block: &mut Block, qs: &mut QsortData, budget: &mut i32) {
                 num_q_sorted,
                 qs.end as i32 - num_q_sorted
             );
-            // PRETTY SURE WE ARE GOOD TO HERE. EQUIVALENT TO LINE 1195.                                     18 FEB 2023
 
     info!("        building burrow-wheeler-transform data ...\n");
     let mut bwt_data = vec![0; qs.end];
+    let mut key = 0_u32;
     for (i, byte) in bwt_data.iter_mut().enumerate().take(qs.end as usize) {
         if qs.bwt_ptr[i] == 0 {
-            block.key = i as u32;
-            *byte = block.data[qs.end - 1] as u8;
+            key = i as u32;
+            *byte = block[qs.end - 1] as u8;
         } else {
-            *byte = block.data[qs.bwt_ptr[i] as usize - 1] as u8
+            *byte = block[qs.bwt_ptr[i] as usize - 1] as u8
         }
     }
-    // Shift ownership of bwt_data to block.data
-    block.data.clear();
-    block.data = bwt_data;
-    // Clear out qs data
-    // qs.block_data.clear();
-    // qs.quadrant.clear();
-    // qs.bwt_ptr.clear();
-    // qs.stack.clear();
+    // Shift ownership of bwt_data to block
+    Some((key, bwt_data))
 }
 
 /// Return the difference between freq_tab[(n+1)<<8] and freq_tab[n<<8].

@@ -3,7 +3,6 @@ use log::{error, info, trace};
 use crate::bitstream::bitwriter::BitWriter;
 
 use super::huffman_code_from_weights::improve_code_len_from_weights;
-use crate::compression::compress::Block;
 use std::cmp::Ordering;
 use std::io::Error;
 
@@ -54,11 +53,9 @@ impl Eq for Node {}
 /// Encode MTF/RLE2 data using Julian's multi-table system.
 /// We need a BitWriter, adequately spedified block data, and the number of iterations desired (Julian used 4).
 /// Data is returned via the block.
-pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> Result<(), Error> {
-    // Get the length of this RLE2 compressed block
-    let vec_end = block.rle2.len();
+pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16, symbol_map: &[u16]) -> Result<(), Error> {
     // We can have 2-6 coding tables depending on how much data we have coming in.
-    let table_count: usize = match vec_end {
+    let table_count: usize = match rle2.len() {
         0..=199 => 2,
         200..=599 => 3,
         600..=1199 => 4,
@@ -67,10 +64,10 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
     };
 
     // Now we can initialize the coding tables based on our frequency counts
-    let mut tables = init_tables(&block.freqs, table_count, block.eob);
+    let mut tables = init_tables(freq, table_count, eob);
 
     // And initialize a count of how many selectors we need, a vec to store them,
-    let selector_count = (block.rle2.len() / 50) + 1;
+    let selector_count = (rle2.len() / 50) + 1;
     let mut selectors = vec![0_usize; selector_count];
 
     /*
@@ -85,7 +82,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
      an option to let the user change the number of trial runs -- mostly for more testing purposes.
     */
 
-    for iter in 0..iterations {
+    for iter in 0..4 {
         // initialize favorites[] to 0 for each table/group, for reporting only
         let mut favorites = [0; 6];
 
@@ -110,7 +107,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         of data, and record that in the selector table.
         */
 
-        block.rle2.chunks(50).enumerate().for_each(|(i, chunk)| {
+        rle2.chunks(50).enumerate().for_each(|(i, chunk)| {
             // the cost array helps us find which table is best for each 50 byte chunk
             let mut cost = [0; 6];
 
@@ -142,7 +139,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
                 .for_each(|&symbol| rfreq[bt as usize][symbol as usize] += 1);
 
             // On the last iteration, collect the selector list
-            if iter == iterations - 1 {
+            if iter == 3 {
                 selectors[i] = bt;
             } // End of the for_each loop, we've gone through the entire input (again).
         });
@@ -154,7 +151,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
             favorites
         );
 
-        if iter == iterations - 1 {
+        if iter == 3 {
             trace!("Final tables:",);
             for (i, table) in tables.iter().enumerate().take(table_count) {
                 trace!(
@@ -162,7 +159,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
                     i,
                     table
                         .iter()
-                        .take(block.eob as usize + 1)
+                        .take(eob as usize + 1)
                         .collect::<Vec<_>>()
                 );
             }
@@ -171,18 +168,15 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         // Next we will call improve_code_len_from_weights on each of the tables we made.
         // This makes actual node trees based off our weighting. This will put the
         // improved weights into the weight arrays. As mentioned, we do this 4 times.
-        // for t in 0..table_count as usize {
-        //     improve_code_len_from_weights(&mut tables[t], &rfreq[t], block.eob);
-        // }
         (0..table_count).for_each(|t| {
-            improve_code_len_from_weights(&mut tables[t], &rfreq[t], block.eob);
+            improve_code_len_from_weights(&mut tables[t], &rfreq[t], eob);
             trace!(
                 "\nIter {}: Tbl {}:\n{:?}",
                 iter,
                 t,
                 tables[t]
                     .iter()
-                    .take(block.eob as usize + 1)
+                    .take(eob as usize + 1)
                     .collect::<Vec<_>>()
             );
         });
@@ -195,7 +189,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
 
     // Write out the the symbol maps, 16 bit L1 + 0-16 words of 16 bit L2 maps.
     trace!("\r\x1b[43mSymbol maps written at {}.     \x1b[0m", bw.loc());
-    for word in &block.sym_map {
+    for word in symbol_map {
         bw.out16(*word);
         trace!("\r\x1b[43m{:0>16b}     \x1b[0m", word);
     }
@@ -304,7 +298,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
         // Because we use a fixed array of tables for speed, we must use an index to get only the ones we want
         let table = tables[i];
         // Calculate the size once
-        let sym_size = block.eob as usize + 1;
+        let sym_size = eob as usize + 1;
         // Now create a output-style table
         let mut out_codes = vec![(0_u16, 0_u32); sym_size];
         // ... and create a vec of the symbols actually used
@@ -442,7 +436,7 @@ pub fn huf_encode(bw: &mut BitWriter, block: &mut Block, iterations: usize) -> R
 
     // For debugging
     let mut index = 0;
-    for (idx, chunk) in block.rle2.chunks(50).enumerate() {
+    for (idx, chunk) in rle2.chunks(50).enumerate() {
         let table_idx = selectors[idx];
         chunk.iter().for_each(|symbol| {
             bw.out24(out_code_tables[table_idx][*symbol as usize].1);

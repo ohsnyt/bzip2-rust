@@ -18,25 +18,9 @@ pub fn compress_block(
     block: &[u8],
     block_crc: u32,
     stream_crc: u32,
-    block_size: u32,
-    sequence: u32,
-    is_last: bool,
-) {
+) -> Vec<u8> {
     // Initialize A bitwriter vec to the block size to avoid resizing. Block.len is a very generous size.
     let mut bw = BitWriter::new(block.len());
-
-    // If this is the first block, write the stream header
-    if sequence == 1 {
-        trace!(
-            "\r\x1b[43mWriting BZh signature header at {}.    \x1b[0m",
-            bw.loc()
-        );
-        // Put the header onto the bit stream
-        bw.out8(b'B');
-        bw.out8(b'Z');
-        bw.out8(b'h');
-        bw.out8(block_size as u8 + 0x30);
-    }
 
     // For each block, write the block header:
     // Six bytes of magic, 4 bytes of block_crc data, 1 bit for Randomized flag.
@@ -75,12 +59,5 @@ pub fn compress_block(
         eob + 1,
     );
 
-    // if this is the last block, write the stream footer magic and  block_crc and flush
-    // the output buffer
-    if is_last {
-        bw.out24(0x18_177245); // magic bits  1-24
-        bw.out24(0x18_385090); // magic bits 25-48
-        bw.out32(stream_crc as u32);
-        bw.flush();
-    }
+    bw.output
 }

@@ -5,7 +5,6 @@ use std::os::unix::prelude::MetadataExt;
 use log::{debug, info};
 
 use crate::bitstream::bitwriter::BitWriter;
-use crate::tools::crc::{do_crc, do_stream_crc};
 
 use super::compress_block::compress_block;
 use crate::tools::cli::{Algorithms, BzOpts};
@@ -44,7 +43,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // Initialize the RLE1 reader/iterator. This reads the input file and creates blocks of the
     // proper size to then be compressed.
     let block_size = (opts.block_size as usize * 100000) - 19;
-    let mut block_reader = RLE1Block::new(source_file, block_size);
+    let mut rle1_blocks = RLE1Block::new(source_file, block_size);
 
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.files[0].clone();
@@ -55,59 +54,41 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     let mut bytes_left = fin_metadata.size() as usize;
     let mut sequence = 1_usize;
 
-    // HOW DOES RAYON WORK WITH DOLIN THOSE OUT AND GETTIN THEM BACK FOR THE NEXT STEP?
+    // HOW DOES RAYON WORK WITH DOLING THOSE OUT AND GETTIN THEM BACK FOR THE NEXT STEP?
     // I THINK EACH SHOULD BUILD A BITWRITER AND RETURN THE COMPRESSED HUFFMAN VEC, WHICH WE THEN
     // WRITE OUT IN SEQUENCE HERE.
-    let mut stream_crc = 0;
-    block_reader
-    .iter()
-    .for_each(|(crc, block)| {
-        stream_crc = do_stream_crc(stream_crc, crc);
-        compress_block(&block, crc , stream_crc, block_size, sequence, block.len() < block_size);
-        sequence +=1;
-        }).collect();
 
-        // Update and record the stream crc
-        block.stream_crc = do_stream_crc(block.stream_crc, block.block_crc);
-        debug!(
-            "Block crc is {}, stream crc is {}",
-            block.block_crc, block.stream_crc,
-        );
-        timer.mark("crcs");
-        // Do the compression, allowing choice between sorting algorithms for the BWTransform
-        if opts.algorithm.is_none() {
-            compress_block(
-                &mut bw,
-                &mut block,
-                opts.block_size,
-                Algorithms::Julian,
-                opts.iterations,
-            );
-        } else {
-            compress_block(
-                &mut bw,
-                &mut block,
-                opts.block_size,
-                opts.algorithm.as_ref().to_owned().unwrap().clone(),
-                opts.iterations,
-            );
-        }
+    // NOTE: par_bridge is not supposed to be very efficient. Look into this.
 
-        info!(
-            "Wrote block. Bitstream length is {} bytes. CRC is {}.\n",
-            &bw.output.len(),
-            &block.block_crc
-        );
+    // I SHOULD PROBABLY USE A STRUCT TO CARRY THE BLOCK INFO FORWARD - THE RLE1 DATA, THE BLOCK block_crc, STREAM block_crc,
+    //   and for the first and last block: BLOCK SIZE, IS_LAST
+    // BUT IF I'M WRITING HEADERS AND FOOTERS SEPARATELY, PERHAPS I CAN ADD THOSE ELSEWHERE.
 
-        // Write out the data in the bitstream buffer.
-        f_out.write_all(&bw.output)?;
+    let huff_blocks = rle1_blocks
+        .into_iter()
+        .map(|(block_crc, stream_crc, block)| compress_block(&block, block_crc, stream_crc))
+        .collect::<Vec<u8>>()
+        ;
 
-        // Clear the bitstream buffer since we wrote out the data from this block
-        bw.output.clear();
-        block.block_crc = 0;
-    
+    // BLOCK SIZE IS PROBABLY WRONG.
+    let bw = BitWriter::new(block_size);
+    // First write file stream header onto the stream
+    bw.out8(b'B');
+    bw.out8(b'Z');
+    bw.out8(b'h');
+    bw.out8(block_size as u8 + 0x30);
+
+    // left shift each huff_block so there isn't empty space at the end of each and write it.
+    to_do();
+
+    // At the last block, write the stream footer magic and  block_crc and flush the output buffer
+    bw.out24(0x18_177245); // magic bits  1-24
+    bw.out24(0x18_385090); // magic bits 25-48
+    bw.out32(stream_crc as u32);
+    bw.flush();
+
+    // Write out the data in the bitstream buffer.
+    f_out.write_all(&bw.output)?;
 
     Ok(())
 }
-
-

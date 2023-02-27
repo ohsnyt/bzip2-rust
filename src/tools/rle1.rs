@@ -9,8 +9,8 @@ pub struct RLE1Block<R> {
     block_size: usize,
     buffer: Vec<u8>,
     buffer_index: usize,
-    crc: u32,
-    pub bytes_used: usize,
+    data_gone: bool,
+    pub block_crc: u32,
 }
 
 impl<R: std::io::Read> RLE1Block<R> {
@@ -20,20 +20,19 @@ impl<R: std::io::Read> RLE1Block<R> {
             block_size,
             buffer: Vec::with_capacity(block_size + 264),
             buffer_index: 0,
-            crc: 0,
-            bytes_used: 0,
+            data_gone: false,
+            block_crc: 0,
         }
     }
 
-    /// Check (and refill) buffer - true if we have data, false if there is no more.
+    /// Check (and refill) a low buffer - true if we have data, false if there is no more.
     /// Refill when there is less than 264 bytes. We want to keep that many for comparision in case
     /// the run happens over the end of our last read.
-    fn have_data(&mut self) -> bool {
+    fn refill_buffer(&mut self) -> bool {
         // If we have less than 264 bytes of data in our buffer, go try to get more
-        if self.buffer.len() - self.buffer_index < MAX_RUN {
+        if self.data_gone || self.buffer.len() - self.buffer_index < MAX_RUN {
             // First, removed data we have already processed
             self.buffer.drain(..self.buffer_index);
-            self.bytes_used += self.buffer_index;
             self.buffer_index = 0;
             // Then get more data
             let mut temp_buffer = vec![0; self.block_size];
@@ -41,127 +40,138 @@ impl<R: std::io::Read> RLE1Block<R> {
                 .source
                 .read(&mut temp_buffer)
                 .expect("Unble to read source data");
-            // If we failed to find any more data, return false
-            if received == 0 {
+            // Append the new data to our buffer and adjust our counter for how much we have left.
+            temp_buffer.truncate(received);
+            self.buffer.append(&mut temp_buffer);
+            // If we read all the data, remember that it is gone.
+            if received < self.block_size {
+                self.data_gone = true;
                 return false;
-            } else {
-                // Append the new data to our buffer and adjust our counter for how much we have left.
-                temp_buffer.truncate(received);
-                self.buffer.append(&mut temp_buffer);
             }
         }
         true
     }
 
-    /// Encode runs of for our more identical bytes, pre-BWT. Returns crc of uncompressed data and the RLE1 data.
-    fn rle_encode(&mut self, free_space: usize) -> (u32, Vec<u8>) {
-        // Start by ensuring we have data in our buffer.
-        let mut found_data = self.have_data();
-        // And clean up the data buffer of any used data, resetting the index to zero.
-        self.buffer.drain(..self.buffer_index);
-        self.bytes_used += self.buffer_index;
-        self.buffer_index = 0;
-        // No need to check for runs if the data is less than 4 bytes or we need less than 4 bytes
-        if self.buffer.len() < 4 || free_space < 4 {
-            let offset = self.buffer.len().min(free_space);
-            self.bytes_used += offset;
-            self.crc = do_crc(self.crc, &self.buffer[..offset]);
-            return (self.crc, self.buffer[..offset].to_vec());
-        }
+    /// Encode runs of for our more identical bytes, pre-BWT. Returns block_crc and the RLE1 data.
+    fn get_block(&mut self) -> (u32, Vec<u8>) {
+        // Since we only get here by the iterator, we can assume we have data in our buffer.
         // Reserve space for the output, allowing an extra byte in case we end in a run and need to add a count
-        let mut out = Vec::with_capacity(free_space + 1);
+        let mut out: Vec<u8> = Vec::with_capacity(self.block_size + 1);
         // Pushing a byte at a time to the output is slower than extending by chunks, therefore initialize
-        // variable to remember where each chunk of non-runs starts so we can append them in chunks.
+        // variable to remember where each chunk of non-runs starts so we can append data in chunks.
         let mut start: usize = 0;
-        // And remember how much data is in the buffer
-        let mut remaining = self.buffer.len();
+        // Set a counter to the amount of unproccessed data is in the buffer, checking for no data
+        let mut remaining = self.buffer.len() - 1;
 
-        // As long as we have data and have not processed our limit, process data for rle1 sequences
-        while (remaining > 3) && (out.len() + self.buffer_index - start < free_space) {
-            // Make sure we have enough in our buffer to finish a run if we find one toward the end, but
-            // only try to get more data if there is more data to get
-            if found_data && remaining < MAX_RUN {
-                // Append buffer from start to index to the output, then go grab more data
-                self.crc = do_crc(self.crc, &self.buffer[start..=self.buffer_index]);
-                out.extend_from_slice(&self.buffer[start..=self.buffer_index]);
-                self.buffer.drain(..self.buffer_index);
-                self.bytes_used += self.buffer_index;
-                self.buffer_index = 0;
-                found_data = self.have_data();
-                remaining = self.buffer.len();
-                start = 0;
-            }
-            // Look at the next 4 bytes to see if they are identical, testing the distant case first
-            if self.buffer[self.buffer_index] == self.buffer[self.buffer_index + 1] {
-                if self.buffer[self.buffer_index] == self.buffer[self.buffer_index + 2] {
-                    if self.buffer[self.buffer_index] == self.buffer[self.buffer_index + 3] {
-                        // If they are, write out everything from the last start until the end of the run of 4
-                        self.crc = do_crc(self.crc, &self.buffer[start..=self.buffer_index + 3]);
-                        out.extend_from_slice(&self.buffer[start..=self.buffer_index + 3]);
-                        // reset the buffer index
-                        self.buffer_index += 3;
-                        remaining -= 3;
-                        // Get the count of duplicates following (0-255)
-                        let dups = self.count_dups();
-                        // Write that out
-                        self.crc = do_crc(
-                            self.crc,
-                            &vec![self.buffer[self.buffer_index - 1]; dups as usize],
-                        );
-                        out.push(dups);
-                        // Move the index past the duplicates we counted
-                        self.buffer_index += dups as usize;
-                        remaining -= dups as usize;
-                        // Reset start to this new chunk
-                        start = self.buffer_index;
+        // Now process the input until we reach our desired amount (including what is in a pending chunk)
+        while out.len() + (self.buffer_index - start) < self.block_size {
+            match remaining {
+                // In the case that we need 0 bytes, all the data should be processed. We should only
+                // get here when the data ends with a run of duplicates. Clean up and return.
+                0 => {
+                    // Empty the buffer and reset the index
+                    self.buffer.clear();
+                    self.buffer_index = 0;
+                    return (self.block_crc, out);
+                }
+                // In the case that we need 1, 2 or 3 bytes, we don't need to look for runs.
+                1..=3 => {
+                    // Get to the end of the buffer
+                    self.buffer_index += remaining + 1;
+                    out.extend_from_slice(&self.buffer[start..self.buffer_index]);
+                    self.block_crc = do_crc(self.block_crc, &self.buffer[start..self.buffer_index]);
+                    self.buffer.drain(..self.buffer_index);
+                    self.buffer_index = 0;
+                    return (self.block_crc, out);
+                }
+                _ => {
+                    // If the buffer is low, first copy out what we have processed and then go refill it.
+                    if remaining < MAX_RUN && !self.data_gone {
+                        self.block_crc =
+                            do_crc(self.block_crc, &self.buffer[start..self.buffer_index]);
+                        out.extend_from_slice(&self.buffer[start..self.buffer_index]);
+                        self.buffer.drain(..self.buffer_index);
+                        self.buffer_index = 0;
+                        self.refill_buffer();
+                        remaining = self.buffer.len();
+                        start = 0;
+                    }
+                    // Then look for a run of 4 bytes, adjusting the remaining counter as appropriate
+                    if self.buffer[self.buffer_index] == self.buffer[self.buffer_index + 1] {
+                        if self.buffer[self.buffer_index] == self.buffer[self.buffer_index + 2] {
+                            if self.buffer[self.buffer_index] == self.buffer[self.buffer_index + 3]
+                            {
+                                // Get the count of duplicates following (0-255)
+                                let dups = self.count_dups();
+                                // reset the buffer index to the end of the run of 4
+                                self.buffer_index += 4 + dups as usize;
+                                remaining -= remaining.min(4 + dups as usize);
+                                // If they are, calculate the CRC from the last start until the end of the duplicates
+                                self.block_crc = do_crc(
+                                    self.block_crc,
+                                    &self.buffer[start..(self.buffer_index as usize)],
+                                );
+                                out.extend_from_slice(
+                                    &self.buffer[start..self.buffer_index - dups as usize],
+                                );
+                                // Write the duplicate count
+                                out.push(dups);
+                                // Reset start to this new chunk
+                                start = self.buffer_index;
+                            } else {
+                                // Otherwise increment the index past our search
+                                self.buffer_index += 3;
+                                remaining -= 3;
+                                continue;
+                            }
+                        } else {
+                            // Otherwise increment the index past our search
+                            self.buffer_index += 2;
+                            remaining -= 2;
+                            continue;
+                        }
                     } else {
                         // Otherwise increment the index past our search
-                        self.buffer_index += 3;
-                        remaining -= 3;
-                        continue;
+                        self.buffer_index += 1;
+                        remaining -= 1
                     }
-                } else {
-                    // Otherwise increment the index past our search
-                    self.buffer_index += 2;
-                    remaining -= 2;
-                    continue;
                 }
-            } else {
-                // Otherwise increment the index past our search
-                self.buffer_index += 1;
-                remaining -= 1
             }
         }
-        // Write out any pending data.
-        self.crc = do_crc(self.crc, &self.buffer[start..self.buffer_index]);
+        // We filled the block (or can with the pending append), so return it
+        self.block_crc = do_crc(self.block_crc, &self.buffer[start..self.buffer_index]);
         out.extend_from_slice(&self.buffer[start..self.buffer_index]);
-        // Report how much of the input was processed and return the output
-        self.bytes_used += self.buffer.len() - remaining;
-        return (self.crc, out);
+        self.buffer.drain(..self.buffer_index);
+        self.buffer_index = 0;
+        (self.block_crc, out)
     }
 
     /// Helper function for rel1_encode to count how many duplicate bytes occur (0-255).
     fn count_dups(&self) -> u8 {
-        // self.buffer_index is the position of the last of four identical bytes. We need to count
-        // identical bytes *after* that position. If position returns None, then return
+        // self.buffer_index is the position of the first of four identical bytes. We need to count
+        // identical bytes *after* the fourth. If position returns None, then return
         // the number of bytes to the end of the data we have taken.
         let compare = self.buffer[self.buffer_index];
         self.buffer
             .iter()
-            .skip(self.buffer_index)
+            .skip(self.buffer_index + 4)
             .take(255)
             .position(|&x| x != compare)
-            .unwrap_or(self.buffer.len() - self.buffer_index) as u8
+            .unwrap_or(self.buffer.len() - self.buffer_index - 4) as u8
     }
 }
 
 impl<R: std::io::Read> Iterator for RLE1Block<R> {
     type Item = (u32, Vec<u8>);
     fn next(&mut self) -> Option<Self::Item> {
-        // If there is no more data to read, return None
-        if !self.have_data() {
+        // First make sure the buffer is full.
+        self.refill_buffer();
+
+        // If there is no data to process, return None (Nothing to read and an empty buffer).
+        if self.data_gone && self.buffer.len() == 0 {
             return None;
         }
-        Some(self.rle_encode(self.block_size))
+        // Otherwise go process a block (size set by block_size) of data and return the block
+        Some(self.get_block())
     }
 }

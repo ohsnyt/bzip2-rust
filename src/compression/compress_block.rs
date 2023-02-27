@@ -1,13 +1,13 @@
 use crate::bitstream::bitwriter::BitWriter;
-use crate::snyder::native::bwt_encode_native;
-use crate::snyder::ss3::entry;
+//use crate::snyder::native::bwt_encode_native;
+//use crate::snyder::ss3::entry;
 use crate::tools::rle2_mtf::rle2_mtf_encode;
-use crate::tools::symbol_map;
-use crate::{bwt_ribzip::*, Timer};
+//use crate::tools::symbol_map;
+//use crate::{bwt_ribzip::*, Timer};
 
 use crate::julian::block_sort::block_sort;
-use crate::snyder::bwt_ds_par::bwt_encode_par;
-use log::{debug, info, trace};
+//use crate::snyder::bwt_ds_par::bwt_encode_par;
+use log::{debug, trace};
 
 use crate::huffman_coding::huffman::huf_encode;
 
@@ -17,7 +17,6 @@ use crate::huffman_coding::huffman::huf_encode;
 pub fn compress_block(
     block: &[u8],
     block_crc: u32,
-    stream_crc: u32,
 ) -> Vec<u8> {
     // Initialize A bitwriter vec to the block size to avoid resizing. Block.len is a very generous size.
     let mut bw = BitWriter::new(block.len());

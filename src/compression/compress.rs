@@ -1,16 +1,15 @@
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
-use std::os::unix::prelude::MetadataExt;
-
-use log::{debug, info};
+use std::io::{self, Write};
+// use std::os::unix::prelude::MetadataExt;
 
 use crate::bitstream::bitwriter::BitWriter;
+use crate::tools::crc::do_stream_crc;
 
 use super::compress_block::compress_block;
-use crate::tools::cli::{Algorithms, BzOpts};
+use crate::tools::cli::BzOpts;
 use crate::tools::rle1::RLE1Block;
 
-use rayon::prelude::*;
+// use rayon::prelude::*;
 
 /*
     NOTE: I WILL EVENTUALLY CHANGE THIS SO IT WORKS WITH A C FFI.
@@ -37,22 +36,18 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
 
     // Prepare to read the data.
     let fname = opts.files[0].clone();
-    let mut source_file = File::open(&fname)?;
-    let fin_metadata = fs::metadata(&fname)?;
+    let source_file = File::open(&fname)?;
+    // let fin_metadata = fs::metadata(&fname)?;
 
     // Initialize the RLE1 reader/iterator. This reads the input file and creates blocks of the
     // proper size to then be compressed.
     let block_size = (opts.block_size as usize * 100000) - 19;
-    let mut rle1_blocks = RLE1Block::new(source_file, block_size);
+    let rle1_blocks = RLE1Block::new(source_file, block_size);
 
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.files[0].clone();
     fname.push_str(".bz2");
     let mut f_out = File::create(fname).expect("Can't create .bz2 file");
-
-    //----- Prepare to loop through blocks of data and process it.   PROBABLY DON'T NEED EITHER OF THESE
-    let mut bytes_left = fin_metadata.size() as usize;
-    let mut sequence = 1_usize;
 
     // HOW DOES RAYON WORK WITH DOLING THOSE OUT AND GETTIN THEM BACK FOR THE NEXT STEP?
     // I THINK EACH SHOULD BUILD A BITWRITER AND RETURN THE COMPRESSED HUFFMAN VEC, WHICH WE THEN
@@ -66,12 +61,11 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
 
     let huff_blocks = rle1_blocks
         .into_iter()
-        .map(|(block_crc, stream_crc, block)| compress_block(&block, block_crc, stream_crc))
-        .collect::<Vec<u8>>()
-        ;
+        .map(|(block_crc, block)| (block_crc, compress_block(&block, block_crc)))
+        .collect::<Vec<(u32, Vec<u8>)>>();
 
-    // BLOCK SIZE IS PROBABLY WRONG.
-    let bw = BitWriter::new(block_size);
+    // Initialize a bitwriter.
+    let mut bw = BitWriter::new(opts.block_size);
     // First write file stream header onto the stream
     bw.out8(b'B');
     bw.out8(b'Z');
@@ -79,7 +73,11 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     bw.out8(block_size as u8 + 0x30);
 
     // left shift each huff_block so there isn't empty space at the end of each and write it.
-    to_do();
+    let mut stream_crc = 0;
+    huff_blocks.iter().for_each(|(crc, block)| {
+        stream_crc = do_stream_crc(*crc, stream_crc);
+        block.iter().for_each(|byte| bw.out8(*byte))
+    });
 
     // At the last block, write the stream footer magic and  block_crc and flush the output buffer
     bw.out24(0x18_177245); // magic bits  1-24

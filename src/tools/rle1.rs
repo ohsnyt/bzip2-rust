@@ -175,3 +175,33 @@ impl<R: std::io::Read> Iterator for RLE1Block<R> {
         Some(self.get_block())
     }
 }
+
+
+/*
+Logic: This is similar to the encoding. Start looking for a sequence of 4 identical bytes.
+When you find them, get the next byte, which is a count of how many more such bytes are needed.
+First output everthing from the start until the end of the sequence we found (not counting the 
+count byte) followed by a vec created with the repeating byte we want to insert. Since we want 
+to get past the 4 bytes plus the counter that we found, put 5 into a jump_past_search variable 
+and loop until that decrements to zero. 
+Perhaps I should have use the while idx strategy rather than a for loop, but...
+*/
+/// Unencodes runs of four or more characters from the RLE1 phase
+pub fn rle1_decode(v: &[u8]) -> Vec<u8> {
+    let mut start: usize = 0;
+    let mut jump_past_search = 0;
+    let mut out = vec![];
+    for i in 0..v.len() - 4 {
+        if jump_past_search > 0 {
+            jump_past_search -= 1;
+        } else if v[i] == v[i + 1] && v[i] == v[i + 2] && v[i] == v[i + 3] {
+            out.extend_from_slice(&v[start..i + 4]);
+            let tmp = vec![v[i]; v[i + 4].into()];
+            out.extend(tmp);
+            jump_past_search = 5;
+            start = i + jump_past_search;
+        }
+    }
+    out.extend_from_slice(&v[start..v.len()]);
+    out
+}

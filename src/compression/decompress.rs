@@ -6,7 +6,7 @@ use crate::{
         crc::{do_crc, do_stream_crc},
         rle2_mtf::rle2_mtf_decode_fast,
     },
-    Timer,
+    //Timer,
 };
 
 use crate::bitstream::bitreader::BitReader;
@@ -25,7 +25,7 @@ const FOOTER: [u8; 6] = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
 const HEADER: [u8; 6] = [0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59];
 
 /// Decompress the file specified in opts (BzOpts). Current version also requires a Timer.
-pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
+pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
     // Start bitreader from input file in the command line
     let mut br = BitReader::new(File::open(opts.files[0].clone())?);
 
@@ -59,7 +59,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
         fname.push_str(".txt"); // for my testing purposes.
         f_out = File::create(fname)?;
     }
-    timer.mark("setup");
+    // timer.mark("setup");
 
     // Initialize steam CRC value
     let mut stream_crc = 0;
@@ -205,7 +205,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
             );
         }
 
-        timer.mark("setup");
+        // timer.mark("setup");
 
         // Read the Huffman symbol lengths and create decode maps which have decoding info
         //  and a level-specific vec of the symbols.
@@ -348,7 +348,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
                 }
             }
         }
-        timer.mark("huffman");
+        // timer.mark("huffman");
 
         // Undo the RLE2 and MTF, converting to u8 in the process
         // Set aside a vec to store the data we decode (size based on the table count)
@@ -356,20 +356,20 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
 
         let (mtf_out, freq) = rle2_mtf_decode_fast(&out, &mut symbol_set, size);
 
-        timer.mark("rle_mtf");
+        // timer.mark("rle_mtf");
 
         // Undo the BWTransform
         let bwt_v = bwt_decode_test(key as u32, &mtf_out, &freq);
         trace!("{:?}", String::from_utf8(bwt_v.clone()));
         //let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_8); //, &symbol_set);
 
-        timer.mark("bwt");
+        // timer.mark("bwt");
 
         // Undo the initial RLE1
         let rle1_v = rle1_decode(&bwt_v);
         trace!("{:?}", String::from_utf8(rle1_v.clone()));
 
-        timer.mark("rle1");
+        // timer.mark("rle1");
 
         // Compute and check the CRCs
         let this_block_crc = do_crc(0, &rle1_v);
@@ -386,13 +386,13 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
             panic!("Block {} CRC failed!!!", block_counter);
         }
 
-        timer.mark("crcs");
+        // timer.mark("crcs");
 
         // Done!! Write the data.
         let result = f_out.write(&rle1_v);
         info!("Wrote a block of data with {} bytes.", result.unwrap());
 
-        timer.mark("cleanup");
+        // timer.mark("cleanup");
     }
 
     let final_crc = br.bint(32).expect(EOF_MESSAGE);
@@ -406,7 +406,7 @@ pub(crate) fn decompress(opts: &BzOpts, timer: &mut Timer) -> io::Result<()> {
         panic!("Stream CRC failed!!!");
         // This should never happen unless a block CRC also failed - or unless there is a missing block.
     }
-    timer.mark("cleanup");
+    // timer.mark("cleanup");
 
     Result::Ok(())
 }

@@ -19,17 +19,6 @@ pub fn improve_code_len_from_weights<'a>(
         .map(|(i, f)| (if f == &0 { 256 } else { f << 8 }, i as u16))
         .collect::<Vec<(u32, u16)>>();
 
-    //trace!("Weight vec:\n{:?}", weight);
-    // sym_weight
-    //     .iter()
-    //     .enumerate()
-    //     .take(eob as usize + 1)
-    //     .for_each(|(i, f)| {
-    //         weight[1 + i] = (if f == &0 { 256 } else { f << 8 }, i as u16);
-    //         // Do a Julian style approximate fast 'sort'. (sort_unstable doesn't work as well)
-    //         //push_big_down(&mut weight, i);
-    //     });
-
     // We need to make codes of 17 bits or less. If we can't, we will adjust the weights and try again.
     'outer: loop {
         // Turn the array into a tree
@@ -107,28 +96,3 @@ fn add_weights(a: u32, b: u32) -> u32 {
     ((a & weight_mask) + (b & weight_mask)) | (1 + (a & depth_mask).max(b & depth_mask))
 }
 
-// ///  Julian slide sort. Gets things in the right direction but not fully sorted.
-// pub fn push_big_down(vec: &mut [(u32, u16)], mut idx: usize) {
-//     if idx < 2 {
-//         return;
-//     }
-//     // Add offset to account for the root node at index 0.
-//     idx += 1;
-//     let tmp = vec[idx];
-//     while tmp.0 < vec[idx >> 1].0 {
-//         vec.swap(idx, idx >> 1);
-//         idx >>= 1;
-//     }
-//     vec[idx] = tmp;
-// }
-// pub fn push_big_down<T: std::cmp::PartialOrd + Clone>(vec: &mut [T], mut idx: usize) {
-//     if idx == 0 {
-//         return;
-//     }
-//     let tmp = vec[idx].clone();
-//     while vec[idx] < vec[idx >> 1] {
-//         vec.swap(idx, idx >> 1);
-//         idx >>= 1;
-//     }
-//     vec[idx] = tmp;
-// }

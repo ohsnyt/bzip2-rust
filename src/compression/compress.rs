@@ -49,7 +49,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     fname.push_str(".bz2");
     let mut f_out = File::create(fname).expect("Can't create .bz2 file");
 
-    // HOW DOES RAYON WORK WITH DOLING THOSE OUT AND GETTIN THEM BACK FOR THE NEXT STEP?
+    // HOW DOES RAYON WORK WITH DEALING THOSE OUT AND GETTIN THEM BACK FOR THE NEXT STEP?
     // I THINK EACH SHOULD BUILD A BITWRITER AND RETURN THE COMPRESSED HUFFMAN VEC, WHICH WE THEN
     // WRITE OUT IN SEQUENCE HERE.
 
@@ -62,7 +62,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     let huff_blocks = rle1_blocks
         .into_iter()
         .map(|(block_crc, block)| (block_crc, compress_block(&block, block_crc)))
-        .collect::<Vec<(u32, Vec<u8>)>>();
+        .collect::<Vec<(u32, (Vec<u8>, u8))>>();
 
     // Initialize a bitwriter.
     let mut bw = BitWriter::new(opts.block_size);
@@ -70,13 +70,23 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     bw.out8(b'B');
     bw.out8(b'Z');
     bw.out8(b'h');
-    bw.out8(block_size as u8 + 0x30);
+    bw.out8(opts.block_size as u8 + 0x30);
 
     // left shift each huff_block so there isn't empty space at the end of each and write it.
     let mut stream_crc = 0;
-    huff_blocks.iter().for_each(|(crc, block)| {
-        stream_crc = do_stream_crc(*crc, stream_crc);
-        block.iter().for_each(|byte| bw.out8(*byte))
+    huff_blocks.iter().for_each(|(crc, (block, last_bits))| {
+        stream_crc = do_stream_crc( stream_crc, *crc);
+        block
+            .iter()
+            .take(block.len() - 1)
+            .for_each(|byte| bw.out8(*byte));
+        // Unpack the last byte by right shifting it. If last_bits is zero, then there was no last
+        // partial byte so write out the entire last byte.
+        if last_bits == &0 {
+            bw.out8(*block.last().unwrap())
+        } else {
+            bw.out24((*last_bits as u32) << 24 | (*block.last().unwrap() as u32 >> 8 - *last_bits));
+        }
     });
 
     // At the last block, write the stream footer magic and  block_crc and flush the output buffer

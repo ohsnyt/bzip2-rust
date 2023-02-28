@@ -1,6 +1,6 @@
 use log::{error, info, trace};
 
-use crate::bitstream::bitwriter::BitWriter;
+use crate::bitstream::bitpacker::BitPacker;
 
 use super::huffman_code_from_weights::improve_code_len_from_weights;
 use std::cmp::Ordering;
@@ -51,9 +51,9 @@ impl Eq for Node {}
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Encode MTF/RLE2 data using Julian's multi-table system.
-/// We need a BitWriter, adequately spedified block data, and the number of iterations desired (Julian used 4).
+/// We need a BitPacker, adequately spedified block data, and the number of iterations desired (Julian used 4).
 /// Data is returned via the block.
-pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16, symbol_map: &[u16]) -> Result<(), Error> {
+pub fn huf_encode(bp: &mut BitPacker, rle2: &[u16], freq: &[u32; 256], eob: u16, symbol_map: &[u16]) -> Result<(), Error> {
     // We can have 2-6 coding tables depending on how much data we have coming in.
     let table_count: usize = match rle2.len() {
         0..=199 => 2,
@@ -188,23 +188,23 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
     */
 
     // Write out the the symbol maps, 16 bit L1 + 0-16 words of 16 bit L2 maps.
-    trace!("\r\x1b[43mSymbol maps written at {}.     \x1b[0m", bw.loc());
+    trace!("\r\x1b[43mSymbol maps written at {}.     \x1b[0m", bp.loc());
     for word in symbol_map {
-        bw.out16(*word);
+        bp.out16(*word);
         trace!("\r\x1b[43m{:0>16b}     \x1b[0m", word);
     }
 
     // Symbol maps are followed by a 3 bit number of Huffman trees that exist
-    trace!("\r\x1b[43mTable count written at {}.     \x1b[0m", bw.loc());
-    bw.out24((3 << 24) | table_count as u32);
+    trace!("\r\x1b[43mTable count written at {}.     \x1b[0m", bp.loc());
+    bp.out24((3 << 24) | table_count as u32);
 
     // Then a 15 bit number indicating the how many selectors are used
     // (how many 50 byte groups are in this block of data)
     trace!(
         "\r\x1b[43mSelector count written at {}.     \x1b[0m",
-        bw.loc()
+        bp.loc()
     );
-    bw.out24((15 << 24) | selector_count as u32);
+    bp.out24((15 << 24) | selector_count as u32);
 
     /*
     Selectors tell us which table is to be used for each 50 symbol chunk of input
@@ -260,16 +260,16 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
     trace!(
         "\r\x1b[43m{} Selectors written at {}.     \x1b[0m",
         mtf_selectors.len(),
-        bw.loc()
+        bp.loc()
     );
     for selector in &mtf_selectors {
         match selector {
-            0 => bw.out24(0x01000000),
-            1 => bw.out24(0x02000002),
-            2 => bw.out24(0x03000006),
-            3 => bw.out24(0x0400000e),
-            4 => bw.out24(0x0500001e),
-            5 => bw.out24(0x0600003e),
+            0 => bp.out24(0x01000000),
+            1 => bp.out24(0x02000002),
+            2 => bp.out24(0x03000006),
+            3 => bp.out24(0x0400000e),
+            4 => bp.out24(0x0500001e),
+            5 => bp.out24(0x0600003e),
             _ => error!("Bad selector value of {}", selector),
         };
     }
@@ -278,7 +278,7 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
 
     /*
     Now create the huffman codes. We need to convert our weights to huffman codes.
-    (And later we will want to use the BitWriter with those codes also.)
+    (And later we will want to use the BitPacker with those codes also.)
     We will need both a vec of all output code tables, and a temporary place
     to build each output-style table.
 
@@ -302,10 +302,6 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
         // Now create a output-style table
         let mut out_codes = vec![(0_u16, 0_u32); sym_size];
         // ... and create a vec of the symbols actually used
-        // let mut len_sym: Vec<(u32, u16)> = vec![(0_u32, 0_u16); sym_size];
-        // for (i, &t) in table.iter().enumerate().take(sym_size) {
-        //     len_sym[i] = (t, i as u16);
-        // }
         let mut len_sym: Vec<(u32, u16)> = table.iter().enumerate().take(sym_size).fold(
             Vec::with_capacity(sym_size),
             |mut vec, (i, t)| {
@@ -334,7 +330,7 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
         for example, if the length is now 5 and the last code had a length of 3 and
         was 010, we would now start with 01000, 01001, 01010, etc.
 
-        We store a version for the BitWriter, a format I also use in my hashmap
+        We store a version for the BitPacker, a format I also use in my hashmap
         in the decompression side. This is in addition to the format we need below.
 
         The length is in the most significant 8 bits, the code in the least.
@@ -350,7 +346,7 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
                 next_code.1 <<= len - next_code.0;
                 next_code.0 = *len;
             }
-            // ...save a version of the code in the BitWriter format
+            // ...save a version of the code in the BitPacker format
             out_codes[i] = (*sym, len << 24 | next_code.1);
 
             // ...and also save it for encoding below.
@@ -380,9 +376,9 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
             "\r\x1b[43mWriting origin {} for huffman map {} at {}.   \x1b[0m",
             origin,
             i,
-            bw.loc()
+            bp.loc()
         );
-        bw.out24((5 << 24) | origin as u32);
+        bp.out24((5 << 24) | origin as u32);
 
         // ... and iterate through the entire symbol list writing the deltas
         for entry in len_sym.iter() {
@@ -391,7 +387,7 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
                 entry.1,
                 entry.0,
                 origin as i32 - entry.0 as i32,
-                bw.loc(),
+                bp.loc(),
             );
             // get the next length
             let (l, _) = entry;
@@ -404,13 +400,13 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
                 match delta.cmp(&0) {
                     // if the delta is greater than 0, write 0x10
                     Ordering::Greater => {
-                        bw.out24(0x02_000002);
+                        bp.out24(0x02_000002);
                         // subtract one from the delta and loop again
                         delta -= 1;
                     }
                     // if the delta is less than 0, write 0x11
                     Ordering::Less => {
-                        bw.out24(0x02_000003);
+                        bp.out24(0x02_000003);
                         // add one t the delta and loop again
                         delta += 1;
                     }
@@ -421,7 +417,7 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
                 }
             }
             // write a single 0 bit to indicate we are done with this symbol's length code
-            bw.out24(0x01_000000);
+            bp.out24(0x01_000000);
         }
         // Sort the output codes by symbol before saving them in the output tables
         out_codes.sort_unstable();
@@ -439,12 +435,12 @@ pub fn huf_encode(bw: &mut BitWriter, rle2: &[u16], freq: &[u32; 256], eob: u16,
     for (idx, chunk) in rle2.chunks(50).enumerate() {
         let table_idx = selectors[idx];
         chunk.iter().for_each(|symbol| {
-            bw.out24(out_code_tables[table_idx][*symbol as usize].1);
+            bp.out24(out_code_tables[table_idx][*symbol as usize].1);
             trace!(
                 "\r\x1b[43mRLE2 {} ({}) written at {}.   \x1b[0m",
                 index,
                 *symbol,
-                bw.loc()
+                bp.loc()
             );
             index += 1;
         })

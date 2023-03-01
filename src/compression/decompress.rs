@@ -205,8 +205,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             );
         }
 
-        // timer.mark("setup");
-
         // Read the Huffman symbol lengths and create decode maps which have decoding info
         //  and a level-specific vec of the symbols.
 

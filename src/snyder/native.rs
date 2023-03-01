@@ -1,7 +1,7 @@
 use log::info;
 use rayon::prelude::*;
 
-use crate::tools::freq_count::{self, freqs};
+use crate::tools::freq_count::freqs;
 
 use super::ss3::sais_entry;
 /*
@@ -61,35 +61,6 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
 
     // Implement wraparound if needed
     if result == std::cmp::Ordering::Equal {
-        if a < b {
-            let to_end = block.len() - a - min;
-            result = block[(a + min)..].cmp(&block[..to_end]);
-            if result == std::cmp::Ordering::Equal {
-                let rest_of_block = block.len() - to_end - min;
-                return block[..rest_of_block].cmp(&block[to_end..(to_end + rest_of_block)]);
-            }
-        } else {
-            let to_end = block.len() - b - min;
-            result = block[..to_end].cmp(&block[(b + min)..]);
-            if result == std::cmp::Ordering::Equal {
-                let rest_of_block = block.len() - to_end - min;
-                return block[to_end..(to_end + rest_of_block)].cmp(&block[..rest_of_block]);
-            }
-        }
-    }
-    result
-}
-
-/// compare the next two chunks of the original data to decide which sorts first
-fn block_test(a: usize, b: usize, block: &[u8], percentage: &mut usize) -> std::cmp::Ordering {
-    let min = std::cmp::min(block[a..].len(), block[b..].len());
-
-    // Lexicographical comparison
-    let mut result = block[a..a + min].cmp(&block[b..b + min]);
-
-    // Implement wraparound if needed
-    if result == std::cmp::Ordering::Equal {
-        *percentage += 1;
         if a < b {
             let to_end = block.len() - a - min;
             result = block[(a + min)..].cmp(&block[..to_end]);

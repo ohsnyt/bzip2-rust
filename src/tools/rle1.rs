@@ -4,7 +4,8 @@ const MAX_RUN: usize = 256 + 4;
 
 /// Iteratable struct that will return a block with a max size of block_size bytes
 /// encoded using BZIP2 RLE 1 style encoding
-pub struct RLE1Block<R> {
+pub struct RLE1Block<R> 
+{
     source: R,
     block_size: usize,
     buffer: Vec<u8>,
@@ -166,6 +167,8 @@ impl<R: std::io::Read> Iterator for RLE1Block<R> {
     fn next(&mut self) -> Option<Self::Item> {
         // First make sure the buffer is full.
         self.refill_buffer();
+        // Reset the block CRC 
+        self.block_crc = 0;
 
         // If there is no data to process, return None (Nothing to read and an empty buffer).
         if self.data_gone && self.buffer.len() == 0 {

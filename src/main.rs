@@ -12,122 +12,18 @@ mod tools;
 use std::{
     fs::{self, File},
     io::{Read, Write},
-    time::{Duration, Instant},
 };
 
 use compression::compress::*;
 use compression::decompress::decompress;
 use tools::cli::Mode;
 
-use log::{info, log_enabled, warn, LevelFilter};
+use log::{info, warn, LevelFilter};
 use simplelog::{Config, TermLogger, TerminalMode};
 
 use crate::tools::cli::bzopts_init;
 
-// pub struct Timer {
-//     pub cli: Duration,
-//     pub setup: Duration,
-//     pub h_bitread: Duration,
-//     pub huffman: Duration,
-//     pub mtf: Duration,
-//     pub rle: Duration,
-//     pub rle_mtf: Duration,
-//     pub bwt: Duration,
-//     pub rle1: Duration,
-//     pub crcs: Duration,
-//     pub cleanup: Duration,
-//     pub total: Duration,
-//     pub time: Instant,
-// }
-// impl Default for Timer {
-//     fn default() -> Self {
-//         Self::new()
-//     }
-// }
-// impl Timer {
-//     pub fn new() -> Self {
-//         Self {
-//             cli: Duration::new(0, 0),
-//             setup: Duration::new(0, 0),
-//             h_bitread: Duration::new(0, 0),
-//             huffman: Duration::new(0, 0),
-//             mtf: Duration::new(0, 0),
-//             rle: Duration::new(0, 0),
-//             rle_mtf: Duration::new(0, 0),
-//             bwt: Duration::new(0, 0),
-//             rle1: Duration::new(0, 0),
-//             crcs: Duration::new(0, 0),
-//             cleanup: Duration::new(0, 0),
-//             total: Duration::new(0, 0),
-//             time: Instant::now(),
-//         }
-//     }
-
-//     pub fn mark(&mut self, area: &str) {
-//         match area {
-//             "cli" => {
-//                 self.cli += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "setup" => {
-//                 self.setup += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "huffman" => {
-//                 self.huffman += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "h_bitread" => {
-//                 self.h_bitread += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "mtf" => {
-//                 self.mtf += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "rle" => {
-//                 self.rle += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "rle_mtf" => {
-//                 self.rle_mtf += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "bwt" => {
-//                 self.bwt += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "rle1" => {
-//                 self.rle1 += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             "crcs" => {
-//                 self.crcs += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//             _ => {
-//                 self.cleanup += self.time.elapsed();
-//                 self.total += self.time.elapsed();
-//                 self.time = Instant::now();
-//             }
-//         }
-//     }
-// }
-
 fn main() -> Result<(), std::io::Error> {
-    // For testing, set up timer
-    // let mut timer = Timer::new();
-
     // Available log levels are Error, Warn, Info, Debug, Trace
     TermLogger::init(
         LevelFilter::Trace,
@@ -147,62 +43,12 @@ fn main() -> Result<(), std::io::Error> {
         return Ok(());
     }
 
-    // //----- Figure how what we need to do and go do it
-    // let result = match options.op_mode {
-    //     Mode::Zip => compress(&mut options, &mut timer),
-    //     Mode::Unzip => decompress(&options, &mut timer),
-    //     Mode::Test => Ok(()),
-    // };
-
     //----- Figure how what we need to do and go do it
     let result = match options.op_mode {
         Mode::Zip => compress(&mut options),
         Mode::Unzip => decompress(&options),
         Mode::Test => Ok(()),
     };
-
-    // if log_enabled!(log::Level::Warn) {
-    //     timer.mark("misc");
-    //     println!("{:>14} Function", "Microseconds");
-    //     println!("{:>14} CLI", timer.cli.as_micros());
-    //     println!("{:>14} Setup", timer.setup.as_micros());
-    //     println!("{:>14} RLE1", timer.rle1.as_micros());
-    //     println!("{:>14} CRCs", timer.crcs.as_micros());
-    //     println!("{:>14} BWT", timer.bwt.as_micros());
-    //     println!("{:>14} RLE2-MTF", timer.rle_mtf.as_micros());
-    //     println!("{:>14} Huffman", timer.huffman.as_micros());
-    //     println!("{:>14} Cleanup", timer.cleanup.as_micros());
-    //     println!("{:>14} Total", timer.total.as_micros());
-    //     println!();
-    //     println!(
-    //         "{:>14} Missing",
-    //         timer.total.as_micros()
-    //             - (timer.cli
-    //                 + timer.setup
-    //                 + timer.rle1
-    //                 + timer.crcs
-    //                 + timer.bwt
-    //                 + timer.rle_mtf
-    //                 + timer.huffman
-    //                 + timer.cleanup)
-    //                 .as_micros()
-    //     );
-
-    //     // Print out the results
-    //     println!("\nTimer results table:");
-    //     println!(
-    //         "{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?},{:?}",
-    //         timer.cli.as_micros(),
-    //         timer.setup.as_micros(),
-    //         timer.rle1.as_micros(),
-    //         timer.crcs.as_micros(),
-    //         timer.bwt.as_micros(),
-    //         timer.rle_mtf.as_micros(),
-    //         timer.huffman.as_micros(),
-    //         timer.cleanup.as_micros(),
-    //         timer.total.as_micros()
-    //     );
-    // }
 
     info!("Done.\n");
     result

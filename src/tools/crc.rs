@@ -7,13 +7,7 @@ The calculation is: Start with u32 value of all 1s. For each byte in the input, 
 crc be the crc shifted left 8 then XORed wiht a lookup from the CRC constant table. The lookup
 is based on the crc value shifted right 24 bits and XORed with the byte. Then return the
 inverse of the resulting number.
-
-a version using for loop is below. It runs in the same time.
-    let mut crc = 0xffffffff;
-    for b in &input {
-        crc = (crc << 8) ^ BZ2_CRC32_TABLE[((crc >> 24) ^ (*b as u32)) as usize];
-    }
-    !crc*/
+*/
 
 /// Calculate CRC in BZIP style on entire raw input file
 pub fn do_crc(existing_crc: u32, data: &[u8]) -> u32 {

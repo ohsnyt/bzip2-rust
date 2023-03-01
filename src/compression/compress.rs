@@ -9,7 +9,7 @@ use super::compress_block::compress_block;
 use crate::tools::cli::BzOpts;
 use crate::tools::rle1::RLE1Block;
 
-// use rayon::prelude::*;
+use rayon::prelude::*;
 
 /*
     NOTE: I WILL EVENTUALLY CHANGE THIS SO IT WORKS WITH A C FFI.
@@ -58,14 +58,19 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // I SHOULD PROBABLY USE A STRUCT TO CARRY THE BLOCK INFO FORWARD - THE RLE1 DATA, THE BLOCK block_crc, STREAM block_crc,
     //   and for the first and last block: BLOCK SIZE, IS_LAST
     // BUT IF I'M WRITING HEADERS AND FOOTERS SEPARATELY, PERHAPS I CAN ADD THOSE ELSEWHERE.
+    
+    // Initialize the stream crc
+    let mut stream_crc = 0;
+    // Initialize a bitwriter.
+    let mut bw = BitWriter::new(opts.block_size);
 
+    // Build the RLE1 blocks and process
     let huff_blocks = rle1_blocks
         .into_iter()
+        .par_bridge()
         .map(|(block_crc, block)| (block_crc, compress_block(&block, block_crc)))
         .collect::<Vec<(u32, (Vec<u8>, u8))>>();
 
-    // Initialize a bitwriter.
-    let mut bw = BitWriter::new(opts.block_size);
     // First write file stream header onto the stream
     bw.out8(b'B');
     bw.out8(b'Z');
@@ -73,9 +78,8 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     bw.out8(opts.block_size as u8 + 0x30);
 
     // left shift each huff_block so there isn't empty space at the end of each and write it.
-    let mut stream_crc = 0;
     huff_blocks.iter().for_each(|(crc, (block, last_bits))| {
-        stream_crc = do_stream_crc( stream_crc, *crc);
+        stream_crc = do_stream_crc(stream_crc, *crc);
         block
             .iter()
             .take(block.len() - 1)

@@ -1,4 +1,5 @@
 // Simple SA-IS 3.0 David Snyder, using sentinels
+use rayon::prelude::*;
 
 #[allow(clippy::upper_case_acronyms)]
 /// LMS struct holds commpressed L, S, and LMS values, plus counters used for validity checks.
@@ -97,11 +98,6 @@ impl LMS {
             }
             prev = el;
         }
-        // if current == 1 {
-        //     // Mark previous element as lms
-        //     self.lms[0 >> 5] |= 1_u32 << (0 % 32);
-        //     //self.debug();
-        // }
         // Before we leave, record the counts
         self.lms_count = self.lms.iter().map(|el| el.count_ones()).sum::<u32>() as usize;
         self.s_count = self.ls.iter().map(|el| el.count_ones()).sum::<u32>() as usize;
@@ -116,15 +112,6 @@ impl LMS {
         };
         false
     }
-
-    // /// data element at idx is not an LMS element
-    // pub fn is_not_lms(&self, idx: usize) -> bool {
-    //     //println!("Test: {:0>32b}", self.lms[idx >> 5]);
-    //     if self.lms[idx >> 5] & (1_u32 << (idx % 32)) == 0 {
-    //         return true;
-    //     };
-    //     false
-    // }
 
     /// data element at idx is an L element
     pub fn is_l(&self, idx: usize) -> bool {
@@ -482,7 +469,7 @@ where
 
 /// Entry point for Simple SA-IS sort for Burrow-Wheeler Transform. Takes u8 slice and returns
 /// u32 key and u8 vector in BWT format.
-pub fn entry(data: &[u8]) -> (u32, Vec<u8>) {
+pub fn sais_entry(data: &[u8]) -> (u32, Vec<u8>) {
     // Replace the data with a "duval rotated" version, same data but split at a place determined by the duval
     // algorithm with parts a and b swapped. The Offset is the location of the original start of the data.
     let (data, offset) = rotate_duval(data);

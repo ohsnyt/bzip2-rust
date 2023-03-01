@@ -1,6 +1,6 @@
 use log::{debug, warn};
 
-use crate::snyder::ss3::entry;
+use crate::snyder::ss3::sais_entry;
 //use crate::julian::fallback::fallback_sort::fallback_sort;
 
 //use super::fallback::fallback_sort::fallback_sort;
@@ -17,7 +17,7 @@ pub fn block_sort(block: &[u8]) -> (u32, Vec<u8>) {
 
     // If the size of the block us under 10k, use the fallbackSort function.
     if block.len() < 10000 {
-        return entry(block);
+        return sais_entry(block);
     } else {
         // budget_start is used to provide user statistics below
         let budget_start = (block.len() * 33) as i32;
@@ -41,7 +41,7 @@ pub fn block_sort(block: &[u8]) -> (u32, Vec<u8>) {
             return result.unwrap();
         } else {
             warn!("    Too repetitive; using sais fallback sorting algorithm");
-            return entry(block);
+            return sais_entry(block);
         }
     }
 }

@@ -5,7 +5,8 @@ use crate::tools::rle2_mtf::rle2_mtf_encode;
 //use crate::tools::symbol_map;
 //use crate::{bwt_ribzip::*, Timer};
 
-use crate::julian::block_sort::block_sort;
+//use crate::julian::block_sort::block_sort;
+use crate::snyder::native::bwt_encode_native;
 //use crate::snyder::bwt_ds_par::bwt_encode_par;
 use log::{debug, trace};
 
@@ -13,10 +14,7 @@ use crate::huffman_coding::huffman::huf_encode;
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Called by Compress, this handles one block and returns a vec of packed huffman data and the valid bit count of the last byte.
-pub fn compress_block(
-    block: &[u8],
-    block_crc: u32,
-) -> (Vec<u8>, u8) {
+pub fn compress_block(block: &[u8], block_crc: u32) -> (Vec<u8>, u8) {
     // Initialize A bitwriter vec to the block size to avoid resizing. Block.len is a very generous size.
     let mut bp = BitPacker::new(block.len());
 
@@ -24,7 +22,7 @@ pub fn compress_block(
     // Six bytes of magic, 4 bytes of block_crc data, 1 bit for Randomized flag.
     trace!(
         "\r\x1b[43mWriting block magic and block_crc at {}.    \x1b[0m",
-         bp.loc()
+        bp.loc()
     );
     bp.out24(0x18_314159); // magic bits  1-24
     bp.out24(0x18_265359); // magic bits 25-48
@@ -35,8 +33,8 @@ pub fn compress_block(
     );
     bp.out24(0x01_000000); // One zero bit
 
-    // Do BWT using julians algorithm with sais as fallback
-    let (key, bwt_data) = block_sort(block);
+    // Do BWT using the native algorithm with sais as fallback
+    let (key, bwt_data) = bwt_encode_native(block);
 
     // Now that we have the key, we can write the 24bit BWT key
     trace!("\r\x1b[43mWriting key at {}.    \x1b[0m", bp.loc());

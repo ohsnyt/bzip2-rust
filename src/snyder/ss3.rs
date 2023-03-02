@@ -1,5 +1,4 @@
 // Simple SA-IS 3.0 David Snyder, using sentinels
-use rayon::prelude::*;
 
 #[allow(clippy::upper_case_acronyms)]
 /// LMS struct holds commpressed L, S, and LMS values, plus counters used for validity checks.

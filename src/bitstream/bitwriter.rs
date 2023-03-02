@@ -55,14 +55,6 @@ impl BitWriter {
         self.write_stream();
     }
 
-    /// Puts a 16 bit word  of pre-packed binary encoded data on the stream.
-    pub fn out16(&mut self, data: u16) {
-        self.queue <<= 16; //shift queue by bit length
-        self.queue |= data as u64; //add data portion to queue
-        self.q_bits += 16; //update depth of queue bits
-        self.write_stream();
-    }
-
     /// Puts an 8 bit word  of pre-packed binary encoded data on the stream.
     pub fn out8(&mut self, data: u8) {
         self.queue <<= 8; //shift queue by bit length
@@ -102,16 +94,6 @@ mod test {
         bw.flush();
         let out = bw.output;
         assert_eq!(out, "x".as_bytes());
-    }
-
-    #[test]
-    fn out16_test() {
-        let mut bw = BitWriter::new(100);
-        let data = 0b00100001_00100000;
-        bw.out16(data);
-        bw.flush();
-        let out = bw.output;
-        assert_eq!(out, "! ".as_bytes());
     }
 
     #[test]

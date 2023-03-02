@@ -146,7 +146,7 @@ pub fn bzopts_init() -> BzOpts {
                     arg.remove(0);
                     arg.remove(0);
                     // And remove any excess v's
-                    while arg.starts_with("v") {
+                    while arg.starts_with('v') {
                         arg.remove(0);
                     }
                     continue;

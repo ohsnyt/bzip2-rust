@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::{self, Write};
-// use std::os::unix::prelude::MetadataExt;
 
 use crate::bitstream::bitwriter::BitWriter;
 use crate::tools::crc::do_stream_crc;
@@ -10,7 +9,7 @@ use crate::tools::cli::BzOpts;
 use crate::tools::rle1::RLE1Block;
 
 use rayon::prelude::*;
-
+#[allow(clippy::unusual_byte_groupings)]
 /*
     NOTE: I WILL EVENTUALLY CHANGE THIS SO IT WORKS WITH A C FFI.
 
@@ -88,7 +87,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
         if last_bits == &0 {
             bw.out8(*block.last().unwrap())
         } else {
-            bw.out24((*last_bits as u32) << 24 | (*block.last().unwrap() as u32 >> 8 - *last_bits));
+            bw.out24((*last_bits as u32) << 24 | *block.last().unwrap() as u32 >> (8 - *last_bits));
         }
     });
 

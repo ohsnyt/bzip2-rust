@@ -537,19 +537,11 @@ where
         }
     }
     // Filter out non-lms elements and return names, offsets and count of unique LMS names
-    return (
-        names
-            .iter()
-            .filter(|el| el.is_some())
-            .map(|el| el.unwrap())
-            .collect::<Vec<u32>>(),
-        offsets
-            .iter()
-            .filter(|el| el.is_some())
-            .map(|el| el.unwrap())
-            .collect::<Vec<u32>>(),
+    (
+        names.into_iter().flatten().collect::<Vec<u32>>(),
+        offsets.into_iter().flatten().collect::<Vec<u32>>(),
         current_name as usize + 1,
-    );
+    )
 }
 
 fn make_summary_suffix_vec(summary_size: usize, lms: &LMS, mut summary: Vec<u32>) -> Vec<u32> {
@@ -561,10 +553,11 @@ fn make_summary_suffix_vec(summary_size: usize, lms: &LMS, mut summary: Vec<u32>
         summary = sa_is(&summary, summary_size);
 
         let mut summary_suffix_vec = vec![summary.len() as u32; summary.len() + 1];
-        for i in 0..summary.len() {
-            summary_suffix_vec[i + 1] = summary[i]
-        }
-        return summary_suffix_vec;
+        // for i in 0..summary.len() {
+        //     summary_suffix_vec[i + 1] = summary[i]
+        // }
+        summary_suffix_vec[1..(summary.len() + 1)].copy_from_slice(&summary[..]);
+        summary_suffix_vec
     } else {
         // Make a summary suffix vec from summary with a new sentinel at the beginning.
         let mut summary_suffix_vec = vec![summary_size as u32; summary.len() + 1];
@@ -633,4 +626,3 @@ fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
     buf.append(&mut head.to_vec());
     (buf, offset)
 }
-

@@ -65,13 +65,13 @@ impl BitPacker {
         self.write_stream();
     }
 
-    /// Puts an 8 bit word  of pre-packed binary encoded data on the stream.
-    pub fn out8(&mut self, data: u8) {
-        self.queue <<= 8; //shift queue by bit length
-        self.queue |= data as u64; //add data portion to queue
-        self.q_bits += 8; //update depth of queue bits
-        self.write_stream();
-    }
+    // /// Puts an 8 bit word  of pre-packed binary encoded data on the stream.
+    // pub fn out8(&mut self, data: u8) {
+    //     self.queue <<= 8; //shift queue by bit length
+    //     self.queue |= data as u64; //add data portion to queue
+    //     self.q_bits += 8; //update depth of queue bits
+    //     self.write_stream();
+    // }
 
     /// Flushes the remaining bits (1-7) from the buffer, padding with 0s in the least
     /// signficant bits
@@ -96,16 +96,6 @@ impl BitPacker {
 #[cfg(test)]
 mod test {
     use super::BitPacker;
-
-    #[test]
-    fn out8_test() {
-        let mut bw = BitPacker::new(100);
-        let data = 'x' as u8;
-        bw.out8(data);
-        bw.flush();
-        let out = bw.output;
-        assert_eq!(out, "x".as_bytes());
-    }
 
     #[test]
     fn out16_test() {

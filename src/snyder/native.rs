@@ -20,12 +20,12 @@ pub fn bwt_encode_native(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     NOTE: Currently testing for the number of different bytes in 2k of data. This isn't
     really a great test, but it is fast and does focus SAIS on genetic type data.
      */
-    if rle1_data.len() > 2_000 {
-        if freqs(&rle1_data[..2000]).iter().filter(|&&x| x > 0).count() < 15 {
-            info!("Using SA-IS algorithm.");
-            return sais_entry(rle1_data);
-        }
+    if rle1_data.len() > 2_000 && freqs(&rle1_data[..2000]).iter().filter(|&&x| x > 0).count() < 15
+    {
+        info!("Using SA-IS algorithm.");
+        return sais_entry(rle1_data);
     }
+
     info!("Using native algorithm.");
 
     // Sort index

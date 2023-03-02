@@ -171,7 +171,7 @@ impl<R: std::io::Read> Iterator for RLE1Block<R> {
         self.block_crc = 0;
 
         // If there is no data to process, return None (Nothing to read and an empty buffer).
-        if self.data_gone && self.buffer.len() == 0 {
+        if self.data_gone && self.buffer.is_empty() {
             return None;
         }
         // Otherwise go process a block (size set by block_size) of data and return the block

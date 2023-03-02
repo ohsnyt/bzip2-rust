@@ -51,7 +51,7 @@
                 //"src/Peter.txt.bz2",
                 "-z",
                 "-vvv",
-                "-1",
+                //"-1",
                 //"src/Peter_Julian1.bz2",
                 //"src/Big_peter.txt.bz2",
                 //"src/monster_idiot.txt.bz2",

@@ -2,10 +2,8 @@
 #![warn(rust_2018_idioms)]
 #![warn(clippy::disallowed_types)]
 mod bitstream;
-mod bwt_ribzip;
 mod compression;
 mod huffman_coding;
-mod julian;
 mod snyder;
 mod tools;
 

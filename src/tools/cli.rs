@@ -47,8 +47,6 @@ pub enum Status {
 
 #[derive(Debug)]
 pub struct BzOpts {
-    /// Algorithm used
-    pub algorithm: Option<Algorithms>,
     /// Maximum input block size to process during each loop
     pub block_size: usize,
     /// Vec of names of files to read for input
@@ -78,7 +76,6 @@ pub struct BzOpts {
 impl BzOpts {
     pub fn new() -> Self {
         Self {
-            algorithm: None,
             block_size: 9,
             files: vec![],
             force_overwrite: false,
@@ -135,11 +132,6 @@ pub fn bzopts_init() -> BzOpts {
                 "--fast" => cli.block_size = 1,
                 "--best" => cli.block_size = 9,
 
-                "--native" => cli.algorithm = Some(Algorithms::Native),
-                "--julian" => cli.algorithm = Some(Algorithms::Julian),
-                "--sais" => cli.algorithm = Some(Algorithms::Sais),
-                "--sais3" => cli.algorithm = Some(Algorithms::Sais3),
-                "--parallel" => cli.algorithm = Some(Algorithms::Parallel),
                 "--debug" => cli.debug = true,
                 other => eprintln!("Unexpected command line argument: {}", other),
             }
@@ -332,12 +324,6 @@ fn help() {
    short flags, so `-v -4' means the same as -v4 or -4v, &c.
 
    Temporarily, you can specify one of these alogrithms for the BWT
-     --native
-     --julian
-     --sais
-     --ss
-     --big
-     --parallel
      -vvvvv (trace level debugging information)
      --debug for debugging special purposes (will change during development)
    "
@@ -365,32 +351,11 @@ fn license() {
 }
 
 fn version() {
-    println!("Version: {}", VERSION);
+    println!("Version: {}, written in Rust", VERSION);
     exit(0);
 }
 
-/// Define the alternate compression algorithms
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Algorithms {
-    /// Use original Bzip2 Burrow Wheeler Transform algorithm when compressing
-    Julian,
-    /// Use RiBzip SAIS based algorithm when compressing
-    Sais,
-    /// Use sentinel based ds implemented SAIS based Burrow Wheeler Transform algorithm when compressing
-    Sais3,
-    /// Use naive sorting based Burrow Wheeler Transform algorithm when compressing
-    Native,
-    // Parallel - uses custom usize BWT sorting alorithm with Rayon when compressing
-    Parallel,
-}
 /*
-/// Defines a "fallback" mode for worst case data - may be depricated
-#[derive(Debug)]
-pub enum WorkFactor {
-    Normal = 30,
-    Fallback = 1,
-}
-
 /// Define all user settable options to control program behavior
 #[derive(Debug)]
 pub struct BzOptsOld {

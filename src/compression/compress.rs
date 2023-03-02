@@ -49,16 +49,15 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     fname.push_str(".bz2");
     let mut f_out = File::create(fname).expect("Can't create .bz2 file");
 
-    // HOW DOES RAYON WORK WITH DEALING THOSE OUT AND GETTIN THEM BACK FOR THE NEXT STEP?
-    // I THINK EACH SHOULD BUILD A BITWRITER AND RETURN THE COMPRESSED HUFFMAN VEC, WHICH WE THEN
-    // WRITE OUT IN SEQUENCE HERE.
+    /*
+    This works and is faster than single-threaded versions. Unfortunately it is a hog of memory.
 
-    // NOTE: par_bridge is not supposed to be very efficient. Look into this.
+    This works by compressing each block and holding those compressed blocks in memory until we have them all.
+    We then write them out to the output stream.
 
-    // I SHOULD PROBABLY USE A STRUCT TO CARRY THE BLOCK INFO FORWARD - THE RLE1 DATA, THE BLOCK block_crc, STREAM block_crc,
-    //   and for the first and last block: BLOCK SIZE, IS_LAST
-    // BUT IF I'M WRITING HEADERS AND FOOTERS SEPARATELY, PERHAPS I CAN ADD THOSE ELSEWHERE.
-    
+    NOTE: par_bridge is not supposed to be very efficient. Look into this.
+    */
+
     // Initialize the stream crc
     let mut stream_crc = 0;
     // Initialize a bitwriter.

@@ -53,7 +53,13 @@ impl Eq for Node {}
 /// Encode MTF/RLE2 data using Julian's multi-table system.
 /// We need a BitPacker, adequately spedified block data, and the number of iterations desired (Julian used 4).
 /// Data is returned via the block.
-pub fn huf_encode(bp: &mut BitPacker, rle2: &[u16], freq: &[u32; 256], eob: u16, symbol_map: &[u16]) -> Result<(), Error> {
+pub fn huf_encode(
+    bp: &mut BitPacker,
+    rle2: &[u16],
+    freq: &[u32; 256],
+    eob: u16,
+    symbol_map: &[u16],
+) -> Result<(), Error> {
     // We can have 2-6 coding tables depending on how much data we have coming in.
     let table_count: usize = match rle2.len() {
         0..=199 => 2,
@@ -157,10 +163,7 @@ pub fn huf_encode(bp: &mut BitPacker, rle2: &[u16], freq: &[u32; 256], eob: u16,
                 trace!(
                     "\n      {}: {:?}",
                     i,
-                    table
-                        .iter()
-                        .take(eob as usize + 1)
-                        .collect::<Vec<_>>()
+                    table.iter().take(eob as usize + 1).collect::<Vec<_>>()
                 );
             }
         }
@@ -170,15 +173,6 @@ pub fn huf_encode(bp: &mut BitPacker, rle2: &[u16], freq: &[u32; 256], eob: u16,
         // improved weights into the weight arrays. As mentioned, we do this 4 times.
         (0..table_count).for_each(|t| {
             improve_code_len_from_weights(&mut tables[t], &rfreq[t], eob);
-            trace!(
-                "\nIter {}: Tbl {}:\n{:?}",
-                iter,
-                t,
-                tables[t]
-                    .iter()
-                    .take(eob as usize + 1)
-                    .collect::<Vec<_>>()
-            );
         });
     }
     /*
@@ -510,10 +504,6 @@ fn init_tables(freqs: &[u32], table_count: usize, eob: u16) -> [[u32; 258]; 6] {
                 portion = 0;
             }
         };
-        // EXPERIMENTAL for case of huge frequency in one item
-        // if f > &portion_limit {
-        //     portion_limit = (freqs.iter().sum::<u32>() - *f) / (table_count - 1) as u32;
-        // }
     }
     tables
 }

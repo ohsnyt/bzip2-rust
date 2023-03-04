@@ -1,16 +1,14 @@
 use rayon::prelude::*;
 
-/// Returns a frequency count of the input data. Uses parallelism when data set is over 90k.
+/// Returns a frequency count of the input data. Uses parallelism when data set is over 64k.
 pub fn freqs(data: &[u8]) -> Vec<u32> {
-    const FREQXOVER: usize = 90000;
-    //Create the freq vec using a parallel approach
-    if data.len() >= FREQXOVER {
-        //Create the freq vec using a parallel approach
-        data.par_iter()
+    if data.len() > 64_000 {
+        // 16k is pretty much the sweet spot for chunk size.
+        data.par_chunks(16_000)
             .fold(
                 || vec![0_u32; 256],
-                |mut freqs, &el| {
-                    freqs[el as usize] += 1;
+                |mut freqs, chunk| {
+                    chunk.iter().for_each(|&el| freqs[el as usize] += 1);
                     freqs
                 },
             )
@@ -19,9 +17,8 @@ pub fn freqs(data: &[u8]) -> Vec<u32> {
                 |s, f| s.iter().zip(&f).map(|(a, b)| a + b).collect::<Vec<u32>>(),
             )
     } else {
-        data.iter().fold(vec![0_u32; 256], |mut freqs, &el| {
-            freqs[el as usize] += 1;
-            freqs
-        })
+        let mut freqs = vec![0_u32; 256];
+        data.iter().for_each(|&el| freqs[el as usize] += 1);
+        return freqs;
     }
 }

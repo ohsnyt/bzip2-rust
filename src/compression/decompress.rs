@@ -1,4 +1,5 @@
 use log::{error, info, trace, warn};
+use rayon::prelude::*;
 
 use crate::{
     snyder::native::bwt_decode_test,

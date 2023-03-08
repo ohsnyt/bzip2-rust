@@ -1,18 +1,18 @@
 use log::info;
 use rayon::prelude::*;
 
+use super::sais_fallback::sais_entry;
 use crate::tools::freq_count::freqs;
-
-use super::ss3::sais_entry;
 /*
 I tried a varient that uses a double length block to avoid the nested equality checks
 in block_compare, but it was barely faster.
 */
 
-///Burrows-Wheeler-Transform. Uses rayon to multi-thread. Great for non-repeating ascii data.
-/// If possibly repetitive data is found, falls back to a SA-IS algorithm.
-/// Returns a u32 Key and a u8 vec of the BWT data.
-pub fn bwt_encode_native(rle1_data: &[u8]) -> (u32, Vec<u8>) {
+/// Burrows-Wheeler-Transform using Rayon to multi-thread. We check for possibly repetative data like found
+/// in genetic sequences. For that data we use a SA-IS algorithm. For other data we use a native
+/// sort_unstable algorithm.
+/// This returns a u32 Key and a u8 vec of the BWT data.
+pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
     let mut index = (0_u32..rle1_data.len() as u32).collect::<Vec<u32>>();
     // Run a repetative data test for data longer than 2k bytes

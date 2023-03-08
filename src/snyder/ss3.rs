@@ -1,21 +1,24 @@
 // Simple SA-IS 3.0 David Snyder, using sentinels
+const S: u32 = 1;
+const LMS: u32 = 1;
+const L: u32 = 0;
 
 #[allow(clippy::upper_case_acronyms)]
 /// LMS struct holds commpressed L, S, and LMS values, plus counters used for validity checks.
 struct LMS {
     /// Bit oriented vec of LMS type element indecies
-    pub lms: Vec<u32>,
+    lms: Vec<u32>,
     /// Bit oriented vec of L and S type element indecies
-    pub ls: Vec<u32>,
+    ls: Vec<u32>,
     // The following are primarily used in debugging - to simplify getting counts
     /// Position of the last element in the input data and LS/LMS vecs
-    pub last: usize,
+    last: usize,
     /// Count of LMS type elements
-    pub lms_count: usize,
+    lms_count: usize,
     /// Count of L type elements
-    pub l_count: usize,
+    l_count: usize,
     /// Count of S type elements
-    pub s_count: usize,
+    s_count: usize,
 }
 
 /// Create empty LMS struct
@@ -59,72 +62,74 @@ impl LMS {
         // Initialize data end and search starting position
         self.last = data.len();
 
-        // Initialize ls and lms vecs
-        self.lms = vec![0; data.len() / 32 + 1];
-        self.ls = vec![0; data.len() / 32 + 1];
+        // Initialize ls and lms vecs to all L (0 - no S or LMS found yet)
+        self.lms = vec![L; data.len() / 32 + 1];
+        self.ls = vec![L; data.len() / 32 + 1];
         // Initialize the final sentinel to S type as well as LMS type
-        self.ls[self.last >> 5] |= 1_u32 << (self.last % 32);
-        self.lms[self.last >> 5] |= 1_u32 << (self.last % 32);
+        self.ls[self.last >> 5] |= S << (self.last % 32);
+        self.lms[self.last >> 5] |= LMS << (self.last % 32);
         //self.debug();
 
-        // Iterate backwards through the data determining L S and LMS elements. The sentinel at the end is an S, so
-        // the last elmenet by definition must be an L type. We can start iterating left from here.
-        //let mut idx = data.len() - 1;
-        // S Type = 1, L type = 0;
-        let mut current = 0;
+        // Iterate backwards through the data determining L S and LMS elements. The sentinel
+        // at the end is an S, so the last elmenet by definition must be an L type. We can
+        // start iterating left from here.
+        let mut current = L;
         let mut prev = data[data.len() - 1];
         for (idx, &el) in data.iter().enumerate().take(data.len() - 1).rev() {
+            // Compare the current element with the previous element. If less or equal, this is an S
             match el.cmp(&prev) {
                 std::cmp::Ordering::Less => {
-                    self.ls[idx >> 5] |= 1_u32 << (idx % 32);
+                    self.ls[idx >> 5] |= S << (idx % 32);
                     //self.debug();
-                    current = 1;
+                    // Record that we are now working with a S type element
+                    current = S;
                 }
+                // If the prev element is equal to this one, we need to compare to whether we are currently
+                // working with S or L
                 std::cmp::Ordering::Equal => {
-                    if current == 1 {
-                        self.ls[idx >> 5] |= 1_u32 << (idx % 32);
+                    if current == S {
+                        // We are in a run of S, so we need to set this one to S. (L's are the unmarked varient)
+                        self.ls[idx >> 5] |= S << (idx % 32);
                         //self.debug();
                     }
                 }
+                // If we found an L and we were in a run of S type elements, then the previous element must be an LMS
                 std::cmp::Ordering::Greater => {
-                    if current == 1 {
+                    if current == S {
                         // Mark previous element as lms
-                        self.lms[(idx + 1) >> 5] |= 1_u32 << ((idx + 1) % 32);
-                        current = 0;
+                        self.lms[(idx + 1) >> 5] |= LMS << ((idx + 1) % 32);
+                        current = L;
                         // self.debug();
                     }
                 }
             }
             prev = el;
         }
-        // Before we leave, record the counts
+        // Before we leave, take a couple nanoseconds to record the counts
         self.lms_count = self.lms.iter().map(|el| el.count_ones()).sum::<u32>() as usize;
         self.s_count = self.ls.iter().map(|el| el.count_ones()).sum::<u32>() as usize;
         self.l_count = data.len() - self.s_count;
     }
 
-    /// Checks if element at index is an LMS element
+    /// Checks if element at index is set (is an LMS element)
     fn is_lms(&self, idx: usize) -> bool {
-        //println!("Test: {:0>32b}", self.lms[idx >> 5]);
-        if self.lms[idx >> 5] & (1_u32 << (idx % 32)) > 0 {
+        if self.lms[idx >> 5] & (LMS << (idx % 32)) > 0 {
             return true;
         };
         false
     }
 
-    /// data element at idx is an L element
+    /// data element at idx is not set (is an L)
     pub fn is_l(&self, idx: usize) -> bool {
-        //println!("Test: {:0>32b}", self.ls[idx >> 5]);
-        if self.ls[idx >> 5] & (1_u32 << (idx % 32)) == 0 {
+        if self.ls[idx >> 5] & (S << (idx % 32)) == 0 {
             return true;
         };
         false
     }
 
-    /// data element at idx is an S element
+    /// data element at idx is set (is an S)
     fn is_s(&self, idx: usize) -> bool {
-        //println!("Test: {:0>32b}", self.ls[idx >> 5]);
-        if self.ls[idx >> 5] & (1_u32 << (idx % 32)) > 0 {
+        if self.ls[idx >> 5] & (S << (idx % 32)) > 0 {
             return true;
         };
         false
@@ -168,7 +173,7 @@ impl LMS {
     }
 
     fn debug(&self) {
-        // Print count line to aid counting
+        // Print a "count line" to aid counting
         print!("    --");
         for i in 0..=self.last {
             print!("{}", i % 10);
@@ -190,19 +195,70 @@ impl LMS {
         println!("  ({} LMS elements)", self.lms_count);
     }
 }
+
+#[cfg(test)]
+mod test_lms {
+    use super::*;
+    #[test]
+    pub fn lms_test() {
+        let data = "caabage".as_bytes();
+        let mut lms = LMS::new();
+        lms.init(data);
+        //cabbage - LSLLSLLS
+        assert!(lms.is_l(0));
+        assert!(lms.is_s(1));
+        assert!(lms.is_s(2));
+        assert!(lms.is_l(3));
+        assert!(lms.is_s(4));
+        assert!(lms.is_l(5));
+        assert!(lms.is_l(6));
+        assert!(lms.is_s(7));
+
+        assert_eq!(lms.is_lms(0), false);
+        assert_eq!(lms.is_lms(1), true);
+        assert_eq!(lms.is_lms(2), false);
+        assert_eq!(lms.is_lms(3), false);
+        assert_eq!(lms.is_lms(4), true);
+        assert_eq!(lms.is_lms(5), false);
+        assert_eq!(lms.is_lms(6), false);
+        assert_eq!(lms.is_lms(7), true);
+    }
+}
 //--- Done with LMS struct -------------------------------------------------------------------------------------
 
-//-- Frequency Counts for Bucket Sorting -----------------------------------------------------------------------
+//-- Counts for Bucket Sorting --------------------------------------------------------------------------------
+use rayon::prelude::*;
+
 /// Return frequency count of elements in the input vec. Size is the value of the largest element in the input.
 fn bucket_sizes<T>(data: &[T], size: usize) -> Vec<u32>
 where
     T: TryInto<usize> + Copy,
     T::Error: std::fmt::Debug,
+    T: Sync,
 {
-    data.iter().fold(vec![0_u32; size], |mut freqs, &el| {
-        freqs[el.try_into().unwrap_or_default()] += 1;
-        freqs
-    })
+    // Use parallel method if more than 64k elements in the data
+    if data.len() > 64_000 {
+        // 16k is pretty much the sweet spot for chunk size.
+        data.par_chunks(16_000)
+            .fold(
+                || vec![0_u32; size],
+                |mut freqs, chunk| {
+                    chunk
+                        .iter()
+                        .for_each(|&el| freqs[el.try_into().unwrap_or_default()] += 1);
+                    freqs
+                },
+            )
+            .reduce(
+                || vec![0_u32; size],
+                |s, f| s.iter().zip(&f).map(|(a, b)| a + b).collect::<Vec<u32>>(),
+            )
+    } else {
+        let mut freqs = vec![0_u32; size];
+        data.iter()
+            .for_each(|&el| freqs[el.try_into().unwrap_or_default()] += 1);
+        return freqs;
+    }
 }
 
 /// Returns index to top positions of buckets for bucket sorting.
@@ -237,10 +293,10 @@ fn bucket_tails(buckets: &[u32]) -> Vec<u32> {
 }
 
 #[cfg(test)]
-mod test {
+mod test_bucket_prep {
     use super::*;
     #[test]
-    pub fn freq_test() {
+    pub fn freq_count_test() {
         let data = [2, 0, 1, 1, 0, 6, 4];
         let frq = bucket_sizes(&data, 7);
         assert_eq!(frq[0..7], vec![2, 2, 1, 0, 1, 0, 1]);
@@ -361,7 +417,7 @@ where
 
 fn sa_is<T>(data: &[T], alphabet_size: usize) -> Vec<u32>
 where
-    T: TryInto<usize> + Copy + std::cmp::Ord + std::fmt::Display,
+    T: TryInto<usize> + Copy + std::cmp::Ord + std::fmt::Display + std::marker::Sync,
     T::Error: std::fmt::Debug,
 {
     // STEP 1: Build LMS info
@@ -469,37 +525,46 @@ where
 /// Entry point for Simple SA-IS sort for Burrow-Wheeler Transform. Takes u8 slice and returns
 /// u32 key and u8 vector in BWT format.
 pub fn sais_entry(data: &[u8]) -> (u32, Vec<u8>) {
-    // Replace the data with a "duval rotated" version, same data but split at a place determined by the duval
-    // algorithm with parts a and b swapped. The Offset is the location of the original start of the data.
+    /*
+    SA-IS doesn't work in our context unless it is "duval rotated". We must have a lexicographically minimal 
+    rotation of the data or the conversion from the index to the BWT vec will be off. 
+
+    The duval rotation finds the "lexically minimal" point and splits and reorders the data around that point.
+
+    Cudos to https://github.com/torfmaster/ribzip2, where I initially saw this concept in use.
+    */
+
+    // Do the rotation and return the reorganized data and offset to the original start of the data.
     let (data, offset) = rotate_duval(data);
-    //DEBUG START
-    // print!("     >");
-    // for byte in &data {
-    //     print!("{}", *byte as char);
-    // }
-    // println!("<");
-    //DEBUG END
 
+    // Go do the sa-is sort, returning the index to the BWT.
     let index = sa_is(&data, 256);
+
+    // Initialize the key. We find the actutal value in the loop below.
     let mut key = 0_u32;
-
+    // Initialize the final vec
     let mut bwt = vec![0_u8; data.len()];
-
+    // Get the offset to the original start of the data
     let duval_zero_position = (index.len() - offset) as u32;
 
+    // Create the final BWT vec and find the actual key value
     for i in 0..index.len() {
+        // Watch for the key location
         if index[i] == duval_zero_position {
             key = i as u32
         }
+        // BWT is build from the data at the previous index location. Wrap around if the index is at 0.
         if index[i] == 0 {
             bwt[i] = data[data.len() - 1] as u8;
         } else {
             bwt[i] = data[index[i] as usize - 1];
         }
     }
+    // Return the key and BWT data
     (key, bwt)
 }
 
+/// Create summary of LMS elements. Return vec of LMS names, vec of offsets and count of unique LMS names.
 fn make_summary<T>(
     data: &[T],
     buckets: &mut [Option<u32>],
@@ -544,18 +609,16 @@ where
     )
 }
 
+/// Create vec that contains only unique LMS elements, recursing if needed to ensure only unique LMS elements exist.
 fn make_summary_suffix_vec(summary_size: usize, lms: &LMS, mut summary: Vec<u32>) -> Vec<u32> {
-    //Recurse if we had any identical LMS groups
+    // Recurse if we had any identical LMS groups when we made the summary (make_summary returned summary_size,
+    //  the count of unique LMS elements)
     if summary_size != lms.lms_count {
-        //println!("------------------------------------------------");
-        //println!("-----------------RECURSION REQUIRED------------------");
-        //println!("------------------------------------------------");
+        // Recurse
         summary = sa_is(&summary, summary_size);
-
+        // The above recurses until there are no more duplicate LMS elements. 
+        // Now return the summary the recursion finally produced.
         let mut summary_suffix_vec = vec![summary.len() as u32; summary.len() + 1];
-        // for i in 0..summary.len() {
-        //     summary_suffix_vec[i + 1] = summary[i]
-        // }
         summary_suffix_vec[1..(summary.len() + 1)].copy_from_slice(&summary[..]);
         summary_suffix_vec
     } else {
@@ -568,6 +631,8 @@ fn make_summary_suffix_vec(summary_size: usize, lms: &LMS, mut summary: Vec<u32>
         summary_suffix_vec
     }
 }
+
+/// Debug function for the buckets.
 fn debug_buckets(note: char, buckets: &[Option<u32>]) {
     println!(
         "{} Buckets: {:?}",
@@ -579,6 +644,7 @@ fn debug_buckets(note: char, buckets: &[Option<u32>]) {
     );
 }
 
+/// Debug function to show which bucket elemements were missing.
 fn debug_nones(buckets: &[Option<u32>]) {
     let mut indecies = (0..buckets.len() as u32).collect::<Vec<u32>>();
     buckets.iter().for_each(|b| {

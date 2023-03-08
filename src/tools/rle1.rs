@@ -220,9 +220,9 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
         {
             // Found one. Copy out the slice from the start cursor until the end of the run
             out.extend_from_slice(&rle1[start..cursor + 4]);
-            // Create a vec of the repeating byte with a length taken from the byte following the run, 
+            // Create a vec of the repeating byte with a length taken from the byte following the run,
             //  and add that data to the output
-            out.extend(vec![rle1[cursor]; rle1[cursor + 4].into()]);
+            out.extend(vec![rle1[cursor]; usize::from(rle1[cursor + 4])]);
             start += 5;
             cursor += 5;
         }

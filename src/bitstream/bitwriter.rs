@@ -1,6 +1,7 @@
 use log::error;
 
-/// Creates a bitstream for output. 
+/// Writes a bitstream for output. This is very similar to the BitPacker, except it 
+/// writes to a output file/stream (through a buffer).
 pub struct BitWriter {
     pub output: Vec<u8>,
     queue: u64,
@@ -64,7 +65,7 @@ impl BitWriter {
     }
 
     /// Flushes the remaining bits (1-7) from the buffer, padding with 0s in the least
-    /// signficant bits
+    /// signficant bits. Mst be called prior to closing the output file/stream.
     pub fn flush(&mut self) {
         if self.q_bits > 0 {
             self.queue <<= 8 - self.q_bits; //pad the queue with zeros

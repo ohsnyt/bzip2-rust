@@ -5,8 +5,7 @@ const BIT_MASK: u8 = 0xff;
 #[derive(Debug)]
 pub struct BitReader<R> {
     buffer: Vec<u8>,
-    bytes_read: usize,
-    byte_index: usize,
+    cursor: usize,
     bit_index: usize,
     source: R,
 }
@@ -16,35 +15,35 @@ impl<R: std::io::Read> BitReader<R> {
     pub fn new(source: R) -> Self {
         Self {
             buffer: vec![0; BUFFER_SIZE],
-            bytes_read: 0,
-            byte_index: BUFFER_SIZE,
+            cursor: BUFFER_SIZE,
             bit_index: 0,
             source,
         }
     }
 
-    /// Check (and refill) buffer - true if we have data, false if there is no more
+    /// Check (and refill) buffer. Returns true if we have data, false if there is no more
     fn have_data(&mut self) -> bool {
-        // Originally: if self.bytes_read == 0 || self.byte_index == self.buffer.len() {
-        // when self.bytes_read == 0, then byte_index must equal buffer length
-        if self.byte_index == self.buffer.len() {
+        // Only try to read more data when the buffer length is equal to the buffer cursor location
+        if self.cursor == self.buffer.len() {
             let size = self
                 .source
                 .read(&mut self.buffer)
-                .expect("Unble to read source data");
+                .expect("Unable to read source data");
+            // If nothing came back from our read attempt, then we have no more data.
             if size == 0 {
                 return false;
             } else {
+                // Adjust the buffer if we read less than the buffer size
                 self.buffer.truncate(size);
-                self.bytes_read += size;
-                self.byte_index = 0;
+                // Reset the cursor and bit index
+                self.cursor = 0;
                 self.bit_index = 0;
             }
         }
         true
     }
 
-    /// Return Option<usize> (1 or 0), or None if there is no more data to read
+    /// Return bit as Option<usize> (1 or 0), or None if there is no more data to read
     pub fn bit(&mut self) -> Option<usize> {
         // If bit_index is == 0, check if we have a byte to read. Return None if we have no data
         if self.bit_index == 0 && !self.have_data() {
@@ -52,11 +51,11 @@ impl<R: std::io::Read> BitReader<R> {
         }
         // Otherwise return the bit as an Some(usize)
         let bit =
-            (self.buffer[self.byte_index] & BIT_MASK >> self.bit_index) >> (7 - self.bit_index);
+            (self.buffer[self.cursor] & BIT_MASK >> self.bit_index) >> (7 - self.bit_index);
         self.bit_index += 1;
         self.bit_index %= 8;
         if self.bit_index == 0 {
-            self.byte_index += 1;
+            self.cursor += 1;
         }
         Some(bit as usize)
     }
@@ -67,9 +66,13 @@ impl<R: std::io::Read> BitReader<R> {
         self.bit().map(|bit| bit == 1)
     }
 
-    /// Return Option<usize> of the next n bits, or None if there is no more data to read
+    /// Return Option<usize> of the next n bits, or None if there is no more data to read. 
     pub fn bint(&mut self, mut n: usize) -> Option<usize> {
         /*
+        This is used primarilyl to return signatures and crc values. For example, if a crc
+        value is stored on the stream as a u32, then bint(32) will return the crc value in
+        Some(usize).
+
         This is optimized to read as many bits as possible for each read.
         First, look to see if we have less than 8 bits in the current byte. If so, get
         those. Then get full bytes as needed to fulfill the request. Lastly, get a
@@ -84,11 +87,11 @@ impl<R: std::io::Read> BitReader<R> {
             let needed = n.min(8 - self.bit_index);
 
             // Get what we need/can from this partial byte
-            result = ((self.buffer[self.byte_index] & BIT_MASK >> self.bit_index)
+            result = ((self.buffer[self.cursor] & BIT_MASK >> self.bit_index)
                 >> (8 - self.bit_index - needed)) as usize;
             self.bit_index += needed;
             if self.bit_index / 8 > 0 {
-                self.byte_index += 1;
+                self.cursor += 1;
             }
             self.bit_index %= 8;
 
@@ -107,8 +110,8 @@ impl<R: std::io::Read> BitReader<R> {
             if !self.have_data() {
                 return None;
             }
-            result = result << 8 | (self.buffer[self.byte_index]) as usize;
-            self.byte_index += 1;
+            result = result << 8 | (self.buffer[self.cursor]) as usize;
+            self.cursor += 1;
             n -= 8;
         }
         // If we still need a partial byte, get whatever bits we still need.
@@ -118,23 +121,25 @@ impl<R: std::io::Read> BitReader<R> {
                 return None;
             }
             // Get the remaining bits
-            result = result << n | (self.buffer[self.byte_index] >> (8 - n)) as usize;
+            result = result << n | (self.buffer[self.cursor] >> (8 - n)) as usize;
             // Adjust indecies
             self.bit_index += n;
             if self.bit_index / 8 > 1 {
-                self.byte_index += 1;
+                self.cursor += 1;
             }
             self.bit_index %= 8;
         }
         Some(result)
     }
 
-    /// Returns an Option<u8>, or None if there is no more data to read
+    /// Returns a byte as an Option<u8>, or None if there is no more data to read. This is
+    /// a convenience function, and calls bint(8).
     pub fn byte(&mut self) -> Option<u8> {
         self.bint(8).map(|byte| byte as u8)
     }
 
-    /// Returns an Option<Vec<u8>> of n bytes, or None if there is no more data to read
+    /// Returns an Option<Vec<u8>> of n bytes, or None if there is no more data to read. This
+    /// is a convenience function, and calls byte n times.
     pub fn bytes(&mut self, mut n: usize) -> Option<Vec<u8>> {
         let mut result: Vec<u8> = Vec::with_capacity(n);
 
@@ -149,20 +154,13 @@ impl<R: std::io::Read> BitReader<R> {
 
     /// Debugging function. Report current position in the buffer.
     pub fn loc(&self) -> String {
-        format!("[{}.{}]", self.byte_index, self.bit_index)
+        format!("[{}.{}]", self.cursor, self.bit_index)
     }
 }
 
-/* // Iterator is not currently used, but was tried with alternative factorings that proved slower.
-impl<R> Iterator for BitReader<R>
-where
-    R: Read,
-{
-    type Item = usize;
-    fn next(&mut self) -> Option<usize> {
-        self.bit()
-    }
-}
+/*
+Note: I tried several refactorings to use an interator to read bits for the above functions,
+but the code above proved faster than any iterator I could write.
  */
 
 #[cfg(test)]
@@ -183,29 +181,6 @@ mod test {
         assert_eq!(br.bit(), Some(1));
         assert_eq!(br.bit(), None);
     }
-
-    /* #[test]
-    fn iter_test() {
-        let x = [0b1000_0001_u8, 0b0100_1000].as_slice();
-        let mut br = BitReader::new(x);
-        assert_eq!(br.next(), Some(1));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(1));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(1));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(1));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), Some(0));
-        assert_eq!(br.next(), None);
-    } */
 
     #[test]
     fn bint_test() {

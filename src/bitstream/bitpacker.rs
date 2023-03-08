@@ -1,17 +1,20 @@
 use log::error;
 
-/// Creates a bitstream for output. 
+/// Creates a bitstream for output. This does not write the stream, but just packs bits
+/// into the output. last_bits is the number of unused bits at the end of output, and is
+/// always a number between 0 and 7 inclusive. BitPacker allows for parallel processing of
+/// multiple blocks of data, which then must be written serially.
 pub struct BitPacker {
     pub output: Vec<u8>,
     pub last_bits: u8,
+    // queue holds bits temporarily until we can put them on the output efficiently
     queue: u64,
+    // q_bits is the number of valid bits in the queue
     q_bits: u8,
 }
 
 impl BitPacker {
-    /// Create a new BitPacker with an output buffer of size specified. Suggest the
-    /// size be set to the block size. Call flush() to flush the bit queue to the buffer
-    /// before closing the output file.
+    /// Create a new BitPacker with an output buffer with the capacity specified in size. 
     pub fn new(size: usize) -> Self {
         Self {
             output: Vec::with_capacity(size),
@@ -65,6 +68,7 @@ impl BitPacker {
         self.write_stream();
     }
 
+    // out_8 is not used, but is here for completeness.
     // /// Puts an 8 bit word  of pre-packed binary encoded data on the stream.
     // pub fn out8(&mut self, data: u8) {
     //     self.queue <<= 8; //shift queue by bit length
@@ -74,7 +78,8 @@ impl BitPacker {
     // }
 
     /// Flushes the remaining bits (1-7) from the buffer, padding with 0s in the least
-    /// signficant bits
+    /// signficant bits. Flush MUST be called before reading the output or data may be 
+    /// left in the internal queue.
     pub fn flush(&mut self) {
         self.last_bits = self.q_bits % 8;
         if self.q_bits > 0 {

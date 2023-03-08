@@ -4,8 +4,7 @@ const MAX_RUN: usize = 256 + 4;
 
 /// Iteratable struct that will return a block with a max size of block_size bytes
 /// encoded using BZIP2 RLE 1 style encoding
-pub struct RLE1Block<R> 
-{
+pub struct RLE1Block<R> {
     source: R,
     block_size: usize,
     buffer: Vec<u8>,
@@ -162,16 +161,17 @@ impl<R: std::io::Read> RLE1Block<R> {
     }
 }
 
-impl<R: std::io::Read> Iterator for RLE1Block<R> {
+impl<R> Iterator for RLE1Block<R>
+where
+    R: std::io::Read,
+{
     type Item = (u32, Vec<u8>);
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next(&mut self) -> Option<(u32, Vec<u8>)> {
         // First make sure the buffer is full.
         self.refill_buffer();
-        // Reset the block CRC 
-        self.block_crc = 0;
 
         // If there is no data to process, return None (Nothing to read and an empty buffer).
-        if self.data_gone && self.buffer.is_empty() {
+        if self.data_gone && self.buffer.len() == 0 {
             return None;
         }
         // Otherwise go process a block (size set by block_size) of data and return the block
@@ -179,14 +179,13 @@ impl<R: std::io::Read> Iterator for RLE1Block<R> {
     }
 }
 
-
 /*
 Logic: This is similar to the encoding. Start looking for a sequence of 4 identical bytes.
 When you find them, get the next byte, which is a count of how many more such bytes are needed.
-First output everthing from the start until the end of the sequence we found (not counting the 
-count byte) followed by a vec created with the repeating byte we want to insert. Since we want 
-to get past the 4 bytes plus the counter that we found, put 5 into a jump_past_search variable 
-and loop until that decrements to zero. 
+First output everthing from the start until the end of the sequence we found (not counting the
+count byte) followed by a vec created with the repeating byte we want to insert. Since we want
+to get past the 4 bytes plus the counter that we found, put 5 into a jump_past_search variable
+and loop until that decrements to zero.
 Perhaps I should have use the while idx strategy rather than a for loop, but...
 */
 /// Unencodes runs of four or more characters from the RLE1 phase

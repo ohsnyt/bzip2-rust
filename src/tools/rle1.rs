@@ -53,8 +53,8 @@ impl<R: std::io::Read> RLE1Block<R> {
     }
 
     /// Encode runs of for our more identical bytes, pre-BWT. Returns a crc of the original data used,
-    ///  and the RLE1 data.
-    fn get_block(&mut self) -> (u32, Vec<u8>) {
+    ///  the RLE1 data, and a bool set to true if this is the last block.
+    fn get_block(&mut self) -> (u32, Vec<u8>, bool) {
         /*
         This is optimized for speed. It scans the input for runs of 4 identical bytes. A run can be anywhere
         from 0-255 identical bytes after the run. This means our buffer should be at least 260 bytes long so
@@ -84,7 +84,7 @@ impl<R: std::io::Read> RLE1Block<R> {
                     // Empty the buffer and reset the cursor
                     self.buffer.clear();
                     self.buffer_cursor = 0;
-                    return (self.block_crc, out);
+                    return (self.block_crc, out, self.data_gone && self.buffer.is_empty());
                 }
                 // In the case that we have only 1, 2 or 3 bytes left, we don't need to look for runs.
                 1..=3 => {
@@ -95,7 +95,7 @@ impl<R: std::io::Read> RLE1Block<R> {
                         do_crc(self.block_crc, &self.buffer[start..self.buffer_cursor]);
                     self.buffer.drain(..self.buffer_cursor);
                     self.buffer_cursor = 0;
-                    return (self.block_crc, out);
+                    return (self.block_crc, out, self.data_gone && self.buffer.is_empty());
                 }
                 // Otherwise we still need to look for runs.
                 _ => {
@@ -158,7 +158,7 @@ impl<R: std::io::Read> RLE1Block<R> {
         out.extend_from_slice(&self.buffer[start..self.buffer_cursor]);
         self.buffer.drain(..self.buffer_cursor);
         self.buffer_cursor = 0;
-        (self.block_crc, out)
+        (self.block_crc, out, self.data_gone && self.buffer.is_empty())
     }
 
     /// Helper function for rel1_encode to count how many duplicate bytes occur (0-255).
@@ -181,8 +181,8 @@ impl<R> Iterator for RLE1Block<R>
 where
     R: std::io::Read,
 {
-    type Item = (u32, Vec<u8>);
-    fn next(&mut self) -> Option<(u32, Vec<u8>)> {
+    type Item = (u32, Vec<u8>, bool);
+    fn next(&mut self) -> Option<(u32, Vec<u8>, bool)> {
         // First make sure the buffer is full.
         self.refill_buffer();
 

@@ -2,7 +2,7 @@ use log::{error, info, trace, warn};
 use rayon::prelude::*;
 
 use crate::{
-    snyder::native::bwt_decode_test,
+    bwt_algorithms::bwt_sort::bwt_decode_test,
     tools::{
         crc::{do_crc, do_stream_crc},
         rle2_mtf::rle2_mtf_decode_fast,

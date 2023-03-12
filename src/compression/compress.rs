@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self, Write};
+use std::sync::{Arc, Condvar, Mutex};
 
 use crate::bitstream::bitwriter::BitWriter;
 use crate::tools::crc::do_stream_crc;
@@ -46,59 +47,30 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
     let mut fname = opts.files[0].clone();
     fname.push_str(".bz2");
-    let mut f_out = File::create(fname).expect("Can't create .bz2 file");
+    // let mut f_out = File::create(fname).expect("Can't create .bz2 file");
 
     /*
-    This works and is faster than single-threaded versions. Unfortunately it is a hog of memory.
+    This works and is faster than single-threaded versions. Unfortunately it can use a lot more memory.
 
-    This works by compressing each block and holding those compressed blocks in memory until we have them all.
-    We then write them out to the output stream.
-
-    NOTE: par_bridge is not supposed to be very efficient. Look into this.
+    This works by compressing each block in parallel. Depending on the sequence of when those blocks finish,
+    this will hold compressed blocks in memory until it is their turn to be written.
     */
 
-    // Initialize the stream crc
-    let mut stream_crc = 0;
+    // Initialize locking / waiting variables for multi-core synchonization
+    let sync = Arc::new((Condvar::new(), Mutex::new(0)));
+    // Initialize thread channel communication. Sends block data, sequence number, and indicator whether
+    //  this is the last block
+    let (tx, rx) = std::sync::mpsc::channel();
     // Initialize a bitwriter.
-    let mut bw = BitWriter::new(opts.block_size);
+    let mut bw = BitWriter::new(fname, opts.block_size, rx);
 
-    // Build the RLE1 blocks and process
-    let huff_blocks = rle1_blocks
+    // Build the RLE1 blocks and compress them
+    rle1_blocks
         .into_iter()
+        .enumerate()
         .par_bridge()
-        .map(|(block_crc, block)| (block_crc, compress_block(&block, block_crc)))
-        .collect::<Vec<(u32, (Vec<u8>, u8))>>();
-
-    // First write file stream header onto the stream
-    bw.out8(b'B');
-    bw.out8(b'Z');
-    bw.out8(b'h');
-    bw.out8(opts.block_size as u8 + 0x30);
-
-    // left shift each huff_block so there isn't empty space at the end of each and write it.
-    huff_blocks.iter().for_each(|(crc, (block, last_bits))| {
-        stream_crc = do_stream_crc(stream_crc, *crc);
-        block
-            .iter()
-            .take(block.len() - 1)
-            .for_each(|byte| bw.out8(*byte));
-        // Unpack the last byte by right shifting it. If last_bits is zero, then there was no last
-        // partial byte so write out the entire last byte.
-        if last_bits == &0 {
-            bw.out8(*block.last().unwrap())
-        } else {
-            bw.out24((*last_bits as u32) << 24 | *block.last().unwrap() as u32 >> (8 - *last_bits));
-        }
-    });
-
-    // At the last block, write the stream footer magic and  block_crc and flush the output buffer
-    bw.out24(0x18_177245); // magic bits  1-24
-    bw.out24(0x18_385090); // magic bits 25-48
-    bw.out32(stream_crc as u32);
-    bw.flush();
-
-    // Write out the data in the bitstream buffer.
-    f_out.write_all(&bw.output)?;
-
+        .for_each(|(i, (crc, block, last_block))| {
+            tx.send((compress_block(&block, crc), i, last_block));
+        });
     Ok(())
 }

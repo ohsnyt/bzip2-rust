@@ -4,9 +4,10 @@ use crate::bitstream::bitpacker::BitPacker;
 use crate::tools::rle2_mtf::rle2_mtf_encode;
 //use crate::tools::symbol_map;
 //use crate::{bwt_ribzip::*, Timer};
+use std::sync::{Arc, Condvar, Mutex};
 
 //use crate::julian::block_sort::block_sort;
-use crate::snyder::native::bwt_encode_native;
+use crate::bwt_algorithms::bwt_sort::bwt_encode;
 //use crate::snyder::bwt_ds_par::bwt_encode_par;
 use log::{debug, trace};
 
@@ -14,7 +15,7 @@ use crate::huffman_coding::huffman::huf_encode;
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Called by Compress, this handles one block and returns a vec of packed huffman data and the valid bit count of the last byte.
-pub fn compress_block(block: &[u8], block_crc: u32) -> (Vec<u8>, u8) {
+pub fn compress_block(block: &[u8], block_crc: u32, sync: Arc<(Condvar, Mutex<i32>)>) -> (Vec<u8>, u8) {
     // Initialize A bitwriter vec to the block size to avoid resizing. Block.len is a very generous size.
     let mut bp = BitPacker::new(block.len());
 
@@ -34,7 +35,7 @@ pub fn compress_block(block: &[u8], block_crc: u32) -> (Vec<u8>, u8) {
     bp.out24(0x01_000000); // One zero bit
 
     // Do BWT using the native algorithm with sais as fallback
-    let (key, bwt_data) = bwt_encode_native(block);
+    let (key, bwt_data) = bwt_encode(block);
 
     // Now that we have the key, we can write the 24bit BWT key
     trace!("\r\x1b[43mWriting key at {}.    \x1b[0m", bp.loc());

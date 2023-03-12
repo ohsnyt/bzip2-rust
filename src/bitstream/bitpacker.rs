@@ -14,7 +14,7 @@ pub struct BitPacker {
 }
 
 impl BitPacker {
-    /// Create a new BitPacker with an output buffer with the capacity specified in size. 
+    /// Create a new BitPacker with an output buffer with the capacity specified in size.
     pub fn new(size: usize) -> Self {
         Self {
             output: Vec::with_capacity(size),
@@ -78,7 +78,7 @@ impl BitPacker {
     // }
 
     /// Flushes the remaining bits (1-7) from the buffer, padding with 0s in the least
-    /// signficant bits. Flush MUST be called before reading the output or data may be 
+    /// signficant bits. Flush MUST be called before reading the output or data may be
     /// left in the internal queue.
     pub fn flush(&mut self) {
         self.last_bits = self.q_bits % 8;

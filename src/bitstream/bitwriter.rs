@@ -19,7 +19,7 @@ impl BitWriter {
     /// size be set to the block size. Call flush() to flush the bit queue to the buffer
     /// before closing the output file.
     pub fn new(filepath: &str, mut block_size: u8) -> Self {
-        let result = std::fs::File::open(filepath);
+        let result = std::fs::File::create(filepath);
         if block_size > 9 {
             block_size = 9;
         }

@@ -4,7 +4,6 @@ use crate::bitstream::bitpacker::BitPacker;
 
 use super::huffman_code_from_weights::improve_code_len_from_weights;
 use std::cmp::Ordering;
-use std::io::Error;
 
 /*
 QUESTION: WHY DO NODES NEED TO BE SORTED ON DECREASING SYMBOL VALUE? WHAT IF WE ONLY
@@ -71,7 +70,7 @@ pub fn huf_encode(
     freq: &[u32; 256],
     eob: u16,
     symbol_map: &[u16],
-) -> Result<(), Error> {
+) {
     // We can have 2-6 coding tables depending on how much data we have coming in.
     let table_count: usize = match rle2.len() {
         0..=199 => 2,
@@ -453,9 +452,7 @@ pub fn huf_encode(
             index += 1;
         })
     }
-
     // All done
-    Ok(())
 }
 
 #[allow(clippy::unusual_byte_groupings)]

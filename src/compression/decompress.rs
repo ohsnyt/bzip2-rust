@@ -1,22 +1,18 @@
-use log::{error, info, trace, warn};
-use rayon::prelude::*;
-
 use crate::{
+    bitstream::bitreader::BitReader,
     bwt_algorithms::bwt_sort::bwt_decode_test,
     tools::{
+        cli::BzOpts,
         crc::{do_crc, do_stream_crc},
+        rle1::rle1_decode,
         rle2_mtf::rle2_mtf_decode_fast,
+        symbol_map::decode_sym_map,
     },
-    //Timer,
 };
-
-use crate::bitstream::bitreader::BitReader;
-
-use crate::tools::{cli::BzOpts, rle1::rle1_decode, symbol_map::decode_sym_map};
-
+use log::{error, info, trace, warn};
 use std::{
     fs::File,
-    io::{self, Error, Write}, sync::Arc,
+    io::{self, Error, Write},
 };
 
 //const BUFFER_SIZE: usize = 100000;
@@ -26,7 +22,7 @@ const FOOTER: [u8; 6] = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
 const HEADER: [u8; 6] = [0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59];
 
 /// Decompress the file specified in opts (BzOpts). Current version also requires a Timer.
-pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
+pub fn decompress(opts: &BzOpts) -> io::Result<()> {
     // Start bitreader from input file in the command line
     let mut br = BitReader::new(File::open(opts.files[0].clone())?);
 
@@ -314,7 +310,13 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                     // Put it into the output vec.
                     out[block_index] = sym;
                     let bitlength = (0..=depth).map(|i| level[i].bits).sum::<u32>() as usize;
-                    trace!("\r\x1b[43m{:>6}: {:>3}  {:0bitlength$b}  {} \x1b[0m", block_index, sym, code, br.loc());
+                    trace!(
+                        "\r\x1b[43m{:>6}: {:>3}  {:0bitlength$b}  {} \x1b[0m",
+                        block_index,
+                        sym,
+                        code,
+                        br.loc()
+                    );
 
                     // Check if we have reached the end of block
                     if sym == eob {

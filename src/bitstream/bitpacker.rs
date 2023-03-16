@@ -1,5 +1,3 @@
-use log::error;
-
 /// Creates a huffman-encoded, packed bitstream of one block of data. The final byte of the block
 /// is padded with zeros to reach a full byte. The padding is always a number between 0 and 7
 /// inclusive.

@@ -19,6 +19,6 @@ pub fn freqs(data: &[u8]) -> Vec<u32> {
     } else {
         let mut freqs = vec![0_u32; 256];
         data.iter().for_each(|&el| freqs[el as usize] += 1);
-        return freqs;
+        freqs
     }
 }

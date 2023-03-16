@@ -1,6 +1,10 @@
 use std::fs::File;
-use std::io;
+use std::io::{self, Write};
+use std::sync::{Arc, Condvar, Mutex};
+
 use crate::bitstream::bitwriter::BitWriter;
+use crate::tools::crc::do_stream_crc;
+
 use super::compress_block::compress_block;
 use crate::tools::cli::BzOpts;
 use crate::tools::rle1::RLE1Block;
@@ -51,6 +55,8 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     this will hold compressed blocks in memory until it is their turn to be written.
     */
 
+    // Initialize locking / waiting variables for multi-core synchonization
+    let sync = Arc::new((Condvar::new(), Mutex::new(0)));
     // Initialize thread channel communication. Sends block data, sequence number, and indicator whether
     //  this is the last block
     let (tx, rx) = std::sync::mpsc::channel();
@@ -74,7 +80,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
             // Wait for a block to be sent to this thread.
             let result: ((Vec<u8>, u8), usize, bool) = rx.recv().unwrap();
             // If the block is the one we are waiting for, process it.
-            if result.1 == current_block {
+            if &result.1 == &current_block {
                 info!("RX: Found block {}. Writing it...", current_block,);
                 let data = &result.0 .0;
                 let padding = result.0 .1;
@@ -98,7 +104,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
                 let data = &results[idx].0 .0;
                 let last_bits = results[idx].0 .1;
                 let last = results[idx].2;
-                bw.add_block(last, data, last_bits).unwrap();
+                bw.add_block(last, &data, last_bits).unwrap();
                 results.swap_remove(idx);
                 current_block += 1;
                 if last {
@@ -109,13 +115,14 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     });
 
     // Build the RLE1 blocks and compress them
+    let thread_tx = tx.clone();
     rle1_blocks
         .into_iter()
         .enumerate()
         .par_bridge()
-        .for_each_with(tx, |tx, (i, (crc, block, last_block))| {
+        .for_each_with(thread_tx, |thread_tx, (i, (crc, block, last_block))| {
             let result = compress_block(&block, crc);
-            tx.send((result, i, last_block)).unwrap();
+            thread_tx.send((result, i, last_block)).clone().unwrap();
         });
     info!("RX: Thread returned {:?}", handle.join());
     Ok(())

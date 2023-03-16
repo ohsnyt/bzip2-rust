@@ -96,13 +96,10 @@ where
                         self.data_gone && self.buffer.is_empty(),
                     );
                 }
-                // In the case that we have only 1, 2 or 3 bytes left, we don't need to look for runs. Let's just throw them
-                // into the buffer and call it good. This will happen at the end of the file, but MIGHT also happen if
-                // we have only a couple bytes left when a buffer is technically full. We don't really need to start a new
-                // block for three bytes. It will still fit here with our current buffer.
+                // In the case that we have only 1, 2 or 3 bytes left, we don't need to look for runs.
                 1..=3 => {
                     // Get to the end of the buffer
-                    self.buffer_cursor = self.buffer.len() - 1;
+                    self.buffer_cursor += remaining + 1;
                     out.extend_from_slice(&self.buffer[start..self.buffer_cursor]);
                     self.block_crc =
                         do_crc(self.block_crc, &self.buffer[start..self.buffer_cursor]);
@@ -116,7 +113,7 @@ where
                 }
                 // Otherwise we still need to look for runs.
                 _ => {
-                    // If the remaining data in the buffer is low, first copy out what we have processed and then go refill it.
+                    // If the buffer is low, first copy out what we have processed and then go refill it.
                     if remaining < MAX_RUN && !self.data_gone {
                         self.block_crc =
                             do_crc(self.block_crc, &self.buffer[start..self.buffer_cursor]);
@@ -124,7 +121,6 @@ where
                         self.buffer.drain(..self.buffer_cursor);
                         self.buffer_cursor = 0;
                         self.refill_buffer();
-                        // Reset the remaining counter as well as the starting point for the next slice
                         remaining = self.buffer.len();
                         start = 0;
                     }

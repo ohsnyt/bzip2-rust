@@ -15,7 +15,7 @@ use crate::huffman_coding::huffman::huf_encode;
 
 #[allow(clippy::unusual_byte_groupings)]
 /// Called by Compress, this handles one block and returns a vec of packed huffman data and the valid bit count of the last byte.
-pub fn compress_block(block: &[u8], block_crc: u32, sync: Arc<(Condvar, Mutex<i32>)>) -> (Vec<u8>, u8) {
+pub fn compress_block(block: &[u8], block_crc: u32) -> (Vec<u8>, u8) {
     // Initialize A bitwriter vec to the block size to avoid resizing. Block.len is a very generous size.
     let mut bp = BitPacker::new(block.len());
 
@@ -43,8 +43,8 @@ pub fn compress_block(block: &[u8], block_crc: u32, sync: Arc<(Condvar, Mutex<i3
 
     let (rle2, freq, symbol_map) = rle2_mtf_encode(&bwt_data);
 
-    // Calculate the eob character
-    let eob = (256 - freq.iter().rev().position(|b| b > &0).unwrap_or_default() + 1) as u16;
+    // Get the eob character
+    let eob = rle2[rle2.len() - 1];
 
     // Now for the compression - the Huffman encoding (which also writes out data)
     let result = huf_encode(&mut bp, &rle2, &freq, eob, &symbol_map);
@@ -57,5 +57,5 @@ pub fn compress_block(block: &[u8], block_crc: u32, sync: Arc<(Condvar, Mutex<i3
     );
     // Flush the buffer before returning
     bp.flush();
-    (bp.output, bp.last_bits)
+    (bp.output, bp.padding)
 }

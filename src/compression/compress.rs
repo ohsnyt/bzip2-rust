@@ -10,6 +10,7 @@ use crate::tools::cli::BzOpts;
 use crate::tools::rle1::RLE1Block;
 
 use rayon::prelude::*;
+use simplelog::info;
 #[allow(clippy::unusual_byte_groupings)]
 /*
     NOTE: I WILL EVENTUALLY CHANGE THIS SO IT WORKS WITH A C FFI.
@@ -50,8 +51,6 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // let mut f_out = File::create(fname).expect("Can't create .bz2 file");
 
     /*
-    This works and is faster than single-threaded versions. Unfortunately it can use a lot more memory.
-
     This works by compressing each block in parallel. Depending on the sequence of when those blocks finish,
     this will hold compressed blocks in memory until it is their turn to be written.
     */
@@ -62,15 +61,69 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     //  this is the last block
     let (tx, rx) = std::sync::mpsc::channel();
     // Initialize a bitwriter.
-    let mut bw = BitWriter::new(fname, opts.block_size, rx);
+    let mut bw = BitWriter::new(&fname, opts.block_size as u8);
+
+    // Spawn the BitWriter thread and wait for blocks to write.
+    let handle = std::thread::spawn(move || {
+        // Set the current block (the block we are waiting to write) to 0.
+        let mut current_block = 0;
+        // Initialize a vec to hold out-of-sequence blocks we might receive
+        let mut results = vec![];
+
+        'outer: loop {
+            info!(
+                "RX: Waiting for block {}. The queue contains {} blocks.",
+                current_block,
+                results.len(),
+            );
+
+            // Wait for a block to be sent to this thread.
+            let result: ((Vec<u8>, u8), usize, bool) = rx.recv().unwrap();
+            // If the block is the one we are waiting for, process it.
+            if &result.1 == &current_block {
+                info!("RX: Found block {}. Writing it...", current_block,);
+                let data = &result.0 .0;
+                let padding = result.0 .1;
+                let last = result.2;
+                bw.add_block(last, data, padding).unwrap();
+                current_block += 1;
+                if last {
+                    break;
+                }
+            } else {
+                info!(
+                    "RX: Adding block {} to the queue. The queue will now contain {} blocks.",
+                    result.1,
+                    results.len() + 1,
+                );
+                // Otherwise, save it until we get the one we want.
+                results.push(result);
+            }
+            while let Some(idx) = results.iter().position(|x| x.1 == current_block) {
+                info!("RX: Found block {}. Writing it...", current_block,);
+                let data = &results[idx].0 .0;
+                let last_bits = results[idx].0 .1;
+                let last = results[idx].2;
+                bw.add_block(last, &data, last_bits).unwrap();
+                results.swap_remove(idx);
+                current_block += 1;
+                if last {
+                    break 'outer;
+                }
+            }
+        }
+    });
 
     // Build the RLE1 blocks and compress them
+    let thread_tx = tx.clone();
     rle1_blocks
         .into_iter()
         .enumerate()
         .par_bridge()
-        .for_each(|(i, (crc, block, last_block))| {
-            tx.send((compress_block(&block, crc), i, last_block));
+        .for_each_with(thread_tx, |thread_tx, (i, (crc, block, last_block))| {
+            let result = compress_block(&block, crc);
+            thread_tx.send((result, i, last_block)).clone().unwrap();
         });
+    info!("RX: Thread returned {:?}", handle.join());
     Ok(())
 }

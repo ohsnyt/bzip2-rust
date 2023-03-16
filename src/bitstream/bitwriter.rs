@@ -1,28 +1,33 @@
-use simplelog::error;
-
 use crate::tools::crc::do_stream_crc;
 
-/// Writes a bitstream for output. This is very similar to the BitPacker, except it
-/// writes to a output file/stream (through a buffer).
+/// Writes a bitstream for output. Takes the blocks packed by BitPacker and assembles them with
+/// the stream header and footer, calculating the stream CRC as it processes the blocks.
 pub struct BitWriter {
+    /// Output buffer used to write the bitstream.
     output: Vec<u8>,
+    /// Private queue to hold bits that are waiting to be put as bytes into the output buffer.
     queue: u64,
+    /// Count of valid bits in the queue.
     q_bits: u8,
 
-    writer: Box<dyn std::io::Write>,
+    /// Handle to the output stream
+    writer: Box<dyn std::io::Write + std::marker::Sync + std::marker::Send>,
+    /// Block size, needed to create the header.
     block_size: u8,
+    /// Stream CRC, calculated from each block crc and added to the stream footer.
     stream_crc: u32,
 }
 
 impl BitWriter {
-    /// Create a new Bitwriter with an output buffer of size specified. Suggest the
-    /// size be set to the block size. Call flush() to flush the bit queue to the buffer
-    /// before closing the output file.
+    /// Create a new Bitwriter with an output buffer of size specified. We need the block size. 
+    /// to create the header. Use add_block() to add each block to the stream.
     pub fn new(filepath: &str, mut block_size: u8) -> Self {
+        // Ensure that the block size is valid
         let result = std::fs::File::create(filepath);
         if block_size > 9 {
             block_size = 9;
         }
+        // Open the output device for writing and initialize the struct
         Self {
             writer: match result {
                 Ok(file) => Box::new(file),
@@ -37,61 +42,71 @@ impl BitWriter {
     }
 
     /// Push the stream header to output buffer.
-    fn push_header(&self) {
+    fn push_header(&mut self) {
         // First write file stream header onto the stream
         let magic = "BZh".as_bytes();
         magic.iter().for_each(|&x| self.out8(x));
         self.out8(self.block_size + 0x30);
     }
 
-    /// Add a block of data to the output.
-    pub fn add_block(&self, last: bool, data: &[u8], last_bits: u8) -> Result<usize, std::io::Error> {
+    /// Add a block of data to the output. The block is assumed to be packed by BitPacker. "last" 
+    /// indicates if the block is the last block in the file. "padding" indicates how many
+    /// trailing zeros were added to the last byte of the block to make it a multiple of 8 bits.
+    pub fn add_block(
+        &mut self,
+        last: bool,
+        data: &[u8],
+        padding: u8,
+    ) -> Result<usize, std::io::Error> {
         // If this is the first block, write the header
         if self.stream_crc == 0 {
             self.push_header()
         };
+
         // Get the CRC from this block
         let block_crc = u32::from_be_bytes(data[6..10].try_into().unwrap());
         // Update the stream crc
         self.stream_crc = do_stream_crc(self.stream_crc, block_crc);
-        // Write all the data except the last byte
-        data.iter().take(data.len()-1).for_each(|&x| self.out8(x));
-        // Write the good bits from the last byte
-         self.last_bits(*data.last().unwrap(), last_bits);
-        // Write out the data in the bitstream buffer.
-        let mut result = self.writer.write(&self.output);
-        if result.is_ok() {
-            self.output.drain(..result.unwrap());
-        } else {
-            return result;
+
+        // Write all the block data
+        data.iter().for_each(|&x| self.out8(x));
+
+        // Back up the queue to remove any padding on the last byte
+        if padding > 0 {
+            self.queue >>= padding as u64;
+            self.q_bits -= padding
         }
-        // If this is the last block, write the footer
+
+        // If this is the last block, add the footer to the queue.
         if last {
-            // At the last block, write the stream footer magic and  block_crc and flush the output buffer
+            // First the stream footer magic, then the block_crc
             let magic = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
             magic.iter().for_each(|&x| self.out8(x));
             // Write the stream crc
             self.out8((self.stream_crc >> 24) as u8);
             self.out8((self.stream_crc >> 16) as u8);
             self.out8((self.stream_crc >> 8) as u8);
-            self.out8((self.stream_crc >> 0) as u8);
+            self.out8((self.stream_crc) as u8);
+
+            // Now flush the queue
             self.flush();
 
-            // Write out the data in the bitstream buffer.
-            let mut result = self.writer.write(&self.output);
-            if result.is_ok() {
-                self.output.drain(..result.unwrap());
-                if self.output.is_empty() {
-                    return Ok(0);
-                }
-            } else {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Unable to write bzip2 stream footer.",
-                ));
+            // And write out the remaining (flushed) data in the bitstream buffer.
+            let result = self.writer.write(&self.output);
+
+            // Drain what we wrote from the buffer
+            if let Ok(written) = result {
+                self.output.drain(..written);
             }
+            return result;
+        } else {
+            // Write out the data in the bitstream buffer. The queue will carry over to the next block.
+            let result = self.writer.write(&self.output);
+            if result.is_ok() {
+                self.output.drain(..result.as_ref().unwrap());
+            }
+            return result;
         }
-        Ok(result.unwrap())
     }
 
     /// Internal bitstream write function common to all out.XX functions.
@@ -108,38 +123,31 @@ impl BitWriter {
 
     /// Put a byte of pre-packed binary encoded data on the stream.
     fn out8(&mut self, data: u8) {
+        // Make sure the queue is empty enough to hold the data
+        self.push_queue();
         self.queue <<= 8; //shift queue by one byte
         self.queue |= data as u64; //add the byte to queue
         self.q_bits += 8; //update depth of queue bits
-        self.push_queue();
-    }
-
-    /// Puts a partial byte of pre-packed binary encoded data on the stream.
-    fn last_bits(&mut self, data: u8, mut last_bits: u8) {
-        self.queue <<= last_bits.max(8); //bit shift queue by up to one byte
-        self.queue |= (data >> 8 - last_bits) as u64; //bit shift and add the data to queue
-        self.q_bits += last_bits; //update depth of queue bits
-        self.push_queue();
     }
 
     /// Flushes the remaining bits (1-7) from the buffer, padding with 0s in the least
     /// signficant bits. Flush MUST be called before reading the output or data may be
     /// left in the internal queue.
     fn flush(&mut self) {
+        // First push out all the full bytes
+        while self.q_bits > 7 {
+            let byte = (self.queue >> (self.q_bits - 8)) as u8;
+            self.output.push(byte); //push the packed byte out
+            self.q_bits -= 8; //adjust the count of bits left in the queue
+        }
+        // Then push out the remaining bits
         if self.q_bits > 0 {
-            self.queue <<= 8 - self.q_bits; //pad the queue with zeros
-            self.q_bits += 8 - self.q_bits;
-            self.push_queue(); // write out all that is left
-            if self.q_bits > 0 {
-                error!("Stuff left in the BitPacker queue.");
-            }
+            let mut byte = (self.queue & (0xff >> 8 - self.q_bits) as u64) as u8;
+            byte <<= 8 - self.q_bits;
+            self.output.push(byte); //push the packed byte out
+            self.q_bits = 0; //adjust the count of bits left in the queue
         }
     }
-
-    // /// Debugging function to return the number of bytes.bits output so far. Used in tests.
-    // pub fn loc(&self) -> String {
-    //     format! {"[{}.{}]",((self.output.len() * 8) + self.q_bits as usize)/8, ((self.output.len() * 8) + self.q_bits as usize)%8}
-    // }
 }
 
 #[cfg(test)]
@@ -155,14 +163,27 @@ mod test {
         let out = bw.output;
         assert_eq!(out, "x".as_bytes());
     }
-    fn last_bits_test() {
+
+    #[test]
+    fn last_bits_test_1() {
         let mut bw = BitWriter::new("", 1);
-        let data = 0xFF as u8;
-        bw.out8(data);
-        let data = 0x6 as u8;
-        bw.last_bits(data, 3);
+        bw.out8(255);
+        bw.out8(1);
+        bw.out8(128);
+        bw.out8(255);
+        bw.out8(7<<5);
         bw.flush();
         let out = bw.output;
-        assert_eq!(out, vec![0xFF, 0xE0]);
+        assert_eq!(out, vec![255, 1, 128, 255, 224]);
+    }
+
+    #[test]
+    fn out24_short_test() {
+        let mut bw = BitWriter::new("", 100);
+        bw.out8(255);
+        bw.out8(6<<5);
+        bw.flush();
+        let out2 = &bw.output;
+        assert_eq!(out2, &[0b1111_1111, 0b1100_0000]); // Note: '33' is data from previous call
     }
 }

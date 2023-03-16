@@ -16,7 +16,7 @@ use crate::tools::{cli::BzOpts, rle1::rle1_decode, symbol_map::decode_sym_map};
 
 use std::{
     fs::File,
-    io::{self, Error, Write},
+    io::{self, Error, Write}, sync::Arc,
 };
 
 //const BUFFER_SIZE: usize = 100000;
@@ -313,7 +313,8 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
                     // Put it into the output vec.
                     out[block_index] = sym;
-                    trace!("\r\x1b[43m{:>6}: {:>3}     \x1b[0m", block_index, sym);
+                    let bitlength = (0..=depth).map(|i| level[i].bits).sum::<u32>() as usize;
+                    trace!("\r\x1b[43m{:>6}: {:>3}  {:0bitlength$b}  {} \x1b[0m", block_index, sym, code, br.loc());
 
                     // Check if we have reached the end of block
                     if sym == eob {
@@ -336,6 +337,14 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
                     // Update the level variables if we are starting a new chunk.
                     if block_index % CHUNK_SIZE == 0 {
+                        // Make sure we don't exceed the number of selectors
+                        if block_index / CHUNK_SIZE == selector_count as usize {
+                            error!("Did not find EOB while working through final chunk.");
+                            return Err(Error::new(
+                                io::ErrorKind::Other,
+                                "Did not find end of block",
+                            ));
+                        }
                         let (l, s) = &huf_decode_maps[selector_map[block_index / 50]];
                         level = l;
                         symbol_index = s;

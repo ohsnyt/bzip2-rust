@@ -1,30 +1,34 @@
 use log::error;
 
-/// Creates a bitstream for output. This does not write the stream, but just packs bits
-/// into the output. last_bits is the number of unused bits at the end of output, and is
-/// always a number between 0 and 7 inclusive. BitPacker allows for parallel processing of
-/// multiple blocks of data, which then must be written serially.
+/// Creates a huffman-encoded, packed bitstream of one block of data. The final byte of the block
+/// is padded with zeros to reach a full byte. The padding is always a number between 0 and 7
+/// inclusive.
 pub struct BitPacker {
+    /// The output buffer which can be read externally.
     pub output: Vec<u8>,
-    pub last_bits: u8,
-    // queue holds bits temporarily until we can put them on the output efficiently
+    /// The number of zero bits padded to the last byte of the output buffer.
+    pub padding: u8,
+    /// The queue holds bits temporarily until we can put full bytes on the output buffer
     queue: u64,
-    // q_bits is the number of valid bits in the queue
+    /// q_bits is the number of valid bits in the queue
     q_bits: u8,
 }
 
+/// Creates a huffman-encoded, packed bitstream of one block of data. The final byte of the block
+/// is padded with zeros to reach a full byte. The padding is always a number between 0 and 7
+/// inclusive.
 impl BitPacker {
     /// Create a new BitPacker with an output buffer with the capacity specified in size.
     pub fn new(size: usize) -> Self {
         Self {
             output: Vec::with_capacity(size),
-            last_bits: 0,
+            padding: 0,
             queue: 0,
             q_bits: 0,
         }
     }
 
-    /// Internal bitstream write function common to all out.XX functions.
+    /// Internal bitstream write function common to all out.XX functions. Keeps the queue short.
     fn write_stream(&mut self) {
         while self.q_bits > 7 {
             let byte = (self.queue >> (self.q_bits - 8)) as u8;
@@ -68,7 +72,7 @@ impl BitPacker {
         self.write_stream();
     }
 
-    // out_8 is not used, but is here for completeness.
+    // out_8 is not currently used, but is here for completeness.
     // /// Puts an 8 bit word  of pre-packed binary encoded data on the stream.
     // pub fn out8(&mut self, data: u8) {
     //     self.queue <<= 8; //shift queue by bit length
@@ -79,16 +83,14 @@ impl BitPacker {
 
     /// Flushes the remaining bits (1-7) from the buffer, padding with 0s in the least
     /// signficant bits. Flush MUST be called before reading the output or data may be
-    /// left in the internal queue.
+    /// left in the private queue.
     pub fn flush(&mut self) {
-        self.last_bits = self.q_bits % 8;
         if self.q_bits > 0 {
-            self.queue <<= 8 - self.q_bits; //pad the queue with zeros
-            self.q_bits += 8 - self.q_bits;
+            self.padding = 8 - self.q_bits % 8;
+
+            self.queue <<= self.padding; //pad the queue with zeros
+            self.q_bits += self.padding;
             self.write_stream(); // write out all that is left
-            if self.q_bits > 0 {
-                error!("Stuff left in the BitPacker queue.");
-            }
         }
     }
 
@@ -104,38 +106,51 @@ mod test {
 
     #[test]
     fn out16_test() {
-        let mut bw = BitPacker::new(100);
+        let mut bp = BitPacker::new(100);
         let data = 0b00100001_00100000;
-        bw.out16(data);
-        bw.flush();
-        let out = bw.output;
+        bp.out16(data);
+        bp.flush();
+        let out = bp.output;
         assert_eq!(out, "! ".as_bytes());
     }
 
     #[test]
     fn out24_and_loc_test() {
-        let mut bw = BitPacker::new(100);
+        let mut bp = BitPacker::new(100);
         let data = 0b00001000_00000000_00000000_00100001;
-        bw.out24(data);
-        bw.flush();
-        let out = &bw.output;
+        bp.out24(data);
+        bp.flush();
+        let out = &bp.output;
         assert_eq!(out, "!".as_bytes());
-        assert_eq!("[1.0]", &bw.loc());
+        assert_eq!("[1.0]", &bp.loc());
         let data = 0b00011000_00000000_00000000_00000011;
-        bw.out24(data);
-        bw.flush();
-        let out2 = &bw.output;
+        bp.out24(data);
+        bp.flush();
+        let out2 = &bp.output;
         assert_eq!(out2, &[33, 0, 0, 3]); // Note: '33' is data from previous call
-        assert_eq!("[4.0]", &bw.loc());
+        assert_eq!("[4.0]", &bp.loc());
+    }
+
+    #[test]
+    fn out24_short_test() {
+        let mut bp = BitPacker::new(100);
+        // add 2 bits, both set
+        let data = 0b00000010_00000000_00000000_00000011;
+        bp.out24(data);
+        bp.flush();
+        let out2 = &bp.output;
+        // bits should show at the front.
+        assert_eq!(out2, &[0b1100_0000]);
+        assert_eq!("[1.0]", &bp.loc());
     }
 
     #[test]
     fn out32_test() {
-        let mut bw = BitPacker::new(100);
+        let mut bp = BitPacker::new(100);
         let data = 0b00100001_00100000_00100001_00100000;
-        bw.out32(data);
-        bw.flush();
-        let out = bw.output;
+        bp.out32(data);
+        bp.flush();
+        let out = bp.output;
         assert_eq!(out, [33, 32, 33, 32]);
     }
 }

@@ -4,7 +4,10 @@ const MAX_RUN: usize = 256 + 4;
 
 /// Iteratable struct that will return a block with a max size of block_size bytes
 /// encoded using BZIP2 RLE 1 style encoding
-pub struct RLE1Block<R> {
+pub struct RLE1Block<R>
+where
+    R: std::io::Read + std::marker::Sync + std::marker::Send,
+{
     source: R,
     block_size: usize,
     buffer: Vec<u8>,
@@ -13,7 +16,10 @@ pub struct RLE1Block<R> {
     pub block_crc: u32,
 }
 
-impl<R: std::io::Read> RLE1Block<R> {
+impl<R> RLE1Block<R>
+where
+    R: std::io::Read + std::marker::Sync + std::marker::Send,
+{
     pub fn new(source: R, block_size: usize) -> Self {
         RLE1Block {
             source,
@@ -84,7 +90,11 @@ impl<R: std::io::Read> RLE1Block<R> {
                     // Empty the buffer and reset the cursor
                     self.buffer.clear();
                     self.buffer_cursor = 0;
-                    return (self.block_crc, out, self.data_gone && self.buffer.is_empty());
+                    return (
+                        self.block_crc,
+                        out,
+                        self.data_gone && self.buffer.is_empty(),
+                    );
                 }
                 // In the case that we have only 1, 2 or 3 bytes left, we don't need to look for runs.
                 1..=3 => {
@@ -95,7 +105,11 @@ impl<R: std::io::Read> RLE1Block<R> {
                         do_crc(self.block_crc, &self.buffer[start..self.buffer_cursor]);
                     self.buffer.drain(..self.buffer_cursor);
                     self.buffer_cursor = 0;
-                    return (self.block_crc, out, self.data_gone && self.buffer.is_empty());
+                    return (
+                        self.block_crc,
+                        out,
+                        self.data_gone && self.buffer.is_empty(),
+                    );
                 }
                 // Otherwise we still need to look for runs.
                 _ => {
@@ -158,7 +172,11 @@ impl<R: std::io::Read> RLE1Block<R> {
         out.extend_from_slice(&self.buffer[start..self.buffer_cursor]);
         self.buffer.drain(..self.buffer_cursor);
         self.buffer_cursor = 0;
-        (self.block_crc, out, self.data_gone && self.buffer.is_empty())
+        (
+            self.block_crc,
+            out,
+            self.data_gone && self.buffer.is_empty(),
+        )
     }
 
     /// Helper function for rel1_encode to count how many duplicate bytes occur (0-255).
@@ -179,18 +197,21 @@ impl<R: std::io::Read> RLE1Block<R> {
 /// Iterator for RLE1 encoding.
 impl<R> Iterator for RLE1Block<R>
 where
-    R: std::io::Read,
+    R: std::io::Read + std::marker::Sync + std::marker::Send,
 {
     type Item = (u32, Vec<u8>, bool);
     fn next(&mut self) -> Option<(u32, Vec<u8>, bool)> {
-        // First make sure the buffer is full.
-        self.refill_buffer();
-
         // If there is no data to process, return None (Nothing to read and an empty buffer).
         if self.data_gone && self.buffer.len() == 0 {
             return None;
         }
-        // Otherwise go process a block (size set by block_size) of data and return the block
+
+        // Otherwise, make sure the buffer is full.
+        self.refill_buffer();
+        // And clear the block crc value.
+        self.block_crc = 0;
+
+        // Then go process a block (size set by block_size) of data and return the block
         Some(self.get_block())
     }
 }
@@ -223,9 +244,10 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
             // Create a vec of the repeating byte with a length taken from the byte following the run,
             //  and add that data to the output
             out.extend(vec![rle1[cursor]; usize::from(rle1[cursor + 4])]);
-            start += 5;
             cursor += 5;
+            start = cursor;
         }
+        cursor += 1;
     }
     out.extend_from_slice(&rle1[start..rle1.len()]);
     out

@@ -4,7 +4,7 @@
 mod bitstream;
 mod compression;
 mod huffman_coding;
-mod snyder;
+mod bwt_algorithms;
 mod tools;
 
 use std::{
@@ -54,9 +54,9 @@ fn main() -> Result<(), std::io::Error> {
 
 /// Create a known problem test file and extend it a byte at a time until compression fails.
 fn debug(opts: &mut tools::cli::BzOpts) {
-    let sourcefile = "src/Peter.txt";
-    let testfile = "src/peter_test.txt";
-    let compfile = "src/peter_test.tst";
+    let sourcefile = "test_files/idiot.txt";
+    let testfile = "src/test.txt";
+    let compfile = "src/test.tst";
 
     //let mut fin = File::open(sourcefile).expect("Can't find source file");
     let fin_metadata = fs::metadata(sourcefile).expect("Can't read source metadata");

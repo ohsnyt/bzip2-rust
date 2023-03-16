@@ -6,22 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#cbindgen = "0.20.0"
-#clap = { version = "3.2.23", features = ["derive"] }
 log = {version = "0.4.17", features = ["release_max_level_trace"]}
 simplelog = { version = "0.12.0", features = ["paris"] }
-#rustc-hash = { version = "1.1.0"}
-#voracious_radix_sort = { version = "1.1.0", features = ["voracious_multithread"] }
-#tikv-jemallocator = "0.5.0"
-#cargo-instruments = "0.4.5"
-#rdxsort =2 "0.3.0"
-#criterion = "0.3.5"
-#crc = "3.0.0" #too slow
 rayon = "1.6.0"
-
-#[[bench]]
-#name = "my_benchmark"
-#harness = false
 
 [profile.release]
 debug = 1

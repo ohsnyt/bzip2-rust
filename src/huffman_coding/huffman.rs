@@ -6,16 +6,28 @@ use super::huffman_code_from_weights::improve_code_len_from_weights;
 use std::cmp::Ordering;
 use std::io::Error;
 
+/*
+QUESTION: WHY DO NODES NEED TO BE SORTED ON DECREASING SYMBOL VALUE? WHAT IF WE ONLY
+SORTED ON WEIGHT?
+*/
+
+/// Nodes are either terminal(leaf) or nonterminal (have two child nodes)
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone)]
 pub enum NodeData {
     Kids(Box<Node>, Box<Node>),
     Leaf(u16),
 }
+
+/// Huffman codes are built from a tree structure of these nodes.
 #[derive(Debug, Clone)]
 pub struct Node {
+    /// The weight of the node is based on the frequency of the symbols under this node
     pub weight: u32,
+    /// The depth of the node in the tree
     pub depth: u8,
+    // A unique identifier for this node based on the symbols of the child nodes, used in sorting
     pub syms: u32,
+    /// The data associated with this node (either a leaf or a node that (eventually) has leaves)
     pub node_data: NodeData,
 }
 impl Node {
@@ -430,12 +442,14 @@ pub fn huf_encode(
         let table_idx = selectors[idx];
         chunk.iter().for_each(|symbol| {
             bp.out24(out_code_tables[table_idx][*symbol as usize].1);
+            // For debugging
             trace!(
-                "\r\x1b[43mRLE2 {} ({}) written at {}.   \x1b[0m",
+                "\r\x1b[43mBP: RLE2 {} ({}) written at {}.   \x1b[0m",
                 index,
                 *symbol,
                 bp.loc()
             );
+            // For debugging
             index += 1;
         })
     }

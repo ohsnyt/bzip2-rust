@@ -71,7 +71,7 @@ pub fn huf_encode(
     freq: &[u32; 256],
     eob: u16,
     symbol_map: &[u16],
-) -> Result<(), Error> {
+) {
     // We can have 2-6 coding tables depending on how much data we have coming in.
     let table_count: usize = match rle2.len() {
         0..=199 => 2,
@@ -455,7 +455,6 @@ pub fn huf_encode(
     }
 
     // All done
-    Ok(())
 }
 
 #[allow(clippy::unusual_byte_groupings)]

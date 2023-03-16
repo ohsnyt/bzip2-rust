@@ -206,7 +206,7 @@ where
     type Item = (u32, Vec<u8>, bool);
     fn next(&mut self) -> Option<(u32, Vec<u8>, bool)> {
         // If there is no data to process, return None (Nothing to read and an empty buffer).
-        if self.data_gone && self.buffer.len() == 0 {
+        if self.data_gone && self.buffer.is_empty() {
             return None;
         }
 

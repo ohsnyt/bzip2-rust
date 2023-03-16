@@ -1,16 +1,7 @@
 use crate::bitstream::bitpacker::BitPacker;
-//use crate::snyder::native::bwt_encode_native;
-//use crate::snyder::ss3::entry;
 use crate::tools::rle2_mtf::rle2_mtf_encode;
-//use crate::tools::symbol_map;
-//use crate::{bwt_ribzip::*, Timer};
-use std::sync::{Arc, Condvar, Mutex};
-
-//use crate::julian::block_sort::block_sort;
 use crate::bwt_algorithms::bwt_sort::bwt_encode;
-//use crate::snyder::bwt_ds_par::bwt_encode_par;
 use log::{debug, trace};
-
 use crate::huffman_coding::huffman::huf_encode;
 
 #[allow(clippy::unusual_byte_groupings)]
@@ -47,7 +38,7 @@ pub fn compress_block(block: &[u8], block_crc: u32) -> (Vec<u8>, u8) {
     let eob = rle2[rle2.len() - 1];
 
     // Now for the compression - the Huffman encoding (which also writes out data)
-    let result = huf_encode(&mut bp, &rle2, &freq, eob, &symbol_map);
+    huf_encode(&mut bp, &rle2, &freq, eob, &symbol_map);
 
     debug!(
         "\n         {} bytes in block, {} after MTF & RLE2 coding, {} syms in use",

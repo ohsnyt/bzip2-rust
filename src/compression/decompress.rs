@@ -1,13 +1,11 @@
 use log::{error, info, trace, warn};
-use rayon::prelude::*;
 
 use crate::{
-    bwt_algorithms::bwt_sort::bwt_decode_test,
+    bwt_algorithms::bwt_sort::bwt_decode,
     tools::{
         crc::{do_crc, do_stream_crc},
         rle2_mtf::rle2_mtf_decode_fast,
     },
-    //Timer,
 };
 
 use crate::bitstream::bitreader::BitReader;
@@ -16,7 +14,7 @@ use crate::tools::{cli::BzOpts, rle1::rle1_decode, symbol_map::decode_sym_map};
 
 use std::{
     fs::File,
-    io::{self, Error, Write}, sync::Arc,
+    io::{self, Error, Write},
 };
 
 //const BUFFER_SIZE: usize = 100000;
@@ -25,13 +23,10 @@ const CHUNK_SIZE: usize = 50; // Bzip2 chunk size
 const FOOTER: [u8; 6] = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
 const HEADER: [u8; 6] = [0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59];
 
-/// Decompress the file specified in opts (BzOpts). Current version also requires a Timer.
-pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
+/// Decompress the file specified in opts (BzOpts).
+pub fn decompress(opts: &BzOpts) -> io::Result<()> {
     // Start bitreader from input file in the command line
     let mut br = BitReader::new(File::open(opts.files[0].clone())?);
-
-    // We will eventually need to mark the output file with the timestamp of the compresssed file.
-    //let metadata = std::fs::metadata(opts.file.as_ref().unwrap().to_string())?;
 
     // Look for a valid signature.
     if "BZh".as_bytes() == br.bytes(3).expect(EOF_MESSAGE) {
@@ -60,7 +55,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         fname.push_str(".txt"); // for my testing purposes.
         f_out = File::create(fname)?;
     }
-    // timer.mark("setup");
 
     // Initialize steam CRC value
     let mut stream_crc = 0;
@@ -167,8 +161,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             // Time to reverse the MTF on the selectors that we received
             // Create an index vec for the number of tables we need
             let mut table_idx: Vec<usize> = (0..table_count as usize).collect();
-            // Undo the move to the front.
-            //----------------------------------------------------------------
+
             // iterate through the input
             for (i, &selector) in raw_selector_map.iter().enumerate() {
                 // Create index from the selector
@@ -176,11 +169,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
                 // Save the selector from the MTF index
                 selector_map[i] = table_idx[idx];
-
-                // Check if the data is correct
-                // if check(i) != table_idx[idx] {
-                //     println!("Element {}: {} != {}.  Pause here...", i, idx, check(idx))
-                // };
 
                 // Shift each index at the front of mtfa "forward" one. Do this first in blocks for speed.
                 let temp_sym = table_idx[idx];
@@ -220,6 +208,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             let mut map: Vec<(u16, u32)> = vec![(0_u16, 0_u32); symbols + 1];
             // Read the origin length - five bits long
             let mut l: i32 = br.bint(5).expect(EOF_MESSAGE) as i32;
+
             // For each known symbol at this level (including a repeat of the origin we just read)
             // calculate the symbol length based on the relative bit length from the base symbol we just read.
             for symbol in 0..symbols as u16 + 1 {
@@ -243,14 +232,11 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                         symbol,
                         table_count
                     );
-                    //return Err(Error::new(io::ErrorKind::Other, "Invalid symbol length"));
                 }
                 // The next code is calculated offset from the length of the symbol we just decoded.
                 l += diff;
-                //break;
             }
-            //}
-            //}
+
             // Maps must be sorted by length for the next step.
             map.sort_by(|a, b| a.1.cmp(&b.1));
 
@@ -298,9 +284,7 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 code <<= level[depth].bits;
 
                 // Get the required bits at this level depth and add them to our code
-                //time.mark("h_bitread");
                 code |= br.bint(level[depth].bits as usize).expect(EOF_MESSAGE) as u32;
-                //time.mark("huffman");
 
                 // If the code is bigger than the end code at this level, try the next level
                 if code >= level[depth].end_code {
@@ -356,7 +340,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
                 }
             }
         }
-        // timer.mark("huffman");
 
         // Undo the RLE2 and MTF, converting to u8 in the process
         // Set aside a vec to store the data we decode (size based on the table count)
@@ -364,20 +347,13 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         let (mtf_out, freq) = rle2_mtf_decode_fast(&out, &mut symbol_set, size);
 
-        // timer.mark("rle_mtf");
-
         // Undo the BWTransform
-        let bwt_v = bwt_decode_test(key as u32, &mtf_out, &freq);
+        let bwt_v = bwt_decode(key as u32, &mtf_out, &freq);
         trace!("{:?}", String::from_utf8(bwt_v.clone()));
-        //let mut bwt_v = crate::lib::bwt_ds::bwt_decode_fastest(key as u32, &mtf_8); //, &symbol_set);
-
-        // timer.mark("bwt");
 
         // Undo the initial RLE1
         let rle1_v = rle1_decode(&bwt_v);
         trace!("{:?}", String::from_utf8(rle1_v.clone()));
-
-        // timer.mark("rle1");
 
         // Compute and check the CRCs
         let this_block_crc = do_crc(0, &rle1_v);
@@ -394,13 +370,9 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
             panic!("Block {} CRC failed!!!", block_counter);
         }
 
-        // timer.mark("crcs");
-
         // Done!! Write the data.
         let result = f_out.write(&rle1_v);
         info!("Wrote a block of data with {} bytes.", result.unwrap());
-
-        // timer.mark("cleanup");
     }
 
     let final_crc = br.bint(32).expect(EOF_MESSAGE);
@@ -414,8 +386,6 @@ pub(crate) fn decompress(opts: &BzOpts) -> io::Result<()> {
         panic!("Stream CRC failed!!!");
         // This should never happen unless a block CRC also failed - or unless there is a missing block.
     }
-    // timer.mark("cleanup");
-
     Result::Ok(())
 }
 

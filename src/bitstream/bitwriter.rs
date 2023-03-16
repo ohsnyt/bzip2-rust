@@ -19,7 +19,7 @@ pub struct BitWriter {
 }
 
 impl BitWriter {
-    /// Create a new Bitwriter with an output buffer of size specified. We need the block size. 
+    /// Create a new Bitwriter with an output buffer of size specified. We need the block size.
     /// to create the header. Use add_block() to add each block to the stream.
     pub fn new(filepath: &str, mut block_size: u8) -> Self {
         // Ensure that the block size is valid
@@ -49,7 +49,7 @@ impl BitWriter {
         self.out8(self.block_size + 0x30);
     }
 
-    /// Add a block of data to the output. The block is assumed to be packed by BitPacker. "last" 
+    /// Add a block of data to the output. The block is assumed to be packed by BitPacker. "last"
     /// indicates if the block is the last block in the file. "padding" indicates how many
     /// trailing zeros were added to the last byte of the block to make it a multiple of 8 bits.
     pub fn add_block(
@@ -98,14 +98,14 @@ impl BitWriter {
             if let Ok(written) = result {
                 self.output.drain(..written);
             }
-            return result;
+            result
         } else {
             // Write out the data in the bitstream buffer. The queue will carry over to the next block.
             let result = self.writer.write(&self.output);
             if result.is_ok() {
                 self.output.drain(..result.as_ref().unwrap());
             }
-            return result;
+            result
         }
     }
 
@@ -142,7 +142,7 @@ impl BitWriter {
         }
         // Then push out the remaining bits
         if self.q_bits > 0 {
-            let mut byte = (self.queue & (0xff >> 8 - self.q_bits) as u64) as u8;
+            let mut byte = (self.queue & (0xff >> (8 - self.q_bits)) as u64) as u8;
             byte <<= 8 - self.q_bits;
             self.output.push(byte); //push the packed byte out
             self.q_bits = 0; //adjust the count of bits left in the queue
@@ -171,7 +171,7 @@ mod test {
         bw.out8(1);
         bw.out8(128);
         bw.out8(255);
-        bw.out8(7<<5);
+        bw.out8(7 << 5);
         bw.flush();
         let out = bw.output;
         assert_eq!(out, vec![255, 1, 128, 255, 224]);
@@ -181,7 +181,7 @@ mod test {
     fn out24_short_test() {
         let mut bw = BitWriter::new("", 100);
         bw.out8(255);
-        bw.out8(6<<5);
+        bw.out8(6 << 5);
         bw.flush();
         let out2 = &bw.output;
         assert_eq!(out2, &[0b1111_1111, 0b1100_0000]); // Note: '33' is data from previous call

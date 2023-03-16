@@ -257,7 +257,7 @@ where
         let mut freqs = vec![0_u32; size];
         data.iter()
             .for_each(|&el| freqs[el.try_into().unwrap_or_default()] += 1);
-        return freqs;
+        freqs
     }
 }
 
@@ -526,8 +526,8 @@ where
 /// u32 key and u8 vector in BWT format.
 pub fn sais_entry(data: &[u8]) -> (u32, Vec<u8>) {
     /*
-    SA-IS doesn't work in our context unless it is "duval rotated". We must have a lexicographically minimal 
-    rotation of the data or the conversion from the index to the BWT vec will be off. 
+    SA-IS doesn't work in our context unless it is "duval rotated". We must have a lexicographically minimal
+    rotation of the data or the conversion from the index to the BWT vec will be off.
 
     The duval rotation finds the "lexically minimal" point and splits and reorders the data around that point.
 
@@ -616,7 +616,7 @@ fn make_summary_suffix_vec(summary_size: usize, lms: &LMS, mut summary: Vec<u32>
     if summary_size != lms.lms_count {
         // Recurse
         summary = sa_is(&summary, summary_size);
-        // The above recurses until there are no more duplicate LMS elements. 
+        // The above recurses until there are no more duplicate LMS elements.
         // Now return the summary the recursion finally produced.
         let mut summary_suffix_vec = vec![summary.len() as u32; summary.len() + 1];
         summary_suffix_vec[1..(summary.len() + 1)].copy_from_slice(&summary[..]);

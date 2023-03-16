@@ -1,7 +1,10 @@
 use log::{error, info, trace};
+
 use crate::bitstream::bitpacker::BitPacker;
+
 use super::huffman_code_from_weights::improve_code_len_from_weights;
 use std::cmp::Ordering;
+use std::io::Error;
 
 /*
 QUESTION: WHY DO NODES NEED TO BE SORTED ON DECREASING SYMBOL VALUE? WHAT IF WE ONLY

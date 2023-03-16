@@ -99,7 +99,7 @@ where
                 // In the case that we have only 1, 2 or 3 bytes left, we don't need to look for runs.
                 1..=3 => {
                     // Get to the end of the buffer
-                    self.buffer_cursor += remaining + 1;
+                    self.buffer_cursor = self.buffer.len();
                     out.extend_from_slice(&self.buffer[start..self.buffer_cursor]);
                     self.block_crc =
                         do_crc(self.block_crc, &self.buffer[start..self.buffer_cursor]);

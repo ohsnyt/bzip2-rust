@@ -1,6 +1,5 @@
 use log::info;
 use rayon::prelude::*;
-
 use super::sais_fallback::sais_entry;
 use crate::tools::freq_count::freqs;
 /*
@@ -81,7 +80,7 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
 }
 
 /// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
-pub fn bwt_decode_test(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
+pub fn bwt_decode(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
     // Calculate end once.
     let end = bwt_in.len();
 

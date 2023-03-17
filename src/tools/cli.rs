@@ -69,8 +69,6 @@ pub struct BzOpts {
     pub verbose: Verbosity,
     /// Optional setting used for oddly constructed data - may be depricated
     pub work_factor: usize,
-    /// FOR DEBUGGING ONLY
-    pub debug: bool,
 }
 
 impl BzOpts {
@@ -87,7 +85,6 @@ impl BzOpts {
             status: Status::Init,
             verbose: Verbosity::Errors,
             work_factor: 30,
-            debug: false,
         }
     }
 }
@@ -132,7 +129,6 @@ pub fn bzopts_init() -> BzOpts {
                 "--fast" => cli.block_size = 1,
                 "--best" => cli.block_size = 9,
 
-                "--debug" => cli.debug = true,
                 other => eprintln!("Unexpected command line argument: {}", other),
             }
         } else if arg.starts_with('-') {
@@ -325,7 +321,6 @@ fn help() {
 
    Temporarily, you can specify one of these alogrithms for the BWT
      -vvvvv (trace level debugging information)
-     --debug for debugging special purposes (will change during development)
    "
     );
     exit(0);

@@ -7,19 +7,11 @@ mod compression;
 mod huffman_coding;
 mod tools;
 
-use std::{
-    fs::{self, File},
-    io::{Read, Write},
-};
-
-use compression::compress::*;
-use compression::decompress::decompress;
-use tools::cli::Mode;
-
+use crate::tools::cli::bzopts_init;
+use compression::{compress::compress, decompress::decompress};
 use log::{info, warn, LevelFilter};
 use simplelog::{Config, TermLogger, TerminalMode};
-
-use crate::tools::cli::bzopts_init;
+use tools::cli::Mode;
 
 fn main() -> Result<(), std::io::Error> {
     // Available log levels are Error, Warn, Info, Debug, Trace

@@ -124,25 +124,33 @@ where
                         remaining = self.buffer.len();
                         start = 0;
                     }
+                    if self.buffer_cursor + 2 >= self.buffer.len() {
+                        println!("Pause here...")
+                    }
                     // Then look for a run of 4 bytes, adjusting the remaining counter as appropriate
+                    // Look for a run of 4 identical bytes by first looking for two that are two bytes apart.
                     if self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 2] {
                         self.buffer_cursor += 2;
+                        remaining -= 2;
                         continue;
                     } // Found a set, now check the byte between and fail if it's not the same.
                     if self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 1] {
                         self.buffer_cursor += 2;
+                        remaining -= 2;
                         continue;
                     }
-                    // That is okay, so check the byte before, then the byte after, and fail if one or the other is not the same.
+                    // Middle byte is okay, so check the byte before and after, and fail if both tests show misses.
                     if (self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor - 1])
-                        | (self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 3])
+                        && (self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 3])
                     {
                         self.buffer_cursor += 2;
+                        remaining -= 2;
                         continue;
                     }
-                    // If the byte before was the good one, move the cursor back one byte
+                    // We are now at a run of 4. If the byte before was the good one, move the cursor back one byte.
                     if self.buffer[self.buffer_cursor] == self.buffer[self.buffer_cursor - 1] {
-                        self.buffer_cursor += 2;
+                        self.buffer_cursor -= 1;
+                        remaining += 1;
                     }
                     // We are now at a run of 4
                     {
@@ -244,7 +252,7 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
             continue;
         }
         // That is okay, so check the byte before, then the byte after, and fail if one or the other is not the same.
-        if (rle1[cursor] != rle1[cursor - 1]) | (rle1[cursor] != rle1[cursor + 3]) {
+        if (rle1[cursor] != rle1[cursor - 1]) && (rle1[cursor] != rle1[cursor + 3]) {
             cursor += 2;
             continue;
         }

@@ -1,5 +1,3 @@
-use log::warn;
-
 use super::crc::do_crc;
 
 const MAX_RUN: usize = 256 + 4;
@@ -254,9 +252,6 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
     // Initialize the output vec with 120% capacity of the input, which should cover most cases.
     let mut out = Vec::with_capacity(rle1.len() * 5 / 4);
 
-    //debug
-    let mut dupcount = std::collections::BTreeMap::new();
-
     // Process the RLE1 data.
     while cursor < rle1.len() - 4 {
         // Look for a run of 4 identical bytes by first looking for two that are two bytes apart.
@@ -290,16 +285,9 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
             out.extend(vec![rle1[cursor]; usize::from(rle1[cursor + 4])]);
             cursor += 5;
             start = cursor;
-            //debug
-            let ptr = dupcount.entry(dups).or_insert(0);
-            *ptr += 1;
         }
         cursor += 1;
     }
     out.extend_from_slice(&rle1[start..rle1.len()]);
-    eprintln!(
-        "Looking for a difference of 195. \nDups are: {:?} ",
-        dupcount
-    );
     out
 }

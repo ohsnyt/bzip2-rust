@@ -125,44 +125,44 @@ where
                         start = 0;
                     }
                     // Then look for a run of 4 bytes, adjusting the remaining counter as appropriate
-                    if self.buffer[self.buffer_cursor] == self.buffer[self.buffer_cursor + 1] {
-                        if self.buffer[self.buffer_cursor] == self.buffer[self.buffer_cursor + 2] {
-                            if self.buffer[self.buffer_cursor]
-                                == self.buffer[self.buffer_cursor + 3]
-                            {
-                                // Get the count of duplicates following (0-255)
-                                let dups = self.count_dups();
-                                // reset the buffer cursor to the end of the run of 4
-                                self.buffer_cursor += 4 + dups as usize;
-                                remaining -= remaining.min(4 + dups as usize);
-                                // If they are, calculate the CRC from the last start until the end of the duplicates
-                                self.block_crc = do_crc(
-                                    self.block_crc,
-                                    &self.buffer[start..(self.buffer_cursor as usize)],
-                                );
-                                out.extend_from_slice(
-                                    &self.buffer[start..self.buffer_cursor - dups as usize],
-                                );
-                                // Write the duplicate count
-                                out.push(dups);
-                                // Reset start to this new chunk
-                                start = self.buffer_cursor;
-                            } else {
-                                // Otherwise increment the cursor past our search
-                                self.buffer_cursor += 3;
-                                remaining -= 3;
-                                continue;
-                            }
-                        } else {
-                            // Otherwise increment the cursor past our search
-                            self.buffer_cursor += 2;
-                            remaining -= 2;
-                            continue;
-                        }
-                    } else {
-                        // Otherwise increment the cursor past our search
-                        self.buffer_cursor += 1;
-                        remaining -= 1
+                    if self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 2] {
+                        self.buffer_cursor += 2;
+                        continue;
+                    } // Found a set, now check the byte between and fail if it's not the same.
+                    if self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 1] {
+                        self.buffer_cursor += 2;
+                        continue;
+                    }
+                    // That is okay, so check the byte before, then the byte after, and fail if one or the other is not the same.
+                    if (self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor - 1])
+                        | (self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 3])
+                    {
+                        self.buffer_cursor += 2;
+                        continue;
+                    }
+                    // If the byte before was the good one, move the cursor back one byte
+                    if self.buffer[self.buffer_cursor] == self.buffer[self.buffer_cursor - 1] {
+                        self.buffer_cursor += 2;
+                    }
+                    // We are now at a run of 4
+                    {
+                        // Get the count of duplicates following (0-255)
+                        let dups = self.count_dups();
+                        // reset the buffer cursor to the end of the run of 4
+                        self.buffer_cursor += 4 + dups as usize;
+                        remaining -= remaining.min(4 + dups as usize);
+                        // If they are, calculate the CRC from the last start until the end of the duplicates
+                        self.block_crc = do_crc(
+                            self.block_crc,
+                            &self.buffer[start..(self.buffer_cursor as usize)],
+                        );
+                        out.extend_from_slice(
+                            &self.buffer[start..self.buffer_cursor - dups as usize],
+                        );
+                        // Write the duplicate count
+                        out.push(dups);
+                        // Reset start to this new chunk
+                        start = self.buffer_cursor;
                     }
                 }
             }
@@ -228,18 +228,33 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
 
     // Initialize cursors for moving through a slice of the rle1 data
     let mut start = 0;
-    let mut cursor = 0_usize;
+    let mut cursor = 1_usize;
     // Initialize the output vec with 120% capacity of the input, which should cover most cases.
     let mut out = Vec::with_capacity(rle1.len() * 5 / 4);
 
     // Process the RLE1 data.
     while cursor < rle1.len() - 4 {
-        // Look for a run of 4 identical bytes.
-        if rle1[cursor] == rle1[cursor + 1]
-            && rle1[cursor] == rle1[cursor + 2]
-            && rle1[cursor] == rle1[cursor + 3]
+        // Look for a run of 4 identical bytes by first looking for two that are two bytes apart.
+        if rle1[cursor] != rle1[cursor + 2] {
+            cursor += 2;
+            continue;
+        } // Found a set, now check the byte between and fail if it's not the same.
+        if rle1[cursor] != rle1[cursor + 1] {
+            cursor += 2;
+            continue;
+        }
+        // That is okay, so check the byte before, then the byte after, and fail if one or the other is not the same.
+        if (rle1[cursor] != rle1[cursor - 1]) | (rle1[cursor] != rle1[cursor + 3]) {
+            cursor += 2;
+            continue;
+        }
+        // If the byte before was the good one, move the cursor back one byte
+        if rle1[cursor] == rle1[cursor - 1] {
+            cursor -= 1;
+        }
+        // We are now at a run of 4
         {
-            // Found one. Copy out the slice from the start cursor until the end of the run
+            // Copy out the slice from the start cursor until the end of the run
             out.extend_from_slice(&rle1[start..cursor + 4]);
             // Create a vec of the repeating byte with a length taken from the byte following the run,
             //  and add that data to the output

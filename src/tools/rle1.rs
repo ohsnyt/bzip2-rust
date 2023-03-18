@@ -124,8 +124,10 @@ where
                         remaining = self.buffer.len();
                         start = 0;
                     }
-                    if self.buffer_cursor + 2 >= self.buffer.len() {
-                        println!("Pause here...")
+                    // Check to make sure we never begin at index 0 of the buffer.
+                    if self.buffer_cursor == 0 {
+                        self.buffer_cursor += 1;
+                        remaining -= 1;
                     }
                     // Then look for a run of 4 bytes, adjusting the remaining counter as appropriate
                     // Look for a run of 4 identical bytes by first looking for two that are two bytes apart.

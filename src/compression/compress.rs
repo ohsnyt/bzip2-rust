@@ -5,7 +5,6 @@ use rayon::prelude::*;
 use simplelog::info;
 use std::fs::File;
 use std::io;
-use std::thread::sleep;
 
 #[allow(clippy::unusual_byte_groupings)]
 /*

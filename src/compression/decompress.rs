@@ -347,7 +347,7 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
 
         // Undo the RLE2 and MTF, converting to u8 in the process
         // Set aside a vec to store the data we decode (size based on the block size)
-        let size = (block_size as usize * 100000);
+        let size = block_size as usize * 100000;
 
         let (mtf_out, freq) = rle2_mtf_decode_fast(&out, &mut symbol_set, size);
 

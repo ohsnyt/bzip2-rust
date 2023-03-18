@@ -5,6 +5,7 @@ use rayon::prelude::*;
 use simplelog::info;
 use std::fs::File;
 use std::io;
+use std::thread::sleep;
 
 #[allow(clippy::unusual_byte_groupings)]
 /*
@@ -23,9 +24,9 @@ use std::io;
 /// Compress the input file defined in opts <BzOpts>. Modified for multi-core processing.
 pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     /*
-      Since this can be parallel, we may need to pass a reference to the u8 data as well as a sequence number.
+      Since this can be parallel, we pass a reference to the u8 data as well as a sequence number.
       We will receive back the compressed data and sequence number. We will then assemble the compressed
-      data segments and write them out to the output file.
+      data segments in the correct order and write them out to the output file.
 
       THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
     */
@@ -33,17 +34,15 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     // Prepare to read the data.
     let fname = opts.files[0].clone();
     let source_file = File::open(&fname)?;
-    // let fin_metadata = fs::metadata(&fname)?;
 
     // Initialize the RLE1 reader/iterator. This reads the input file and creates blocks of the
     // proper size to then be compressed.
     let block_size = (opts.block_size as usize * 100000) - 19;
     let rle1_blocks = RLE1Block::new(source_file, block_size);
 
-    // Prepare to write the data. Do this first because we may need to loop and write data multiple times.
+    // Prepare to write the compressed data. 
     let mut fname = opts.files[0].clone();
     fname.push_str(".bz2");
-    // let mut f_out = File::create(fname).expect("Can't create .bz2 file");
 
     /*
     This works by compressing each block in parallel. Depending on the sequence of when those blocks finish,
@@ -116,6 +115,7 @@ pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
             let result = compress_block(&block, crc);
             tx.send((result, i, last_block)).unwrap();
         });
-    info!("RX: Thread returned {:?}", handle.join());
+    let joined =  handle.join();
+    info!("RX: Thread returned {:?}", joined);
     Ok(())
 }

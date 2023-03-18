@@ -21,7 +21,7 @@ const CHUNK_SIZE: usize = 50; // Bzip2 chunk size
 const FOOTER: [u8; 6] = [0x17, 0x72, 0x45, 0x38, 0x50, 0x90];
 const HEADER: [u8; 6] = [0x31_u8, 0x41, 0x59, 0x26, 0x53, 0x59];
 
-/// Decompress the file specified in opts (BzOpts). 
+/// Decompress the file specified in opts (BzOpts).
 pub fn decompress(opts: &BzOpts) -> io::Result<()> {
     // Start bitreader from input file in the command line
     let mut br = BitReader::new(File::open(opts.files[0].clone())?);
@@ -56,7 +56,7 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
         fname.push_str(".txt"); // for my testing purposes.
         f_out = File::create(fname)?;
     }
-    
+
     // Initialize steam CRC value
     let mut stream_crc = 0;
     // Initialize block_counter for reporting purposes
@@ -346,8 +346,8 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
         }
 
         // Undo the RLE2 and MTF, converting to u8 in the process
-        // Set aside a vec to store the data we decode (size based on the table count)
-        let size = 900019_usize;
+        // Set aside a vec to store the data we decode (size based on the block size)
+        let size = (block_size as usize * 100000);
 
         let (mtf_out, freq) = rle2_mtf_decode_fast(&out, &mut symbol_set, size);
 

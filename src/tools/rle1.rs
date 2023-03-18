@@ -1,3 +1,5 @@
+use log::warn;
+
 use super::crc::do_crc;
 
 const MAX_RUN: usize = 256 + 4;
@@ -32,10 +34,10 @@ where
     }
 
     /// Check (and refill) a low buffer - true if we have data, false if there is no more.
-    /// Refill when there is less than 264 bytes. We want to keep that many for comparision in case
+    /// Refill when there is less than 256 bytes. We want to keep that many for comparision in case
     /// the run happens over the end of our last read.
     fn refill_buffer(&mut self) -> bool {
-        // If we have less than 264 bytes of data in our buffer, go try to get more
+        // If we have less than 256 bytes of data in our buffer, go try to get more
         if self.data_gone || self.buffer.len() - self.buffer_cursor < MAX_RUN {
             // First, removed data we have already processed
             self.buffer.drain(..self.buffer_cursor);
@@ -63,7 +65,7 @@ where
     fn get_block(&mut self) -> (u32, Vec<u8>, bool) {
         /*
         This is optimized for speed. It scans the input for runs of 4 identical bytes. A run can be anywhere
-        from 0-255 identical bytes after the run. This means our buffer should be at least 260 bytes long so
+        from 0-251 identical bytes after the run. This means our buffer should be at least 256 bytes long so
         we can scan to the end of the longest run we can encode.
 
         We must build a crc of the input data (not the RLE1 data). Since we only add data to the output
@@ -77,8 +79,8 @@ where
         // Pushing a byte at a time to the output is slower than extending by chunks, therefore initialize
         // variable to remember where each chunk of non-runs starts so we can append data in chunks.
         let mut start: usize = 0;
-        // Set a counter to the amount of unproccessed data is in the buffer, checking for no data
-        let mut remaining = self.buffer.len() - 1;
+        // Set a counter to the amount of unproccessed data in the buffer, checking for no data
+        let mut remaining = self.buffer.len();
 
         // Now process the input until we reach our desired amount (including what is in a pending chunk)
         while out.len() + (self.buffer_cursor - start) < self.block_size {
@@ -115,6 +117,9 @@ where
                 _ => {
                     // If the buffer is low, first copy out what we have processed and then go refill it.
                     if remaining < MAX_RUN && !self.data_gone {
+                        // First shift the cursor back one. (If we get here after writing dups, we have 
+                        //  advanced it one past where we have last checked.)
+                        self.buffer_cursor -= 1;
                         self.block_crc =
                             do_crc(self.block_crc, &self.buffer[start..self.buffer_cursor]);
                         out.extend_from_slice(&self.buffer[start..self.buffer_cursor]);
@@ -129,6 +134,7 @@ where
                         self.buffer_cursor += 1;
                         remaining -= 1;
                     }
+
                     // Then look for a run of 4 bytes, adjusting the remaining counter as appropriate
                     // Look for a run of 4 identical bytes by first looking for two that are two bytes apart.
                     if self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 2] {
@@ -152,15 +158,13 @@ where
                     // We are now at a run of 4. If the byte before was the good one, move the cursor back one byte.
                     if self.buffer[self.buffer_cursor] == self.buffer[self.buffer_cursor - 1] {
                         self.buffer_cursor -= 1;
-                        remaining += 1;
                     }
                     // We are now at a run of 4
                     {
-                        // Get the count of duplicates following (0-255)
+                        // Get the count of duplicates following (0-251)
                         let dups = self.count_dups();
                         // reset the buffer cursor to the end of the run of 4
                         self.buffer_cursor += 4 + dups as usize;
-                        remaining -= remaining.min(4 + dups as usize);
                         // If they are, calculate the CRC from the last start until the end of the duplicates
                         self.block_crc = do_crc(
                             self.block_crc,
@@ -173,6 +177,10 @@ where
                         out.push(dups);
                         // Reset start to this new chunk
                         start = self.buffer_cursor;
+                        // Move the cursor one past the start position
+                        self.buffer_cursor += 1;
+                        // Update the remaining counter
+                        remaining = self.buffer.len() - start;
                     }
                 }
             }
@@ -189,18 +197,22 @@ where
         )
     }
 
-    /// Helper function for rel1_encode to count how many duplicate bytes occur (0-255).
+    /// Helper function for rel1_encode to count how many duplicate bytes occur (0-251).
     fn count_dups(&self) -> u8 {
+        // Test if the byte after the run is the same as the bytes in the run. If not, return 0
+        if self.buffer[self.buffer_cursor] != self.buffer[self.buffer_cursor + 4] {
+            return 0;
+        }
         // self.buffer_cursor is the position of the first of four identical bytes. We need to count
-        // identical bytes *after* the fourth. If position returns None, then return
-        // the number of bytes to the end of the data we have taken.
+        // identical bytes *after* the fourth. If position returns None, then return 256 or the data
+        // remaining, if less.
         let compare = self.buffer[self.buffer_cursor];
         self.buffer
             .iter()
             .skip(self.buffer_cursor + 4)
-            .take(255)
+            .take(251)
             .position(|&x| x != compare)
-            .unwrap_or(self.buffer.len() - self.buffer_cursor - 4) as u8
+            .unwrap_or(251.min(self.buffer.len() - (self.buffer_cursor + 4))) as u8
     }
 }
 
@@ -242,6 +254,9 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
     // Initialize the output vec with 120% capacity of the input, which should cover most cases.
     let mut out = Vec::with_capacity(rle1.len() * 5 / 4);
 
+    //debug
+    let mut dupcount = std::collections::BTreeMap::new();
+
     // Process the RLE1 data.
     while cursor < rle1.len() - 4 {
         // Look for a run of 4 identical bytes by first looking for two that are two bytes apart.
@@ -268,12 +283,23 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
             out.extend_from_slice(&rle1[start..cursor + 4]);
             // Create a vec of the repeating byte with a length taken from the byte following the run,
             //  and add that data to the output
+            let dups = rle1[cursor + 4];
+            if dups == 255 {
+                eprintln!("Hmmmm....")
+            }
             out.extend(vec![rle1[cursor]; usize::from(rle1[cursor + 4])]);
             cursor += 5;
             start = cursor;
+            //debug
+            let ptr = dupcount.entry(dups).or_insert(0);
+            *ptr += 1;
         }
         cursor += 1;
     }
     out.extend_from_slice(&rle1[start..rle1.len()]);
+    eprintln!(
+        "Looking for a difference of 195. \nDups are: {:?} ",
+        dupcount
+    );
     out
 }

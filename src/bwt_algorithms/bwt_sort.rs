@@ -1,7 +1,7 @@
+use super::sais_fallback::sais_entry;
+use crate::{bwt_algorithms::sais_fallback::sais_speed_test, tools::freq_count::freqs};
 use log::info;
 use rayon::prelude::*;
-use super::sais_fallback::sais_entry;
-use crate::tools::freq_count::freqs;
 /*
 I tried a varient that uses a double length block to avoid the nested equality checks
 in block_compare, but it was barely faster.
@@ -19,8 +19,8 @@ pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     NOTE: Currently testing for the number of different bytes in 2k of data. This isn't
     really a great test, but it is fast and does focus SAIS on genetic type data.
      */
-    if rle1_data.len() > 2_000 && freqs(&rle1_data[..2000]).iter().filter(|&&x| x > 0).count() < 15
-    {
+
+    if rle1_data.len() < 3_000 || sst_test(&rle1_data[0..3_000]) {
         info!("Using SA-IS algorithm.");
         return sais_entry(rle1_data);
     }
@@ -121,4 +121,36 @@ pub fn bwt_decode(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
     }
 
     rle1_data
+}
+
+fn sst_test(data: &[u8]) -> bool {
+    let mut sais_time = 0_u128;
+    let mut native_time = 0_u128;
+
+    // Do native algorithm
+    (0..2).for_each(|_| {
+        let now = std::time::Instant::now();
+        let mut index = (0_u32..data.len() as u32).collect::<Vec<u32>>();
+        index.sort_unstable_by(|a, b| block_compare(*a as usize, *b as usize, &data));
+        native_time = now.elapsed().as_nanos();
+    });
+
+    // Do sais
+    (0..2).for_each(|_| {
+        let now = std::time::Instant::now();
+        let _ = sais_speed_test(&data);
+        sais_time = now.elapsed().as_nanos();
+    });
+
+    println!(
+        "Native took {:>8}, Sais took {:>8}, Sais/Native ratio is {:>.2}%: {} bytes.   ",
+        //"{} bytes. Native took 100%,  Sais took  {}%. ",
+        native_time,
+        sais_time,
+        (sais_time as f64 / native_time as f64) * 100.0,
+        data.len(),
+    );
+
+    (sais_time as f64 / native_time as f64) * 100.0 < 40.0
+    // (sais_elapsed*100 / native_elapsed) < 40
 }

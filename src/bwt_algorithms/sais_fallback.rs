@@ -420,6 +420,11 @@ where
     T: TryInto<usize> + Copy + std::cmp::Ord + std::fmt::Display + std::marker::Sync,
     T::Error: std::fmt::Debug,
 {
+    // Don't attemp to process empty data.
+    if data.is_empty() {
+        return vec![];
+    }
+
     // STEP 1: Build LMS info
     let mut lms = LMS::new();
     lms.init(data);

@@ -1,6 +1,6 @@
 use super::sais_fallback::sais_entry;
-use crate::{tools::freq_count::freqs};
-use log::info;
+use crate::tools::freq_count::freqs;
+use log::{info, warn};
 use rayon::prelude::*;
 /*
 I tried a varient that uses a double length block to avoid the nested equality checks
@@ -20,7 +20,7 @@ pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     really a great test, but it is fast and does focus SAIS on genetic type data.
      */
 
-    if rle1_data.len() < 3_000 || use_sais(&rle1_data[0..3_000]) {
+    if rle1_data.len() < 3_000 || use_sais(&rle1_data[0..5_000.min(rle1_data.len())]) {
         info!("Using SA-IS algorithm.");
         return sais_entry(rle1_data);
     }
@@ -124,11 +124,18 @@ pub fn bwt_decode(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
 }
 
 fn use_sais(data: &[u8]) -> bool {
-    // Use sais if the most frequent char is more than 70% of all chars found
+    // Use sais if the most frequent char is more than 30% of all chars found
+    //   or if the symbol count is less than 20 unique symbols
     let mut freq_array = freqs(data);
     freq_array.retain(|&x| x != 0);
-    if (*freq_array.iter().max().unwrap() * 10) /  data.len() as u32 > 7 {
-        return true
+    eprint!(
+        "Max frequency is {}%, symbol set size is {}.  ",
+        (*freq_array.iter().max().unwrap() * 10) / data.len() as u32,
+        freq_array.len()
+    );
+    if (*freq_array.iter().max().unwrap() * 10) / data.len() as u32 != 1 || freq_array.len() < 20 {
+        eprintln!("Using SA-IS");
+        return true;
     }
 
     // Use sais if the longest run is > 20% of the length
@@ -144,5 +151,12 @@ fn use_sais(data: &[u8]) -> bool {
             run = 0;
         }
     }
+    eprint!("Longest is {}.  ", longest);
+    if longest * 10 / data.len() > 2 {
+        eprintln!("Using SA-IS");
+    } else {
+        eprintln!();
+    }
+
     longest * 10 / data.len() > 2
 }

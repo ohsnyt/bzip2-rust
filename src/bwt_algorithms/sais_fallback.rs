@@ -692,29 +692,3 @@ fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
     buf.append(&mut head.to_vec());
     (buf, offset)
 }
-
-
-/// Speed test to compare native sort to sais sort - both create an index for BWT.
-pub fn sais_speed_test(data: &[u8]) -> Vec<u32> {
-
-    // Do the rotation and return the reorganized data and offset to the original start of the data.
-    let (data, offset) = rotate_duval(data);
-
-    // Go do the sa-is sort, returning the index to the BWT.
-    let index = sa_is(&data, 256);
-
-    // Initialize the key. We find the actutal value in the loop below.
-    let mut key = 0_u32;
-    // Initialize an index vec
-    let mut idx = vec![0_u8; data.len()];
-    // Get the offset to the original start of the data
-    let duval_zero_position = (index.len() - offset) as u32;
-
-    // Create an index vec
-    let size = data.len() as u32;
-    index
-        .iter()
-        .map(|&el| (size + el - duval_zero_position) % size)
-        .collect()
-  
-}

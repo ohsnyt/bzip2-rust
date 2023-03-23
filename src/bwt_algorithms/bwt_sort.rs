@@ -128,13 +128,13 @@ fn use_sais(data: &[u8]) -> bool {
     //   or if the symbol count is less than 20 unique symbols
     let mut freq_array = freqs(data);
     freq_array.retain(|&x| x != 0);
-    eprint!(
+    warn!(
         "Max frequency is {}%, symbol set size is {}.  ",
         (*freq_array.iter().max().unwrap() * 10) / data.len() as u32,
         freq_array.len()
     );
     if (*freq_array.iter().max().unwrap() * 10) / data.len() as u32 != 1 || freq_array.len() < 20 {
-        eprintln!("Using SA-IS");
+        warn!("Using SA-IS");
         return true;
     }
 
@@ -151,12 +151,10 @@ fn use_sais(data: &[u8]) -> bool {
             run = 0;
         }
     }
-    eprint!("Longest is {}.  ", longest);
+    warn!("Longest is {}.  ", longest);
     if longest * 10 / data.len() > 2 {
-        eprintln!("Using SA-IS");
-    } else {
-        eprintln!();
-    }
+        warn!("Using SA-IS");
+    } 
 
     longest * 10 / data.len() > 2
 }

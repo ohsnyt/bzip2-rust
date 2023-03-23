@@ -172,6 +172,36 @@ impl LMS {
         true
     }
 
+    /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
+    /// This is faster for larger blocks, but oddly slower for smaller blocks.
+    fn is_unequal_lms_b<T: std::cmp::PartialOrd + std::fmt::Display>(
+        &self,
+        data: &[T],
+        a: usize,
+        b: usize,
+    ) -> bool {
+        // If either a or b is a sentinel, the elements are unequal
+        if a == self.last || b == self.last {
+            return true;
+        }
+        // Make sure we start at the element that is smaller
+        let (c, diff) = if a > b {
+            (b, (a - b).min(self.last - a))
+        } else {
+            (a, (b - a).min(self.last - b))
+        };
+
+        let mut length = 1;
+        while !self.is_lms(c + length) && length < diff {
+            length += 1;
+        }
+
+        if data[a..a + length] == data[b..b + length] {
+            return false;
+        }
+        true
+    }
+
     fn debug(&self) {
         // Print a "count line" to aid counting
         print!("    --");
@@ -597,7 +627,7 @@ where
         // Unwrap and convert to usize once - to make it easier to read
         if lms.is_lms(ptr.unwrap() as usize) {
             let curr_lms = ptr.unwrap() as usize;
-            if lms.is_unequal_lms(data, prev_lms.unwrap() as usize, curr_lms) {
+            if lms.is_unequal_lms_b(data, prev_lms.unwrap() as usize, curr_lms) {
                 prev_lms = Some(curr_lms as u32);
                 current_name += 1;
             }

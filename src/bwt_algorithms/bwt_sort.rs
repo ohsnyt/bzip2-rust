@@ -1,5 +1,5 @@
 use super::sais_fallback::sais_entry;
-use crate::tools::freq_count::freqs;
+use crate::{bwt_algorithms::sais_fallback::lms_complexity, tools::freq_count::freqs};
 use log::{info, warn};
 use rayon::prelude::*;
 /*
@@ -14,13 +14,9 @@ in block_compare, but it was barely faster.
 pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     // Create index into block. Index is u32, which should be more than enough
     let mut index = (0_u32..rle1_data.len() as u32).collect::<Vec<u32>>();
-    // Run a repetative data test for data longer than 2k bytes
-    /*
-    NOTE: Currently testing for the number of different bytes in 2k of data. This isn't
-    really a great test, but it is fast and does focus SAIS on genetic type data.
-     */
 
-    if rle1_data.len() < 3_000 || use_sais(&rle1_data[0..5_000.min(rle1_data.len())]) {
+    // Test data longer than 5k bytes to help select the best algorithm
+    if rle1_data.len() > 5_000 && lms_complexity(&rle1_data[0..5_000.min(rle1_data.len())]) < 0.3 {
         info!("Using SA-IS algorithm.");
         return sais_entry(rle1_data);
     }
@@ -154,7 +150,7 @@ fn use_sais(data: &[u8]) -> bool {
     warn!("Longest is {}.  ", longest);
     if longest * 10 / data.len() > 2 {
         warn!("Using SA-IS");
-    } 
+    }
 
     longest * 10 / data.len() > 2
 }

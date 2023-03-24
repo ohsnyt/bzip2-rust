@@ -28,8 +28,6 @@ pub fn compress_block(block: &[u8], block_crc: u32) -> (Vec<u8>, u8) {
 
     // Do BWT using the native algorithm with sais as fallback
     let (key, bwt_data) = bwt_encode(block);
-    // TEMP TEST OF SAIS ONLY
-    //let (key, bwt_data) = crate::bwt_algorithms::sais_fallback::sais_entry(block);
 
     // Now that we have the key, we can write the 24bit BWT key
     trace!("\r\x1b[43mWriting key at {}.    \x1b[0m", bp.loc());

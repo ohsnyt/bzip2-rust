@@ -727,3 +727,12 @@ fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
     buf.append(&mut head.to_vec());
     (buf, offset)
 }
+
+pub fn lms_complexity(data: &[u8]) -> f64 {
+    // STEP 1: Build LMS info
+    let mut lms = LMS::new();
+    lms.init(&data);
+
+    // STEP 2: Compute LMS complexity, ver 1.0
+    lms.lms_count as f64 / data.len() as f64
+}

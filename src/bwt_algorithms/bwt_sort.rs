@@ -118,39 +118,3 @@ pub fn bwt_decode(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
 
     rle1_data
 }
-
-fn use_sais(data: &[u8]) -> bool {
-    // Use sais if the most frequent char is more than 30% of all chars found
-    //   or if the symbol count is less than 20 unique symbols
-    let mut freq_array = freqs(data);
-    freq_array.retain(|&x| x != 0);
-    warn!(
-        "Max frequency is {}%, symbol set size is {}.  ",
-        (*freq_array.iter().max().unwrap() * 10) / data.len() as u32,
-        freq_array.len()
-    );
-    if (*freq_array.iter().max().unwrap() * 10) / data.len() as u32 != 1 || freq_array.len() < 20 {
-        warn!("Using SA-IS");
-        return true;
-    }
-
-    // Use sais if the longest run is > 20% of the length
-    let mut longest = 0;
-    let mut run = 0;
-    for i in 1..data.len() {
-        if data[i - 1] == data[i] {
-            run += 1;
-        } else {
-            if run > longest {
-                longest = run;
-            }
-            run = 0;
-        }
-    }
-    warn!("Longest is {}.  ", longest);
-    if longest * 10 / data.len() > 2 {
-        warn!("Using SA-IS");
-    }
-
-    longest * 10 / data.len() > 2
-}

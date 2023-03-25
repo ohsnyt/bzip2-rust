@@ -135,42 +135,42 @@ impl LMS {
         false
     }
 
-    /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
-    fn is_unequal_lms<T: std::cmp::PartialOrd + std::fmt::Display>(
-        &self,
-        data: &[T],
-        a: usize,
-        b: usize,
-    ) -> bool {
-        // If either is a sentinel, they are unequal
-        if a == self.last || b == self.last {
-            return true;
-        }
-        // Put smaller of a or b into first, and calculate difference between them
-        let mut i = if a > b { b + 1 } else { a + 1 };
-        let diff = if a > b { a - b } else { b - a };
+    // /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
+    // fn is_unequal_lms<T: std::cmp::PartialOrd + std::fmt::Display>(
+    //     &self,
+    //     data: &[T],
+    //     a: usize,
+    //     b: usize,
+    // ) -> bool {
+    //     // If either is a sentinel, they are unequal
+    //     if a == self.last || b == self.last {
+    //         return true;
+    //     }
+    //     // Put smaller of a or b into first, and calculate difference between them
+    //     let mut i = if a > b { b + 1 } else { a + 1 };
+    //     let diff = if a > b { a - b } else { b - a };
 
-        // Iterate through the data relative to both a and b checking for equality starting at the element past a
-        while i != self.last - diff {
-            let b = i + diff;
-            // If both a and b are LMS elements, then we are past the segments and the segments were not unequal
-            if self.is_lms(i) && self.is_lms(b) {
-                return false;
-            }
+    //     // Iterate through the data relative to both a and b checking for equality starting at the element past a
+    //     while i != self.last - diff {
+    //         let b = i + diff;
+    //         // If both a and b are LMS elements, then we are past the segments and the segments were not unequal
+    //         if self.is_lms(i) && self.is_lms(b) {
+    //             return false;
+    //         }
 
-            // If only one was an LMS elements, then we are done and the segments were unequal
-            if self.is_lms(i) || self.is_lms(b) {
-                return true;
-            }
-            // If the next bytes are unequal, then the segments were unequal
-            if data[i] != data[b] {
-                return true;
-            }
-            i += 1;
-        }
-        // We worked through all the data, so the segments were not equal
-        true
-    }
+    //         // If only one was an LMS elements, then we are done and the segments were unequal
+    //         if self.is_lms(i) || self.is_lms(b) {
+    //             return true;
+    //         }
+    //         // If the next bytes are unequal, then the segments were unequal
+    //         if data[i] != data[b] {
+    //             return true;
+    //         }
+    //         i += 1;
+    //     }
+    //     // We worked through all the data, so the segments were not equal
+    //     true
+    // }
 
     /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
     /// This is faster for larger blocks, but oddly slower for smaller blocks.

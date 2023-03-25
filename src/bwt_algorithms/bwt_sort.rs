@@ -1,6 +1,6 @@
 use super::sais_fallback::sais_entry;
-use crate::{bwt_algorithms::sais_fallback::lms_complexity, tools::freq_count::freqs};
-use log::{info, warn};
+use crate::{bwt_algorithms::sais_fallback::lms_complexity};
+use log::info;
 use rayon::prelude::*;
 /*
 I tried a varient that uses a double length block to avoid the nested equality checks

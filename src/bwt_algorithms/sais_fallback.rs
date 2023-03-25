@@ -728,6 +728,9 @@ fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
     (buf, offset)
 }
 
+/// Given a sample slice of the data (5k suggested), compute the LMS complexity.
+/// A complexity of less than 0.3 indicates that SA-IS is the better algorithm
+/// than a multi-threaded version of the native block sort algorithm.
 pub fn lms_complexity(data: &[u8]) -> f64 {
     // STEP 1: Build LMS info
     let mut lms = LMS::new();

@@ -115,7 +115,7 @@ where
                 _ => {
                     // If the buffer is low, first copy out what we have processed and then go refill it.
                     if remaining < MAX_RUN && !self.data_gone {
-                        // First shift the cursor back one. (If we get here after writing dups, we have 
+                        // First shift the cursor back one. (If we get here after writing dups, we have
                         //  advanced it one past where we have last checked.)
                         self.buffer_cursor -= 1;
                         self.block_crc =
@@ -188,6 +188,7 @@ where
         out.extend_from_slice(&self.buffer[start..self.buffer_cursor]);
         self.buffer.drain(..self.buffer_cursor);
         self.buffer_cursor = 0;
+        // Return the output
         (
             self.block_crc,
             out,
@@ -210,7 +211,7 @@ where
             .skip(self.buffer_cursor + 4)
             .take(251)
             .position(|&x| x != compare)
-            .unwrap_or(251.min(self.buffer.len() - (self.buffer_cursor + 4))) as u8
+            .unwrap_or_else(|| 251.min(self.buffer.len() - (self.buffer_cursor + 4))) as u8
     }
 }
 
@@ -278,10 +279,6 @@ pub fn rle1_decode(rle1: &[u8]) -> Vec<u8> {
             out.extend_from_slice(&rle1[start..cursor + 4]);
             // Create a vec of the repeating byte with a length taken from the byte following the run,
             //  and add that data to the output
-            let dups = rle1[cursor + 4];
-            if dups == 255 {
-                eprintln!("Hmmmm....")
-            }
             out.extend(vec![rle1[cursor]; usize::from(rle1[cursor + 4])]);
             cursor += 5;
             start = cursor;

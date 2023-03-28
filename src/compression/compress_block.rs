@@ -1,7 +1,7 @@
 use crate::bitstream::bitpacker::BitPacker;
-use crate::tools::rle2_mtf::rle2_mtf_encode;
 use crate::bwt_algorithms::bwt_sort::bwt_encode;
-use log::{debug, trace};
+use crate::tools::rle2_mtf::rle2_mtf_encode;
+use log::{trace, warn};
 
 use crate::huffman_coding::huffman::huf_encode;
 
@@ -41,7 +41,7 @@ pub fn compress_block(block: &[u8], block_crc: u32) -> (Vec<u8>, u8) {
     // Now for the compression - the Huffman encoding (which also writes out data)
     huf_encode(&mut bp, &rle2, &freq, eob, &symbol_map);
 
-    debug!(
+    warn!(
         "\n         {} bytes in block, {} after MTF & RLE2 coding, {} syms in use",
         block.len(),
         rle2.len(),

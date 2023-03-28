@@ -172,36 +172,37 @@ impl LMS {
         true
     }
 
-    /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
-    /// This is faster for larger blocks, but oddly slower for smaller blocks.
-    fn is_unequal_lms_b<T: std::cmp::PartialOrd + std::fmt::Display>(
-        &self,
-        data: &[T],
-        a: usize,
-        b: usize,
-    ) -> bool {
-        // If either a or b is a sentinel, the elements are unequal
-        if a == self.last || b == self.last {
-            return true;
-        }
-        // Make sure we start at the element that is smaller
-        let (c, diff) = if a > b {
-            (b, (a - b).min(self.last - a))
-        } else {
-            (a, (b - a).min(self.last - b))
-        };
+    /*
+       /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
+       /// This is faster for larger blocks, but oddly slower for smaller blocks.
+       fn is_unequal_lms_b<T: std::cmp::PartialOrd + std::fmt::Display>(
+           &self,
+           data: &[T],
+           a: usize,
+           b: usize,
+       ) -> bool {
+           // If either a or b is a sentinel, the elements are unequal
+           if a == self.last || b == self.last {
+               return true;
+           }
+           // Make sure we start at the element that is smaller
+           let (c, diff) = if a > b {
+               (b, (a - b).min(self.last - a))
+           } else {
+               (a, (b - a).min(self.last - b))
+           };
 
-        let mut length = 1;
-        while !self.is_lms(c + length) && length < diff {
-            length += 1;
-        }
+           let mut length = 1;
+           while !self.is_lms(c + length) && length < diff {
+               length += 1;
+           }
 
-        if data[a..a + length] == data[b..b + length] {
-            return false;
-        }
-        true
-    }
-
+           if data[a..a + length] == data[b..b + length] {
+               return false;
+           }
+           true
+       }
+    */
     fn debug(&self) {
         // Print a "count line" to aid counting
         print!("    --");
@@ -255,8 +256,6 @@ mod test_lms {
     }
 }
 //--- Done with LMS struct ------------------------------------------------------------------------------------
-
-use std::cmp::Ordering;
 
 //-- Counts for Bucket Sorting --------------------------------------------------------------------------------
 use rayon::prelude::*;
@@ -693,36 +692,9 @@ fn debug_nones(buckets: &[Option<u32>]) {
     eprintln!(" Didn't fill: {:?} ", indecies);
 }
 
-/// FROM https://github.com/torfmaster/ribzip2
-fn duval_original(input: &[u8]) -> usize {
-    let mut final_start = 0;
-    let n = input.len();
-    let mut i = 0;
-    let mut j;
-    let mut k;
-
-    while i < n {
-        j = i + 1;
-        k = i;
-        while j < n && input[k] <= input[j] {
-            if input[k] < input[j] {
-                k = i;
-            } else {
-                k += 1;
-            }
-            j += 1;
-        }
-        while i <= k {
-            final_start = i;
-
-            i += j - k;
-        }
-    }
-    final_start
-}
-
+/*
 /// Compute the Lexicographically Minimal String Rotation
-fn duval(input: &[u8]) -> usize {
+fn duval_ds(input: &[u8]) -> usize {
     let n = input.len();
     if n < 2 {
         return 0;
@@ -784,14 +756,38 @@ fn duval(input: &[u8]) -> usize {
         }
     }
     smallest.1
-}
+} */
 
+fn duval(input: &[u8]) -> usize {
+    let mut final_start = 0;
+    let n = input.len();
+    let mut i = 0;
+
+    while i < n {
+        let mut j = i + 1;
+        let mut k = i;
+        while j < n && input[k] <= input[j] {
+            if input[k] < input[j] {
+                k = i;
+            } else {
+                k += 1;
+            }
+            j += 1;
+        }
+        while i <= k {
+            final_start = i;
+
+            i += j - k;
+        }
+    }
+    final_start
+}
 
 /// Compute lexicographically minimal rotation using the duval algorithm.
 /// Returns the rotation and the offset.
 fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
-    // let offset = duval_original(input);
     let offset = duval(input);
+    //let offset = duval(input);
     let mut buf = vec![];
     let (head, tail) = input.split_at(offset);
     buf.append(&mut tail.to_vec());
@@ -805,7 +801,7 @@ fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
 pub fn lms_complexity(data: &[u8]) -> f64 {
     // STEP 1: Build LMS info
     let mut lms = LMS::new();
-    lms.init(&data);
+    lms.init(data);
 
     // STEP 2: Compute LMS complexity, ver 1.0
     lms.lms_count as f64 / data.len() as f64

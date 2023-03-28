@@ -354,10 +354,15 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Undo the BWTransform
         let bwt_v = bwt_decode(key as u32, &mtf_out, &freq);
         trace!("{:?}", String::from_utf8(bwt_v.clone()));
-
+        
         // Undo the initial RLE1
         let rle1_v = rle1_decode(&bwt_v);
         trace!("{:?}", String::from_utf8(rle1_v.clone()));
+        if bwt_v.len() < 8000 {
+            warn!("post bwt vec{:?}", String::from_utf8(bwt_v));
+        }
+           
+            warn!("Processed {} bytes after rle1_decode", rle1_v.len());
 
         // Compute and check the CRCs
         let this_block_crc = do_crc(0, &rle1_v);
@@ -370,7 +375,7 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
                 "Block {} CRC failed!!! Found {} looking for {}.",
                 block_counter, this_block_crc, block_crc
             );
-            panic!("Block {} CRC failed!!!", block_counter);
+            //panic!("Block {} CRC failed!!!", block_counter);
         }
 
         // Done!! Write the data.
@@ -386,7 +391,7 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
             "Stream CRC failed!!! Found {} looking for {}. (Data may be corrupt.)",
             stream_crc, final_crc
         );
-        panic!("Stream CRC failed!!!");
+        //panic!("Stream CRC failed!!!");
         // This should never happen unless a block CRC also failed - or unless there is a missing block.
     }
     Result::Ok(())

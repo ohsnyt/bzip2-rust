@@ -29,14 +29,6 @@ pub fn rle2_mtf_encode(block: &[u8]) -> (Vec<u16>, [u32; 256], Vec<u16>) {
     // Get the EOB value from the bool_array
     let eob = bool_array.iter().filter(|el| **el).count() as u16 + 1;
 
-    // // For speed in doing the move-to-front, build an array of valid symbols in use
-    // let mut entries = Vec::with_capacity(block.eob as usize);
-    // bool_array.iter().enumerate().for_each(|(i, &tf)| {
-    //     if tf == true {
-    //         entries.push(i)
-    //     }
-    // });
-
     // Create the symbol map from the bool_array
     let sym_map = encode_sym_map_from_bool_map(&bool_array);
 
@@ -166,11 +158,6 @@ pub fn rle2_mtf_encode(block: &[u8]) -> (Vec<u16>, [u32; 256], Vec<u16>) {
     // Add the EOB symbol to the end
     rle2[out_idx] = eob;
     out_idx += 1;
-
-    // DEBUGGING TEST
-    // if out_idx as usize > 900019 {
-    //     warn!("{}", out_idx);
-    // }
 
     // Truncate the vec to the actual data.
     rle2.truncate(out_idx);

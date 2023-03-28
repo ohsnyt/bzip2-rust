@@ -34,14 +34,14 @@ pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     // let ft = bwt != bwt1;
     // warn!("Keys are the same: {}", key1 == key);
     // if ft {
-    //     eprint! {"BWT data differed at byte [i]X:Y, "};
+    //     warn! {"BWT data differed at byte [i]X:Y, "};
     //     (0..bwt.len()).for_each(|i| {
     //         if bwt1[i] != bwt[i] {
-    //             eprint! {"[{}]{}:{} ", i, bwt1[i], bwt[i]};
+    //             warn! {"[{}]{}:{} ", i, bwt1[i], bwt[i]};
     //         }
     //     });
-    //     eprintln!();
-    //     eprintln!();
+    //     warn!();
+    //     warn!();
     // }
 
     //DEBUG END
@@ -73,8 +73,8 @@ pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
             bwt[i] = rle1_data[(index[i] as usize) - 1];
         }
     }
-    // println!("Key is: {}", key);
-    // println!("BWT is: {:?}", bwt);
+    // debug!("Key is: {}", key);
+    // debug!("BWT is: {:?}", bwt);
     (key, bwt)
 }
 

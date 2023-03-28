@@ -204,26 +204,26 @@ impl LMS {
        }
     */
     fn debug(&self) {
-        // Print a "count line" to aid counting
-        print!("    --");
+        // Print a "count line" to aid counting to stderr
+        eprint!("    --");
         for i in 0..=self.last {
-            print!("{}", i % 10);
+            eprint!("{}", i % 10);
         }
-        println!("--  ");
+        eprintln!("--  ");
 
         // Print LS data
-        print!("  LS: ");
+        eprint!("  LS: ");
         for i in 0..=self.last {
-            print!("{}", (self.ls[i >> 5] & 1_u32 << (i % 32) > 0) as u32);
+            eprint!("{}", (self.ls[i >> 5] & 1_u32 << (i % 32) > 0) as u32);
         }
-        println!("  ({} S & {} L elements)", self.s_count, self.l_count);
+        eprintln!("  ({} S & {} L elements)", self.s_count, self.l_count);
 
         // Print LMS data
-        print!(" LMS: ");
+        eprint!(" LMS: ");
         for i in 0..=self.last {
-            print!("{}", (self.lms[i >> 5] & 1_u32 << (i % 32) > 0) as u32);
+            eprint!("{}", (self.lms[i >> 5] & 1_u32 << (i % 32) > 0) as u32);
         }
-        println!("  ({} LMS elements)", self.lms_count);
+        eprintln!("  ({} LMS elements)", self.lms_count);
     }
 }
 
@@ -257,6 +257,7 @@ mod test_lms {
 }
 //--- Done with LMS struct ------------------------------------------------------------------------------------
 
+use log::warn;
 //-- Counts for Bucket Sorting --------------------------------------------------------------------------------
 use rayon::prelude::*;
 
@@ -368,7 +369,7 @@ where
         if lms.is_lms(idx) {
             buckets[tails[data[idx].try_into().unwrap_or_default()] as usize] = Some(idx as u32);
             tails[data[idx].try_into().unwrap_or_default()] -= 1;
-            //println!("Buckets: {:?}", buckets);
+            //warn!("Buckets: {:?}", buckets);
         }
     }
     // Add the sentinel to the front
@@ -424,7 +425,7 @@ where
     while idx > 0 {
         // Check if the element left of the element indexed by this bucket is an S type.
         if buckets[idx].is_none() {
-            eprintln!("This should never happen. Idx is {}", idx);
+            warn!("This should never happen. Idx is {}", idx);
             lms.debug(); // Pause here
         }
         // As long as we are not referencing the start of the data
@@ -469,7 +470,7 @@ where
     let mut buckets = initial_buckets_sort(data, &bkt_sizes, &lms);
     // Validity test for development
     if lms.lms_count != buckets.iter().filter(|&b| b.is_some()).count() {
-        eprintln!(
+        warn!(
             "Didn't initialize buckets properly. Missed {}.",
             lms.lms_count - buckets.iter().filter(|&b| b.is_some()).count()
         );
@@ -480,7 +481,7 @@ where
     induced_sort_l(data, &mut buckets, &bkt_sizes, &lms);
     // Validity test for development
     if lms.s_count - lms.lms_count != buckets.iter().filter(|&b| b.is_none()).count() {
-        println!(
+        warn!(
             "Expected to have {} empty buckets after first induced_sort_l. Instead...",
             lms.s_count - lms.lms_count,
         );
@@ -492,7 +493,7 @@ where
     induced_sort_s(data, &mut buckets, &bkt_sizes, &lms);
     // Validity test for development
     if 0 != buckets.iter().filter(|&b| b.is_none()).count() {
-        eprintln!(
+        warn!(
             "Didn't complete s-induced sort properly. Missed {}.",
             buckets.iter().filter(|&b| b.is_none()).count()
         );
@@ -518,7 +519,7 @@ where
         let bucket_index = data[data_index].try_into().unwrap_or_default() as usize;
         buckets[tails[bucket_index] as usize] = Some(data_index as u32);
         tails[bucket_index] -= 1;
-        // println!("Buckets: {:?}", buckets);
+        // warn!("Buckets: {:?}", buckets);
     }
 
     // Add the sentinel to the front
@@ -526,7 +527,7 @@ where
 
     // Validity test for development
     if lms.lms_count != buckets.iter().filter(|&b| b.is_some()).count() {
-        eprintln!("Didn't initialize buckets for FINAL sort properly.");
+        warn!("Didn't initialize buckets for FINAL sort properly.");
         debug_buckets('F', &buckets);
     }
 
@@ -534,7 +535,7 @@ where
     induced_sort_l(data, &mut buckets, &bkt_sizes, &lms);
     // Validity test for development
     if lms.s_count - lms.lms_count != buckets.iter().filter(|&b| b.is_none()).count() {
-        println!(
+        warn!(
             "Expected to have {} empty buckets during first induced_sort_l. Instead...",
             lms.s_count - lms.lms_count,
         );
@@ -546,7 +547,7 @@ where
     induced_sort_s(data, &mut buckets, &bkt_sizes, &lms);
     // Validity test for development
     if 0 != buckets.iter().filter(|&b| b.is_none()).count() {
-        eprintln!(
+        warn!(
             "Didn't complete s-induced sort properly. Missed {}.",
             buckets.iter().filter(|&b| b.is_none()).count()
         );
@@ -670,7 +671,7 @@ fn make_summary_suffix_vec(summary_size: usize, lms: &LMS, mut summary: Vec<u32>
 
 /// Debug function for the buckets.
 fn debug_buckets(note: char, buckets: &[Option<u32>]) {
-    println!(
+    warn!(
         "{} Buckets: {:?}",
         note,
         (0..32.min(buckets.len())).fold(Vec::new(), |mut vec, i| {
@@ -689,7 +690,7 @@ fn debug_nones(buckets: &[Option<u32>]) {
         }
     });
     indecies.sort();
-    eprintln!(" Didn't fill: {:?} ", indecies);
+    warn!(" Didn't fill: {:?} ", indecies);
 }
 
 /*

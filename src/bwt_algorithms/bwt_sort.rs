@@ -12,46 +12,14 @@ in block_compare, but it was barely faster.
 /// sort_unstable algorithm.
 /// This returns a u32 Key and a u8 vec of the BWT data.
 pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
-    // Create index into block. Index is u32, which should be more than enough
-    //DEBUG START
-    // let mut index = (0_u32..rle1_data.len() as u32).collect::<Vec<u32>>();
-    // let (key1, bwt1) = sais_entry(rle1_data);
-
-    // index[..].sort_unstable_by(|a, b| block_compare(*a as usize, *b as usize, rle1_data));
-    // // Get key and BWT output (assumes u32 is 4 bytes)
-    // let mut key = 0_u32;
-    // let mut bwt = vec![0; rle1_data.len()];
-    // for i in 0..bwt.len() {
-    //     if index[i] == 0 {
-    //         key = i as u32;
-    //     }
-    //     if index[i] == 0 {
-    //         bwt[i] = rle1_data[rle1_data.len() - 1];
-    //     } else {
-    //         bwt[i] = rle1_data[(index[i] as usize) - 1];
-    //     }
-    // }
-    // let ft = bwt != bwt1;
-    // warn!("Keys are the same: {}", key1 == key);
-    // if ft {
-    //     warn! {"BWT data differed at byte [i]X:Y, "};
-    //     (0..bwt.len()).for_each(|i| {
-    //         if bwt1[i] != bwt[i] {
-    //             warn! {"[{}]{}:{} ", i, bwt1[i], bwt[i]};
-    //         }
-    //     });
-    //     warn!();
-    //     warn!();
-    // }
-
-    //DEBUG END
     // Test data longer than 5k bytes to help select the best algorithm
     if rle1_data.len() > 5_000 && lms_complexity(&rle1_data[0..5_000.min(rle1_data.len())]) < 0.3 {
         info!("Using SA-IS algorithm.");
         return sais_entry(rle1_data);
     }
-
+    
     info!("Using native algorithm.");
+    // Create index into block. Index is u32, which should be more than enough
     let mut index = (0_u32..rle1_data.len() as u32).collect::<Vec<u32>>();
 
     // Sort index
@@ -60,7 +28,7 @@ pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     } else {
         index[..].sort_unstable_by(|a, b| block_compare(*a as usize, *b as usize, rle1_data));
     }
-    // Get key and BWT output (assumes u32 is 4 bytes)
+    // Get key and BWT output 
     let mut key = 0_u32;
     let mut bwt = vec![0; rle1_data.len()];
     for i in 0..bwt.len() {
@@ -73,8 +41,6 @@ pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
             bwt[i] = rle1_data[(index[i] as usize) - 1];
         }
     }
-    // debug!("Key is: {}", key);
-    // debug!("BWT is: {:?}", bwt);
     (key, bwt)
 }
 

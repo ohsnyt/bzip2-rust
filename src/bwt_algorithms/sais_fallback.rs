@@ -135,42 +135,42 @@ impl LMS {
         false
     }
 
-    // /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
-    // fn is_unequal_lms<T: std::cmp::PartialOrd + std::fmt::Display>(
-    //     &self,
-    //     data: &[T],
-    //     a: usize,
-    //     b: usize,
-    // ) -> bool {
-    //     // If either is a sentinel, they are unequal
-    //     if a == self.last || b == self.last {
-    //         return true;
-    //     }
-    //     // Put smaller of a or b into first, and calculate difference between them
-    //     let mut i = if a > b { b + 1 } else { a + 1 };
-    //     let diff = if a > b { a - b } else { b - a };
+    /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
+    fn is_unequal_lms<T: std::cmp::PartialOrd + std::fmt::Display>(
+        &self,
+        data: &[T],
+        a: usize,
+        b: usize,
+    ) -> bool {
+        // If either is a sentinel, they are unequal
+        if a == self.last || b == self.last {
+            return true;
+        }
+        // Put smaller of a or b into first, and calculate difference between them
+        let mut i = if a > b { b + 1 } else { a + 1 };
+        let diff = if a > b { a - b } else { b - a };
 
-    //     // Iterate through the data relative to both a and b checking for equality starting at the element past a
-    //     while i != self.last - diff {
-    //         let b = i + diff;
-    //         // If both a and b are LMS elements, then we are past the segments and the segments were not unequal
-    //         if self.is_lms(i) && self.is_lms(b) {
-    //             return false;
-    //         }
+        // Iterate through the data relative to both a and b checking for equality starting at the element past a
+        while i != self.last - diff {
+            let b = i + diff;
+            // If both a and b are LMS elements, then we are past the segments and the segments were not unequal
+            if self.is_lms(i) && self.is_lms(b) {
+                return false;
+            }
 
-    //         // If only one was an LMS elements, then we are done and the segments were unequal
-    //         if self.is_lms(i) || self.is_lms(b) {
-    //             return true;
-    //         }
-    //         // If the next bytes are unequal, then the segments were unequal
-    //         if data[i] != data[b] {
-    //             return true;
-    //         }
-    //         i += 1;
-    //     }
-    //     // We worked through all the data, so the segments were not equal
-    //     true
-    // }
+            // If only one was an LMS elements, then we are done and the segments were unequal
+            if self.is_lms(i) || self.is_lms(b) {
+                return true;
+            }
+            // If the next bytes are unequal, then the segments were unequal
+            if data[i] != data[b] {
+                return true;
+            }
+            i += 1;
+        }
+        // We worked through all the data, so the segments were not equal
+        true
+    }
 
     /// Test if LMS elements at data index a and b are NOT equal. Assumes a and be are lms elements.
     /// This is faster for larger blocks, but oddly slower for smaller blocks.
@@ -254,7 +254,9 @@ mod test_lms {
         assert_eq!(lms.is_lms(7), true);
     }
 }
-//--- Done with LMS struct -------------------------------------------------------------------------------------
+//--- Done with LMS struct ------------------------------------------------------------------------------------
+
+use std::cmp::Ordering;
 
 //-- Counts for Bucket Sorting --------------------------------------------------------------------------------
 use rayon::prelude::*;
@@ -627,7 +629,7 @@ where
         // Unwrap and convert to usize once - to make it easier to read
         if lms.is_lms(ptr.unwrap() as usize) {
             let curr_lms = ptr.unwrap() as usize;
-            if lms.is_unequal_lms_b(data, prev_lms.unwrap() as usize, curr_lms) {
+            if lms.is_unequal_lms(data, prev_lms.unwrap() as usize, curr_lms) {
                 prev_lms = Some(curr_lms as u32);
                 current_name += 1;
             }
@@ -692,14 +694,16 @@ fn debug_nones(buckets: &[Option<u32>]) {
 }
 
 /// FROM https://github.com/torfmaster/ribzip2
-fn duval(input: &[u8]) -> usize {
+fn duval_original(input: &[u8]) -> usize {
     let mut final_start = 0;
     let n = input.len();
     let mut i = 0;
+    let mut j;
+    let mut k;
 
     while i < n {
-        let mut j = i + 1;
-        let mut k = i;
+        j = i + 1;
+        k = i;
         while j < n && input[k] <= input[j] {
             if input[k] < input[j] {
                 k = i;
@@ -717,9 +721,76 @@ fn duval(input: &[u8]) -> usize {
     final_start
 }
 
+/// Compute the Lexicographically Minimal String Rotation
+fn duval(input: &[u8]) -> usize {
+    let n = input.len();
+    if n < 2 {
+        return 0;
+    }
+    let mut smallest = (input[0], 0);
+
+    let mut this = 0;
+    let mut next = 1;
+    // Find the smallest run
+    while this < n - 1 {
+        if next >= n {
+            next -= n
+        };
+        // If ever the next byte is smaller than the smallest, we have a new smallest run
+        if input[next] < smallest.0 {
+            smallest = (input[next], next);
+            next += 1;
+            continue;
+        };
+        // If the next byte is equal to this current byte, increment both and check the next
+        if input[this] == input[next] {
+            next += 1;
+            this += 1;
+            continue;
+        }
+        // If the next byte is smaller than this byte, we could have a new smallest run starting at next_start
+        if input[next] < input[this] {
+            // See if the next byte is different from the smallest
+            if input[next] != smallest.0 {
+                // If it is different, we can't have a new run. Go to the next byte
+                next += 1;
+                this += 1;
+                continue;
+            } else {
+                // check which run is longer - the one starting at smallest or the one starting at next
+                let (mut a, mut b) = (smallest.1, next);
+                // Advance past the equal bytes
+                while input[a] == input[b % n] {
+                    a += 1;
+                    b += 1;
+                    if a == n {
+                        break;
+                    }
+                }
+                // If a is greater than b, run b is longer
+                if input[a % n] > input[b % n] {
+                    smallest = (input[next], next);
+                }
+                this = b;
+                next = b + 1;
+                continue;
+            }
+        }
+        // If the next byte is larger than this one, start looking again at the next byte
+        if input[next] > input[this] {
+            next += 1;
+            this += 1;
+            continue;
+        }
+    }
+    smallest.1
+}
+
+
 /// Compute lexicographically minimal rotation using the duval algorithm.
 /// Returns the rotation and the offset.
 fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
+    // let offset = duval_original(input);
     let offset = duval(input);
     let mut buf = vec![];
     let (head, tail) = input.split_at(offset);
@@ -738,4 +809,75 @@ pub fn lms_complexity(data: &[u8]) -> f64 {
 
     // STEP 2: Compute LMS complexity, ver 1.0
     lms.lms_count as f64 / data.len() as f64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn duval_test_a() {
+        let data = "a".as_bytes();
+        assert_eq!(duval(data), 0);
+    }
+    #[test]
+    fn duval_test_ba() {
+        let data = "ba".as_bytes();
+        assert_eq!(duval(data), 1);
+    }
+    #[test]
+    fn duval_test_aaaaaa() {
+        let data = "aaaaaa".as_bytes();
+        assert_eq!(duval(data), 0);
+        //assert_eq!(duval_original(data), 0);
+    }
+    #[test]
+    fn duval_test_aaaaab() {
+        let data = "aaaaab".as_bytes();
+        assert_eq!(duval(data), 0);
+    }
+    #[test]
+    fn duval_test_aaaaba() {
+        let data = "aaaaba".as_bytes();
+        assert_eq!(duval(data), 5);
+    }
+    #[test]
+    fn duval_test_aaabaa() {
+        let data = "aaabaa".as_bytes();
+        assert_eq!(duval(data), 4);
+    }
+    #[test]
+    fn duval_test_aabaaa() {
+        let data = "aabaaa".as_bytes();
+        assert_eq!(duval(data), 3);
+    }
+    #[test]
+    fn duval_test_abaaaa() {
+        let data = "abaaaa".as_bytes();
+        assert_eq!(duval(data), 2);
+    }
+    #[test]
+    fn duval_test_baaaaa() {
+        let data = "baaaaa".as_bytes();
+        assert_eq!(duval(data), 1);
+    }
+    #[test]
+    fn duval_test_baaaab() {
+        let data = "baaaab".as_bytes();
+        assert_eq!(duval(data), 1);
+    }
+    #[test]
+    fn duval_test_abbbba() {
+        let data = "abbbba".as_bytes();
+        assert_eq!(duval(data), 5);
+    }
+    #[test]
+    fn duval_test_baabaa() {
+        let data = "baabaa".as_bytes();
+        assert_eq!(duval(data), 1);
+    }
+    #[test]
+    fn duval_test_abaabaaabaababaaabaaababaab() {
+        let data = "abaabaaabaababaaabaaababaab".as_bytes();
+        assert_eq!(duval(data), 14);
+    }
 }

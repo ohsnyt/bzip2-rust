@@ -694,7 +694,7 @@ fn debug_nones(buckets: &[Option<u32>]) {
 }
 
 /*
-/// Compute the Lexicographically Minimal String Rotation
+/// Compute the Lexicographically Minimal String Rotation. Passes tests but results in failed compression.
 fn duval_ds(input: &[u8]) -> usize {
     let n = input.len();
     if n < 2 {
@@ -759,6 +759,7 @@ fn duval_ds(input: &[u8]) -> usize {
     smallest.1
 } */
 
+/// Compute the Lexicographically Minimal String Rotation. Fails tests, but is verbatim from ribzip2 and seems to work.
 fn duval(input: &[u8]) -> usize {
     let mut final_start = 0;
     let n = input.len();

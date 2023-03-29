@@ -1,3 +1,17 @@
+//! This helper function is part of the huffman encoding system for the Rust version of the standard BZIP2 library.
+//!
+//! BZIP2 is a block-oriented approach to compress data. 
+//! 
+//! 
+//! The main huffman encoding function generates frequency tables for each chunk of 50 bytes of data. This helper
+//! function generates huffman codes (actually depth tables) from those frequency weights. The BZIP2 standard requries that the maximum
+//! code length is 17 bits. If the weights supplied create longer codes, the weights will be adjusted and another
+//! attempt will be made to generate the codes.
+//! 
+//! The process of encoding each block is inherently sequential and does not benefit from multithreading.
+//! 
+//! 
+
 use super::huffman::{Node, NodeData};
 
 /// Improve a slice of Huffman codes lengths (u8) using a slice of  

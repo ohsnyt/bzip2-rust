@@ -1,15 +1,13 @@
-// CRC computation for bzip2
-/*
-The BlockCRC is a 32-bit integer and contains the CRC-32 checksum of the uncompressed data
-contained in BlockData.
+//! CRC computation for the Rust version of the standard BZIP2 library.
+//!
+//! BZIP2 is a block-oriented approach to compress data.
+//!
+//! Each block of data has a 32-bit integer which contains the CRC-32 checksum of the uncompressed data
+//! contained in the block data. (This is the data BEFORE the RLE1 phase.)
+//!
+//! All the block CRCs are then combined to create an overall CRC value for the stream.
 
-The calculation is: Start with u32 value of all 1s. For each byte in the input, let the new
-crc be the crc shifted left 8 then XORed wiht a lookup from the CRC constant table. The lookup
-is based on the crc value shifted right 24 bits and XORed with the byte. Then return the
-inverse of the resulting number.
-*/
-
-/// Calculate CRC in BZIP style on entire raw input file
+/// Calculate CRC on the block of data used to build each block that is compressed.
 pub fn do_crc(existing_crc: u32, data: &[u8]) -> u32 {
     // For loop is a little faster than .fold
     let mut crc = !existing_crc;
@@ -19,7 +17,7 @@ pub fn do_crc(existing_crc: u32, data: &[u8]) -> u32 {
     !crc
 }
 
-/// Calculate stream crc from block_crc
+/// Calculate the stream CRC from each block_crc.
 pub fn do_stream_crc(strm_crc: u32, block_crc: u32) -> u32 {
     (strm_crc << 1 | strm_crc >> 31) ^ block_crc
 }

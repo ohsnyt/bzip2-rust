@@ -1,6 +1,14 @@
+//! CRC computation for the Rust version of the standard BZIP2 library.
+//!
+//! Create a vec of 256 u32 integers which hold the frequency counts of each byte found in the block of 
+//! data given to the freqs function. 
+//! 
+//! This will use multi-threading when the data is over 16k in length.
+//!
+
 use rayon::prelude::*;
 
-/// Returns a frequency count of the input data. Uses parallelism when data set is over 64k.
+/// Returns a frequency count of the input data. 
 pub fn freqs(data: &[u8]) -> Vec<u32> {
     if data.len() > 64_000 {
         // 16k is pretty much the sweet spot for chunk size.

@@ -69,17 +69,6 @@
                 //"src/Peter.txt",
                 //"src/growing_test.tst",
                 //"9",
-                //"--simple",
-                //"--sais2",
-                //"--sais3",
-                //"--sais",
-                //"--parallel"
-                //"--big",
-                //"--julian",
-                //"--debug",
-                //"--native",
-                //"--ss",
-                //"--debug"
             ],
             "cwd": "${workspaceFolder}"
         },

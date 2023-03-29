@@ -1,18 +1,24 @@
+//! The symbol_map function decodes symbol maps for the Rust version of the standard BZIP2 library.
+//!
+//! A symbol_map is a map of the presense/absense of u8s in the input data. The map is structured as
+//! a vector of u16s, where each u16 is a bit map for a block of u8s. The first u16 is a map of the
+//! 16 blocks of u8s that could be present in the input. Each following u16 is a bit map for a block
+//! of u8s with 1s and 0s indicating the presence / absense of those u8s.
+//! 
+//! For example, if the first bit of maps[0] is a zero, then none of the u8s from 0-15 were
+//! present in the input file. Since there would be no set bits in the u16 needed to mark that block, 
+//! we actually don't include that u16 in the vec.
+//! 
+//! If the second bit of maps[0] is a one, then at least one u8 from the range of 16-23 was present
+//! in the input. That means the next u16 would be a bit map for this block of u8s with 1s and 0s
+//! indicating the presence / absense of those u8s. Etc.
+//!
 const BIT_MASK: u16 = 0x8000;
 
 
-/// Takes the unique bzip2 symbol map and returns a sorted vec of all
-/// u8s used in the input.
+/// Takes the unique bzip2 symbol map as a slice of u16s. Returns a vec of u8 values found in the map.
 pub fn decode_sym_map(symbol_map: &[u16]) -> Vec<u8> {
-    /*
-    Symbol_index is a map of the presense/absense of blocks of u8s in the input data.
-    For example, if the first bit of maps[0] is a zero, then none of the u8s from 0-15 were
-    present in the input file, AND there would be no u16 needed to mark any of those.
-    If the second bit of maps[0] is a one, then at least one u8 from the range of 16-23 was present
-    in the input. That means the next u16 would be a bit map for this block of u8s with 1s and 0s
-    indicating the presence / absense of those u8s. Etc.
-    */
-    //
+    // Initialize a vec of symbols so we can mark which u8s are present
     let mut symbols: Vec<u8> = Vec::with_capacity(256);
     // Set a counter for the number of maps
     let mut map_idx = 0;

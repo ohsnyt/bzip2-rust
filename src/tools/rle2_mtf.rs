@@ -1,3 +1,16 @@
+//! The rle2_mtf function performs run-length-encoding and move-to-front transforms for the Rust version 
+//! of the standard BZIP2 library.
+//!
+//! The move-to-front transform will increase the frequency of lower byte values. The result of this is that
+//! the huffman codes can more efficiently compress those high frequency bytes.
+//! 
+//! The run-length-encoding will compress runs of the zero byte irregardless of the number of zeros found. The 
+//! number of zeros found is encoded in a binary scheme that is very space efficient. Since the move-to-front transform will 
+//! increase the frequency of the zero bytes, the run-length-encoding will reduce the byte count significantly for most
+//! data. (Data with high entropy does not compress well.) 
+//!
+//! Encoding also return a frequency table and symbol map used during the huffman stage.
+//! 
 use super::freq_count::freqs;
 use log::error;
 
@@ -6,8 +19,7 @@ const RUNB: u16 = 1;
 const ZERO_BOMB: usize = 2 * 1024 * 1024;
 
 /// Does Move-To-Front transforma and Run-Length-Encoding 2 prior to the huffman stage.
-/// Gets BWT output from block.data.
-/// Puts transformed u16 data into block.rle2 and frequency count into block.freqs.
+/// Receives a block of BWT data. Returns the rle2 data, an array containing a frequency map, and a symbol map.
 pub fn rle2_mtf_encode(block: &[u8]) -> (Vec<u16>, [u32; 256], Vec<u16>) {
     // Create a custom index of the input, using an array for speed
     // Start by finding every u8 in the input.

@@ -1,3 +1,16 @@
+//! The command line interface function parses the command line for the Rust version of the standard BZIP2 library.
+//!
+//! The options that can be set are defined in the `BzOpts` struct. An instance of the struct must be created and 
+//! initialized.
+//! 
+//! Usage example:
+//! ```
+//! let mut opts = BzOpts::new();
+//! opts.init();
+//! ```
+//! You can then access the options via the instance you created.
+//! 
+
 use std::process::exit;
 use std::{fmt::Display, fmt::Formatter};
 
@@ -96,7 +109,7 @@ impl Default for BzOpts {
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-
+/// Initialize the options struct by parsing data supplied via the command line. Takes no arguments and returns nothing.
 pub fn bzopts_init() -> BzOpts {
     let mut cli = BzOpts::new();
     // Print opening line

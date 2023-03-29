@@ -1,3 +1,21 @@
+//! The compression algorithm for the Rust version of the standard BZIP2 library.
+//!
+//! The compression algorithm is inherently multi-threaded. A thread is spawned first to receive the blocks of 
+//! data that are compressed by the block compression routine. Then the input is broken into blocks and a thread 
+//! is spawned to compress that block.
+//! 
+//! When block is compressed, the compressed data along with a sequence number is passed to the receiver. 
+//! If the sequence number is the next block to be written out, the block is added to the output. If it arrived
+//! out of sequence, it is held until the previous blocks can be written.
+//! 
+//! Once all blocks are written, the stream footer is written and the process is terminated.
+//! 
+//! NOTE 1: THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
+//! 
+//! NOTE 2: BZIP2 should default to deleting the source file (if input comes from a file), and set the creation date
+//! of the compressed file to mirror the original file. This is NOT yet implemented.
+//! 
+//! 
 use super::compress_block::compress_block;
 use crate::bitstream::bitwriter::BitWriter;
 use crate::tools::{cli::BzOpts, rle1::RLE1Block};

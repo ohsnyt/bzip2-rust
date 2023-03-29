@@ -1,3 +1,16 @@
+//! The decompression algorithm for the Rust version of the standard BZIP2 library.
+//!
+//! The decompression algorithm is not computationally expensive and does not really benefit from 
+//! multi-threading. 
+//! 
+//! 
+//! NOTE 1: THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
+//! 
+//! NOTE 2: BZIP2 should default to deleting the source file (if input comes from a file), and set the creation date
+//! of the compressed file to mirror the original file. This is NOT yet implemented.
+//! 
+//! NOTE 3: TBD: It may be possible to improve performance by enhancing cache coherency during the BWT decoding.
+//! 
 use crate::{
     bitstream::bitreader::BitReader,
     bwt_algorithms::bwt_sort::bwt_decode,

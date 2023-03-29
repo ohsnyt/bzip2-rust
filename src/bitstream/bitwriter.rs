@@ -1,3 +1,21 @@
+//! BitWriter: A module for the Rust version of the standard BZIP2 library.
+//!
+//! Builds a packed bitstream for the block-oriented construction of BZIP2 compressed files.
+//! 
+//! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
+//! 
+//! NOTE: Currently only supports writing to a file.
+//! 
+//! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
+//! This multi-threaded version required that each block pass the huffman encoded data to the final aggregator, which
+//! would then write the continuous output stream.
+//! 
+//! This module is the aggregator. It takes the blocks packed by BitPacker, removes the padding, and writes
+//! a continuous stream of bits to the output device.
+//! 
+//! This module is called from within a thread that is responsible to ensure that the correct order of the blocks
+//! is maintained.
+//!
 use crate::tools::crc::do_stream_crc;
 
 /// Writes a bitstream for output. Takes the blocks packed by BitPacker and assembles them with

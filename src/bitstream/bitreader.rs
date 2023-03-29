@@ -1,3 +1,10 @@
+//! BitReader: A module for the Rust version of the standard BZIP2 library.
+//!
+//! Reads a packed bitstream for the block-oriented deconstruction of BZIP2 compressed files.
+//! 
+//! NOTE: This module can read from any I/O source that supports the read() call.
+//!
+
 const BUFFER_SIZE: usize = 1024 * 1024;
 const BIT_MASK: u8 = 0xff;
 
@@ -159,8 +166,8 @@ impl<R: std::io::Read> BitReader<R> {
 }
 
 /*
-Note: I tried several refactorings to use an interator to read bits for the above functions,
-but the code above proved faster than any iterator I could write.
+Note: I tried several refactorings to use an iterator to read bits for the above functions,
+but this code above proved faster than any iterator I could devise.
  */
 
 #[cfg(test)]

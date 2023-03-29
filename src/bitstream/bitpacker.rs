@@ -1,3 +1,17 @@
+//! BitPacker: A module for the Rust version of the standard BZIP2 library.
+//!
+//! Builds a packed bitstream for the block-oriented construction of BZIP2 compressed files.
+//! 
+//! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
+//! This multi-threaded version required that each block pass the huffman encoded data to the final aggregator, which
+//! would then write the continuous output stream.
+//! 
+//! The packed blocks are padded at the end with zeros to reach a full byte. In order for the 
+//! final aggregator to know how much padding was added, the BitPacker makes both the output and 
+//! the padding value available publicly.
+//! 
+//! The padding is always a number between 0 and 7 bits.
+//!
 /// Creates a huffman-encoded, packed bitstream of one block of data. The final byte of the block
 /// is padded with zeros to reach a full byte. The padding is always a number between 0 and 7
 /// inclusive.

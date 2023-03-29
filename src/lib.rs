@@ -8,24 +8,21 @@
 //! - Contains SA-IS sorting to improve compression speeds on repetative data.
 //!
 //! Basic usage to compress a files is as follows:
-//!
-//! ```
-//! `$> bzip2 -z test.txt`
-//! ```
+//! 
+//! `bzip2 -z test.txt`
+//! 
 //! This will compress the file and create the file test.txt.bz2.
 //! 
 //! 
 //! Basic usage to decompress a files is as follows:
-//!
-//! ```
-//! `$> bzip2 -d test.txt.bz2`
-//! ```
+//! 
+//!  `bzip2 -d test.txt.bz2`
+//! 
 //! 
 //! Help is available by entering:
-//!
-//! ```
-//! `$> bzip2 --help`
-//! ```
+//! 
+//! `bzip2 --help`
+//! 
 //!
 //!
 //#![doc(html_logo_url = "https://github.com/ohsnyt/bzip2-rust/blob/Use-sais3-as-fallback/Oh%20Snyt%20Famous%20Code%20logo.png?raw=true")]

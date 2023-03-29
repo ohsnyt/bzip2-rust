@@ -1,16 +1,23 @@
+//! The main bwt_sort algorithm for the Rust version of the standard BZIP2 library.
+//!
+//! The main sorting algorithm is currently based on the standard Rust sort_unstable algorithm. When data is
+//! larger than 5k bytes, we use a multi-threaded approach based on Rayon's par_sort_unstable algorithm.
+//! 
+//! Since different sorting algorithms are better suited for different kinds of data, this module contains a test
+//! to determine whether the data would be better suited to the main algorithm or the fallback algorithm.
+//! 
+//! 
 use super::sais_fallback::sais_entry;
 use crate::bwt_algorithms::sais_fallback::lms_complexity;
 use log::info;
 use rayon::prelude::*;
 /*
-I tried a varient that uses a double length block to avoid the nested equality checks
+I tried a varient that used a double length block to avoid the nested equality checks
 in block_compare, but it was barely faster.
 */
 
-/// Burrows-Wheeler-Transform using Rayon to multi-thread. We check for possibly repetative data like found
-/// in genetic sequences. For that data we use a SA-IS algorithm. For other data we use a native
-/// sort_unstable algorithm.
-/// This returns a u32 Key and a u8 vec of the BWT data.
+/// Encode data using the Burrows-Wheeler-Transform. Requires a u8 slice of data to be sorted. 
+/// This returns a u32 key and a u8 vec of the BWT data.
 pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     // Test data longer than 5k bytes to help select the best algorithm
     if rle1_data.len() > 5_000 && lms_complexity(&rle1_data[0..5_000.min(rle1_data.len())]) < 0.3 {
@@ -72,8 +79,13 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
     result
 }
 
-/// Decode a Burrows-Wheeler-Transform. All variations seem to have excessive cache misses.
+/// Decode a Burrows-Wheeler-Transform. Requires a key, a u8 slice containing the BWT data, and an array of the u8 frequencies
+/// found in the data. Returns the decoded data as a u8 vec.
 pub fn bwt_decode(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
+    /*
+    I have tried refactoring to reduce cache misses. To date, all variations seem to have excessive cache misses. 
+    */
+
     // Calculate end once.
     let end = bwt_in.len();
 

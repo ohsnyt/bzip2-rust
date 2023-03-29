@@ -1,4 +1,22 @@
-// Simple SA-IS 3.0 David Snyder, using sentinels
+//! The fallback bwt_sort algorithm for the Rust version of the standard BZIP2 library.
+//!
+//! This is a simple SA-IS implemenation of a sorting algorithm, using sentinels. SA-IS is particularly suited
+//! to repetative data such as is found in genetic sequencing.
+//! 
+//! SA-IS does not lend itself to multi-threading when the data sets are smaller. The BZIP2 algorithm has a maximum
+//! block size of 900kb, consequently no attempt at multithreading is made.
+//! 
+//! In order to determine whether the data is more likely to be better sorted using SA-IS, the lms_complexity function
+//! can test a sample of the data to determine whether SA-IS is suited to the data.
+//! 
+//! NOTE 1: This implementation uses compressed LMS data in order to reduce cache misses.
+//! 
+//! NOTE 2: It is difficult to determine the best sorting alogithm based on only a 
+//! sample of the data. Methods to determine entropy proved relatively useless. The approach of testing the lms
+//! complexity has been the most reliable method I have found that can operate on a sample of the larger data set.
+//! 
+//! 
+
 const S: u32 = 1;
 const LMS: u32 = 1;
 const L: u32 = 0;
@@ -797,15 +815,15 @@ fn rotate_duval(input: &[u8]) -> (Vec<u8>, usize) {
     (buf, offset)
 }
 
-/// Given a sample slice of the data (5k suggested), compute the LMS complexity.
+/// Given a sample slice of the data (5k suggested), compute the data complexity.
 /// A complexity of less than 0.3 indicates that SA-IS is the better algorithm
-/// than a multi-threaded version of the native block sort algorithm.
+/// than the native sort_unstable algorithm.
 pub fn lms_complexity(data: &[u8]) -> f64 {
     // STEP 1: Build LMS info
     let mut lms = LMS::new();
     lms.init(data);
 
-    // STEP 2: Compute LMS complexity, ver 1.0
+    // STEP 2: Compute and return the LMS complexity
     lms.lms_count as f64 / data.len() as f64
 }
 

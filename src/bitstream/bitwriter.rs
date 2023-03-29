@@ -4,7 +4,7 @@
 //! 
 //! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
 //! 
-//! NOTE: Currently only supports writing to a file.
+//! NOTE: If no filename is specified, the output will be written to stdout.
 //! 
 //! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
 //! This multi-threaded version required that each block pass the huffman encoded data to the final aggregator, which

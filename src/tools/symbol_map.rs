@@ -5,11 +5,11 @@
 //! 16 blocks of u8s that could be present in the input. Each following u16 is a bit map for a block
 //! of u8s with 1s and 0s indicating the presence / absense of those u8s.
 //! 
-//! For example, if the first bit of maps[0] is a zero, then none of the u8s from 0-15 were
+//! For example, if the first bit of maps\[0\] is a zero, then none of the u8s from 0-15 were
 //! present in the input file. Since there would be no set bits in the u16 needed to mark that block, 
 //! we actually don't include that u16 in the vec.
 //! 
-//! If the second bit of maps[0] is a one, then at least one u8 from the range of 16-23 was present
+//! If the second bit of maps\[0\] is a one, then at least one u8 from the range of 16-23 was present
 //! in the input. That means the next u16 would be a bit map for this block of u8s with 1s and 0s
 //! indicating the presence / absense of those u8s. Etc.
 //!

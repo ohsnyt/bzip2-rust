@@ -822,6 +822,7 @@ pub fn lms_complexity(data: &[u8]) -> f64 {
     lms.init(data);
 
     // STEP 2: Compute and return the LMS complexity
+    debug!("Lms complexity is {}", lms.lms_count as f64 / data.len() as f64);
     lms.lms_count as f64 / data.len() as f64
 }
 

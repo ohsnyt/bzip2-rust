@@ -20,7 +20,7 @@ in block_compare, but it was barely faster.
 /// This returns a u32 key and a u8 vec of the BWT data.
 pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     // Test data longer than 5k bytes to help select the best algorithm
-    if rle1_data.len() > 5_000 && lms_complexity(&rle1_data[0..5_000.min(rle1_data.len())]) < 0.3 {
+    if rle1_data.len() > 5_000 && lms_complexity(&rle1_data[0..5_000.min(rle1_data.len())]) < 0.35 {
         info!("Using SA-IS algorithm.");
         return sais_entry(rle1_data);
     }

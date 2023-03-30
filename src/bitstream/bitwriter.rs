@@ -4,7 +4,8 @@
 //! 
 //! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
 //! 
-//! NOTE: If no filename is specified, the output will be written to stdout.
+//! NOTE: This is called internally. However if no filename is specified in the calling function,
+//! the output will be written to stdout. This is probably not what you want.
 //! 
 //! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
 //! This multi-threaded version required that each block pass the huffman encoded data to the final aggregator, which

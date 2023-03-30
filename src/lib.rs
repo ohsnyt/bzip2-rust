@@ -1,7 +1,6 @@
 //! Rust version of the standard BZIP2 library.
 //!
 //! Version 0.4.0
-//! (This version does NOT contain API calls.)
 //!
 //! - Provides fast, safe compression and decompression of files using the bzip2 format.
 //! - Utilizes multi-core multi-threaded processing. 

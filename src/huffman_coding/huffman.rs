@@ -96,7 +96,7 @@ pub fn huf_encode(
     let mut tables = init_tables(freq, table_count, eob);
 
     // And initialize a count of how many selectors we need, a vec to store them,
-    let selector_count = (rle2.len() / 50) + 1;
+    let selector_count = rle2.len() / 50 ;
     let mut selectors = vec![0_usize; selector_count];
 
     /*

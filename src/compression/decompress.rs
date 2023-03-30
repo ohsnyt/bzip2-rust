@@ -371,11 +371,6 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
         // Undo the initial RLE1
         let rle1_v = rle1_decode(&bwt_v);
         trace!("{:?}", String::from_utf8(rle1_v.clone()));
-        if bwt_v.len() < 8000 {
-            warn!("post bwt vec{:?}", String::from_utf8(bwt_v));
-        }
-           
-            warn!("Processed {} bytes after rle1_decode", rle1_v.len());
 
         // Compute and check the CRCs
         let this_block_crc = do_crc(0, &rle1_v);

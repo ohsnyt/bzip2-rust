@@ -1,6 +1,4 @@
-//! BitPacker: A module for the Rust version of the standard BZIP2 library.
-//!
-//! Builds a packed bitstream for the block-oriented construction of BZIP2 compressed files.
+//! BitPacker builds a packed bitstream for the block-oriented construction of BZIP2 compressed files.
 //! 
 //! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
 //! This multi-threaded version required that each block pass the huffman encoded data to the final aggregator, which

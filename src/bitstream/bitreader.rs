@@ -1,6 +1,4 @@
-//! BitReader: A module for the Rust version of the standard BZIP2 library.
-//!
-//! Reads a packed bitstream for the block-oriented deconstruction of BZIP2 compressed files.
+//! BitReader reads a packed bitstream for the block-oriented deconstruction of BZIP2 compressed files.
 //! 
 //! NOTE: This module can read from any I/O source that supports the read() call.
 //!

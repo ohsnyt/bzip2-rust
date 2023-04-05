@@ -1,21 +1,16 @@
-//! BitWriter: A module for the Rust version of the standard BZIP2 library.
+//! BitWriter assembles a packed bitstream for the block-oriented construction of BZIP2 compressed files.
 //!
-//! Builds a packed bitstream for the block-oriented construction of BZIP2 compressed files.
-//! 
-//! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
-//! 
-//! NOTE: This is called internally. However if no filename is specified in the calling function,
-//! the output will be written to stdout. This is probably not what you want.
-//! 
 //! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
 //! This multi-threaded version required that each block pass the huffman encoded data to the final aggregator, which
 //! would then write the continuous output stream.
-//! 
-//! This module is the aggregator. It takes the blocks packed by BitPacker, removes the padding, and writes
-//! a continuous stream of bits to the output device.
-//! 
+//!
+//! This module is the aggregator. It takes the blocks packed by BitPacker, removes the padding, and writes those
+//! blocks sequentially as a continuous stream of bits to the output device.
+//!
 //! This module is called from within a thread that is responsible to ensure that the correct order of the blocks
 //! is maintained.
+//!
+//! NOTE: Error handling when encountering bad IO is not well implemented.
 //!
 use crate::tools::crc::do_stream_crc;
 
@@ -41,6 +36,10 @@ impl BitWriter {
     /// Create a new Bitwriter with an output buffer of size specified. We need the block size.
     /// to create the header. Use add_block() to add each block to the stream.
     pub fn new(filepath: &str, mut block_size: u8) -> Self {
+        // Abort if the filepath is empty
+        if filepath.is_empty() {
+            panic!("Filepath cannot be empty when compressing a file");
+        }
         // Ensure that the block size is valid
         let result = std::fs::File::create(filepath);
         if block_size > 9 {

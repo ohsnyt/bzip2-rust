@@ -1,4 +1,4 @@
-//! The command line interface function parses the command line for the Rust version of the standard BZIP2 library.
+//! Parse the command line for the Rust version of the standard BZIP2 library.
 //!
 //! The options that can be set are defined in the `BzOpts` struct. An instance of the struct must be created and 
 //! initialized.

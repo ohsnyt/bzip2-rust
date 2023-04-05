@@ -1,4 +1,4 @@
-//! The rle1 function performs a run-length-encoding transform for the Rust version
+//! Perform a run-length-encoding transform for the Rust version
 //! of the standard BZIP2 library.
 //!
 //! The run-length-encoding only compresses runs of 4-256 identical bytes in the initial data.

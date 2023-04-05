@@ -1,5 +1,4 @@
-//! The rle2_mtf function performs run-length-encoding and move-to-front transforms for the Rust version 
-//! of the standard BZIP2 library.
+//! Perform run-length-encoding and move-to-front transforms for the Rust version of the standard BZIP2 library.
 //!
 //! The move-to-front transform will increase the frequency of lower byte values. The result of this is that
 //! the huffman codes can more efficiently compress those high frequency bytes.

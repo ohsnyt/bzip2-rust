@@ -1,4 +1,4 @@
-//! CRC computation for the Rust version of the standard BZIP2 library.
+//! Frequency counting for the Rust version of the standard BZIP2 library.
 //!
 //! Create a vec of 256 u32 integers which hold the frequency counts of each byte found in the block of 
 //! data given to the freqs function. 

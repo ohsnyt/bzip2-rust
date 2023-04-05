@@ -383,7 +383,6 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
                 "Block {} CRC failed!!! Found {} looking for {}.",
                 block_counter, this_block_crc, block_crc
             );
-            //panic!("Block {} CRC failed!!!", block_counter);
         }
 
         // Done!! Write the data.
@@ -395,12 +394,11 @@ pub fn decompress(opts: &BzOpts) -> io::Result<()> {
     if final_crc == stream_crc as usize {
         info!("Stream CRCs matched: {}.", final_crc);
     } else {
+        // This should never happen unless a block CRC also failed - or unless there is a missing block.
         error!(
             "Stream CRC failed!!! Found {} looking for {}. (Data may be corrupt.)",
             stream_crc, final_crc
         );
-        //panic!("Stream CRC failed!!!");
-        // This should never happen unless a block CRC also failed - or unless there is a missing block.
     }
     Result::Ok(())
 }

@@ -1,4 +1,4 @@
-//! The symbol_map function decodes symbol maps for the Rust version of the standard BZIP2 library.
+//! Decode symbol maps found in BZIP2 encoded file for the Rust version of the standard BZIP2 library.
 //!
 //! A symbol_map is a map of the presense/absense of u8s in the input data. The map is structured as
 //! a vector of u16s, where each u16 is a bit map for a block of u8s. The first u16 is a map of the

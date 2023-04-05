@@ -1,6 +1,6 @@
 //! Rust version of the standard BZIP2 library.
 //!
-//! Version 0.4.0
+//! Version 0.5.0
 //!
 //! - Provides fast, safe compression and decompression of files using the bzip2 format.
 //! - Utilizes multi-core multi-threaded processing. 
@@ -22,10 +22,11 @@
 //! 
 //! `bzip2 --help`
 //! 
+//! NOTES: This version compresses slower than the C version for smaller files. It is faster on larger files.
+//! It is particularly faster when using the SA-IS sorting algorithm as the fallback sorting algorithm.
+//! 
+//! This version is also slower on decompression. I have not spent much time optimizing that aspect. 
 //!
-//!
-//#![doc(html_logo_url = "https://github.com/ohsnyt/bzip2-rust/blob/Use-sais3-as-fallback/Oh%20Snyt%20Famous%20Code%20logo.png?raw=true")]
-#![doc(html_logo_url = "file:///Users/david/Downloads/Oh%20Snyt%20Famous%20Code%20logo.png?")]
 pub mod bitstream;
 pub mod compression;
 pub mod huffman_coding;

@@ -2,11 +2,11 @@
 //!
 //! The main sorting algorithm is currently based on the standard Rust sort_unstable algorithm. When data is
 //! larger than 5k bytes, we use a multi-threaded approach based on Rayon's par_sort_unstable algorithm.
-//! 
+//!
 //! Since different sorting algorithms are better suited for different kinds of data, this module contains a test
 //! to determine whether the data would be better suited to the main algorithm or the fallback algorithm.
-//! 
-//! 
+//!
+//!
 use super::sais_fallback::sais_entry;
 use crate::bwt_algorithms::sais_fallback::lms_complexity;
 use log::info;
@@ -16,7 +16,7 @@ I tried a varient that used a double length block to avoid the nested equality c
 in block_compare, but it was barely faster.
 */
 
-/// Encode data using the Burrows-Wheeler-Transform. Requires a u8 slice of data to be sorted. 
+/// Encode data using the Burrows-Wheeler-Transform. Requires a u8 slice of data to be sorted.
 /// This returns a u32 key and a u8 vec of the BWT data.
 pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     // Test data longer than 5k bytes to help select the best algorithm
@@ -24,7 +24,7 @@ pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
         info!("Using SA-IS algorithm.");
         return sais_entry(rle1_data);
     }
-    
+
     info!("Using native algorithm.");
     // Create index into block. Index is u32, which should be more than enough
     let mut index = (0_u32..rle1_data.len() as u32).collect::<Vec<u32>>();
@@ -35,7 +35,7 @@ pub fn bwt_encode(rle1_data: &[u8]) -> (u32, Vec<u8>) {
     } else {
         index[..].sort_unstable_by(|a, b| block_compare(*a as usize, *b as usize, rle1_data));
     }
-    // Get key and BWT output 
+    // Get key and BWT output
     let mut key = 0_u32;
     let mut bwt = vec![0; rle1_data.len()];
     for i in 0..bwt.len() {
@@ -78,12 +78,12 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
     }
     result
 }
-
+/* 
 /// Decode a Burrows-Wheeler-Transform. Requires a key, a u8 slice containing the BWT data, and an array of the u8 frequencies
 /// found in the data. Returns the decoded data as a u8 vec.
 pub fn bwt_decode(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
     /*
-    I have tried refactoring to reduce cache misses. To date, all variations seem to have excessive cache misses. 
+    I have tried refactoring to reduce cache misses. To date, all variations seem to have excessive cache misses.
     */
 
     // Calculate end once.
@@ -125,5 +125,48 @@ pub fn bwt_decode(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
         rle1_data[i] = bwt_in[keys[i] as usize] as u8;
     }
 
+    rle1_data
+}
+ */
+/// Decode a Burrows-Wheeler-Transform. Requires a key, a u8 slice containing the BWT data, and an array of the u8 frequencies
+/// found in the data. Returns the decoded data as a u8 vec.
+pub fn bwt_decode(mut key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
+    /* LOGIC:
+    Encode the current byte and the index to the next byte in each element of the transformation vector.
+    The leftmost byte of each element is the current byte value. The rightmost three bytes are the index to the next byte.
+    */
+
+    // Calculate end once.
+    let end = bwt_in.len();
+
+    // Convert frequency count to a cumulative sum of frequencies
+    let mut freq = [0_u32; 256];
+
+    {
+        for i in 0..255 {
+            freq[i + 1] = freq[i] + freq_in[i];
+        }
+    }
+
+    //Build the transformation vector to find the next character in the original data
+    let mut t_vec = vec![0_u32; end];
+    for (i, &s) in bwt_in.iter().enumerate() {
+        t_vec[i] |= (s as u32) << 24;
+        t_vec[freq[s as usize] as usize] |= i as u32;
+        freq[s as usize] += 1
+    }
+
+    // Transform the data
+    // First put they last element into the end, thus avoiding a test on each iteration
+    let mut rle1_data = vec![0_u8; end];
+    let mut el = t_vec[key as usize];
+    key = el & 0xFFFFFF;
+    rle1_data[end - 1] = (el >> 24) as u8;
+
+    for i in 1..t_vec.len() {
+        el = t_vec[key as usize];
+        key = el & 0xFFFFFF;
+        rle1_data[i - 1] = (el >> 24) as u8;
+    }
     rle1_data
 }

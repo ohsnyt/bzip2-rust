@@ -1,14 +1,14 @@
-//! The compression algorithm for the Rust version of the standard BZIP2 library.
+//! This manages the compression process for BZIP2 encoding.
 //!
-//! The compression algorithm is inherently multi-threaded. A thread is spawned first to receive the blocks of 
+//! The compression process is multi-threaded. A thread is spawned first to receive the blocks of 
 //! data that are compressed by the block compression routine. Then the input is broken into blocks and a thread 
 //! is spawned to compress that block.
 //! 
-//! When block is compressed, the compressed data along with a sequence number is passed to the receiver. 
+//! When a block is compressed, the compressed data along with a sequence number is passed to the aggregator/receiver. 
 //! If the sequence number is the next block to be written out, the block is added to the output. If it arrived
 //! out of sequence, it is held until the previous blocks can be written.
 //! 
-//! Once all blocks are written, the stream footer is written and the process is terminated.
+//! Once all blocks are written, the stream footer is written and the process is completed.
 //! 
 //! NOTE 1: THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
 //! 
@@ -26,8 +26,6 @@ use std::io;
 
 #[allow(clippy::unusual_byte_groupings)]
 /*
-    NOTE: I WILL EVENTUALLY CHANGE THIS SO IT WORKS WITH A C FFI.
-
     This is repsonsible for creating the bitstream writer, a struct that
     contains the block data passes to the block compression routine,
     and an indictor of whether we are done processing all the data.

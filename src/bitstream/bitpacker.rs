@@ -1,12 +1,13 @@
 //! BitPacker builds a packed bitstream for the block-oriented construction of BZIP2 compressed files.
 //! 
 //! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
-//! This multi-threaded version required that each block pass the huffman encoded data to the final aggregator, which
-//! would then write the continuous output stream.
+//! This multi-threaded version is written so that each block is compressed in a thread from the 
+//! Burrow-Wheeler-Transform through the Huffman encoding phase. The thread then passes the huffman encoded data 
+//! to the final aggregator, which writes the continuous output stream.
 //! 
-//! The packed blocks are padded at the end with zeros to reach a full byte. In order for the 
-//! final aggregator to know how much padding was added, the BitPacker makes both the output and 
-//! the padding value available publicly.
+//! The packed blocks in each thread are padded at the end with zeros to reach a full byte boundary. In order for the 
+//! final aggregator to know how much padding was added, the BitPacker makes both the huffman compressed data and 
+//! the padding value available to the aggregator.
 //! 
 //! The padding is always a number between 0 and 7 bits.
 //!

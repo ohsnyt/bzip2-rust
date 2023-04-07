@@ -1,4 +1,4 @@
-//! CRC computation for the Rust version of the standard BZIP2 library.
+//! CRC computation for the standard BZIP2 format.
 //!
 //! BZIP2 is a block-oriented approach to compress data.
 //!
@@ -6,6 +6,10 @@
 //! contained in the block data. (This is the data BEFORE the RLE1 phase.)
 //!
 //! All the block CRCs are then combined to create an overall CRC value for the stream.
+//! 
+//! CRCs are build using a CRC value table included in this module.
+//!
+ 
 
 /// Calculate CRC on the block of data used to build each block that is compressed.
 pub fn do_crc(existing_crc: u32, data: &[u8]) -> u32 {

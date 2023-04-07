@@ -1,14 +1,15 @@
-//! Perform run-length-encoding and move-to-front transforms for the Rust version of the standard BZIP2 library.
+//! Perform run-length-encoding and move-to-front transforms for the standard BZIP2 file format.
 //!
 //! The move-to-front transform will increase the frequency of lower byte values. The result of this is that
 //! the huffman codes can more efficiently compress those high frequency bytes.
 //! 
-//! The run-length-encoding will compress runs of the zero byte irregardless of the number of zeros found. The 
+//! The run-length-encoding stage 2 (RLE2) will compress runs of one or more 0 bytes (bytes with the value 0). The 
 //! number of zeros found is encoded in a binary scheme that is very space efficient. Since the move-to-front transform will 
-//! increase the frequency of the zero bytes, the run-length-encoding will reduce the byte count significantly for most
+//! increase the frequency of the zero bytes, this second run-length-encoding will reduce the byte count significantly for most
 //! data. (Data with high entropy does not compress well.) 
 //!
-//! Encoding also return a frequency table and symbol map used during the huffman stage.
+//! This module also returns a frequency table and symbol map used during the huffman stage. This is done at this stage because it 
+//! is more efficient to build these items while processing the data rather than re-processing the data to build them.
 //! 
 use super::freq_count::freqs;
 use log::error;
@@ -191,7 +192,7 @@ pub fn rle2_mtf_decode_fast(
     data_in: &[u16],
     mtf_index: &mut Vec<u8>,
     size: usize,
-) -> (Vec<u8>, Vec<u32>) {
+) -> (Vec<u8>, [u32;256]) {
     // Initialize output buffer
     let mut out = vec![0_u8; size];
 

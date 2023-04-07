@@ -1,16 +1,20 @@
-//! BitWriter assembles a packed bitstream for the block-oriented construction of BZIP2 compressed files.
+//! BitWriter assembles the packed bitstreams produced by BitPacker into one continuous stream for the output.
 //!
 //! The original version of BZIP2, being single-threaded, was able to write the bitstream from start to finish.
-//! This multi-threaded version required that each block pass the huffman encoded data to the final aggregator, which
-//! would then write the continuous output stream.
+//! This multi-threaded version is designed so that each block can pass huffman encoded (compressed) data to this 
+//! final aggregator. This then will assemble those blocks in the proper order and write the continuous output stream.
 //!
-//! This module is the aggregator. It takes the blocks packed by BitPacker, removes the padding, and writes those
-//! blocks sequentially as a continuous stream of bits to the output device.
+//! This module is the aggregator. It takes the blocks packed by BitPacker, removes the padding, and writes the
+//! blocks sequentially as a continuous stream of bits to the output device. It will write blocks as soon as they become
+//! available in the correct sequence. 
+//! 
+//! For example, if there are four threads producing blocks, and the blocks arrive in the order: 4, 2, 1, 3, then the
+//! aggregator will wait until block 1 arrives, write block 1, then block 2, then wait for block 3 and write that followed by 4.
 //!
-//! This module is called from within a thread that is responsible to ensure that the correct order of the blocks
-//! is maintained.
+//! This module is called from a thread that is spawned before any block compression threads are spawned in order to ensure that it can catch
+//! the earliest blocks that are compressed. 
 //!
-//! NOTE: Error handling when encountering bad IO is not well implemented.
+//! NOTE: Error handling when encountering bad IO is **not** yet well implemented.
 //!
 use crate::tools::crc::do_stream_crc;
 

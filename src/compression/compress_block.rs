@@ -1,24 +1,17 @@
-//! This is part of the compression modlue for the Rust version of the standard BZIP2 library.
+//! This manages the compression of a single block of RLE1 data through the huffman compression stage.
 //!
 //! Since BZIP2 is block oriented, each block can be independently compressed. Compression is "computationally
 //! expensive", so this is well suited to mult-threading. Smaller blocks compress faster, but larger blocks
 //! tend to have more redundancy and therefore are able to be achieve a higher compression ratio.
 //!
-//! BZIP2 defines the block size based on the size of the data AFTER the first Run Length Encoding. Because of this,
+//! BZIP2 defines the block size based on the size of the data AFTER the first Run Length Encoding (RLE1). Because of this,
 //! the RLE1 phase must happen sequentially. Blocks are created after the RLE1 phase.
 //! 
-//! When block is compressed, the compressed data along with a sequence number is passed to the receiver.
+//! When block is compressed, the compressed data along with a sequence number is passed to the aggregator/receiver.
 //! If the sequence number is the next block to be written out, the block is added to the output. If it arrived
 //! out of sequence, it is held until the previous blocks can be written.
 //!
-//! Once all blocks are written, the stream footer is written and the process is terminated.
 //!
-//! NOTE 1: THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
-//!
-//! NOTE 2: BZIP2 should default to deleting the source file (if input comes from a file), and set the creation date
-//! of the compressed file to mirror the original file. This is NOT yet implemented.
-//!
-
 use crate::bitstream::bitpacker::BitPacker;
 use crate::bwt_algorithms::bwt_sort::bwt_encode;
 use crate::tools::rle2_mtf::rle2_mtf_encode;

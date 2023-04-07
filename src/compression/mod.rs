@@ -13,7 +13,7 @@
 //! huffman tables are generated for each block of data, and every chunk of 50 bytes within that block is analyzed to determine which 
 //! huffman table will result in the best compression ratio for that chunk.
 //! 
-//! Decompression is single threaded. It follows the inverse of the compression process.
+//! Decompression is single threaded (except for the generation of a frequency table within each block). It follows the inverse of the compression process.
 //! - Huffman decoding.
 //! - RLE 2: Expand all runs of the zero byte.
 //! - MTF transform: Convert from the Move-To-Front indecies to the symbols represented by the indecies.

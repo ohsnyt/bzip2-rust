@@ -3,17 +3,18 @@
 //! This is a simple SA-IS implemenation of a sorting algorithm, using sentinels. SA-IS is particularly suited
 //! to repetative data such as is found in genetic sequencing.
 //! 
-//! SA-IS does not lend itself to multi-threading when the data sets are smaller. The BZIP2 algorithm has a maximum
-//! block size of 900kb, consequently no attempt at multithreading is made.
+//! SA-IS does not lend itself to multi-threading when the data sets are smaller (except for frequency counting). The BZIP2 algorithm has a maximum
+//! block size of 900kb, consequently no attempt at multithreading within the sorting portion of the algorithm is made. (Multiple blocks
+//! will be processed in parallel, though.)
 //! 
 //! In order to determine whether the data is more likely to be better sorted using SA-IS, the lms_complexity function
 //! can test a sample of the data to determine whether SA-IS is suited to the data.
 //! 
-//! NOTE 1: This implementation uses compressed LMS data in order to reduce cache misses.
+//! NOTE 1: This implementation effectively uses compressed LMS data in order to reduce cache misses.
 //! 
-//! NOTE 2: It is difficult to determine the best sorting alogithm based on only a 
-//! sample of the data. Methods to determine entropy proved relatively useless. The approach of testing the lms
-//! complexity has been the most reliable method I have found that can operate on a sample of the larger data set.
+//! NOTE 2: It is difficult to determine the best sorting alogithm based on only a sample of the data. The approach 
+//! used in this version is based on LMS complexity (my term). This technique has proven
+//! to be the most reliable method I have discovered to return a decent result based on analysis of a small sample of the larger data set.
 //! 
 //! 
 
@@ -279,7 +280,8 @@ use log::{error, debug};
 //-- Counts for Bucket Sorting --------------------------------------------------------------------------------
 use rayon::prelude::*;
 
-/// Return frequency count of elements in the input vec. Size is the value of the largest element in the input.
+/// Return frequency count of elements in the input vec. Size is the value of the largest element in the input. (Vec based because we don't know the number
+/// of elements we will be counting.)
 fn bucket_sizes<T>(data: &[T], size: usize) -> Vec<u32>
 where
     T: TryInto<usize> + Copy,

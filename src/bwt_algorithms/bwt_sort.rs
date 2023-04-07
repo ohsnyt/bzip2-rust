@@ -1,11 +1,17 @@
-//! The main bwt_sort algorithm for the Rust version of the standard BZIP2 library.
+//! This is the entry point for the main bwt_sort algorithm and contains the main sorting algorithm.
 //!
 //! The main sorting algorithm is currently based on the standard Rust sort_unstable algorithm. When data is
 //! larger than 5k bytes, we use a multi-threaded approach based on Rayon's par_sort_unstable algorithm.
 //!
 //! Since different sorting algorithms are better suited for different kinds of data, this module contains a test
 //! to determine whether the data would be better suited to the main algorithm or the fallback algorithm.
-//!
+//! 
+//! NOTE: 
+//! * During the earlier development and testing phases, I ported Julian Seward's sort algorithm into Rust. However 
+//! the built-in sort_unstable algorithm performed equally well as my port. Using the built-in algorithm avoids a lot of complexity. 
+//! (I do welcome suggestions for improved sorting algorithms.)
+//! * I have tried multiple different algorithms to test data entropy in order to choose when to select the fallback algorithm. The final
+//! method I finally implemented is based on the "left most smaller" (LMS) concept in suffix array algorithms.
 //!
 use super::sais_fallback::sais_entry;
 use crate::bwt_algorithms::sais_fallback::lms_complexity;
@@ -78,56 +84,8 @@ fn block_compare(a: usize, b: usize, block: &[u8]) -> std::cmp::Ordering {
     }
     result
 }
-/* 
-/// Decode a Burrows-Wheeler-Transform. Requires a key, a u8 slice containing the BWT data, and an array of the u8 frequencies
-/// found in the data. Returns the decoded data as a u8 vec.
-pub fn bwt_decode(key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
-    /*
-    I have tried refactoring to reduce cache misses. To date, all variations seem to have excessive cache misses.
-    */
 
-    // Calculate end once.
-    let end = bwt_in.len();
 
-    // Convert frequency count to a cumulative sum of frequencies
-    let mut freq = [0_u32; 256];
-
-    {
-        for i in 0..255 {
-            freq[i + 1] = freq[i] + freq_in[i];
-        }
-    }
-
-    //Build the transformation vector to find the next character in the original data
-    // Using an array instead of a vec saves about 4 ms.
-    let mut t_vec = [0_u32; 900024];
-    for (i, &s) in bwt_in.iter().enumerate() {
-        t_vec[freq[s as usize] as usize] = i as u32;
-        freq[s as usize] += 1
-    }
-
-    //Build the keys vector to find the next character in the original data
-    // This is the slowest portion of this function - I assume cache misses causes problems
-    // It slows down when t_vec is over about 500k.
-    let mut keys = vec![0_u32; end];
-    let key = key;
-
-    // Assign to keys[0] to avoid a temporary assignment below
-    keys[0] = t_vec[key as usize];
-
-    for i in 1..end {
-        keys[i] = t_vec[keys[i - 1] as usize];
-    }
-
-    // Transform the data
-    let mut rle1_data = vec![0_u8; end];
-    for i in 0..bwt_in.len() {
-        rle1_data[i] = bwt_in[keys[i] as usize] as u8;
-    }
-
-    rle1_data
-}
- */
 /// Decode a Burrows-Wheeler-Transform. Requires a key, a u8 slice containing the BWT data, and an array of the u8 frequencies
 /// found in the data. Returns the decoded data as a u8 vec.
 pub fn bwt_decode(mut key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
@@ -170,3 +128,4 @@ pub fn bwt_decode(mut key: u32, bwt_in: &[u8], freq_in: &[u32]) -> Vec<u8> {
     }
     rle1_data
 }
+

@@ -1,9 +1,10 @@
-//! Perform a run-length-encoding transform for the Rust version
-//! of the standard BZIP2 library.
+//! Perform the first run-length-encoding (RLE1) transform for the BZIP2 file formate.
 //!
-//! The run-length-encoding only compresses runs of 4-256 identical bytes in the initial data.
+//! The run-length-encoding compresses runs of 4-256 identical bytes in the initial data. If a run is longer than 256 bytes, it may be
+//! encoded as two or more runs. (258 identical bytes will be see as one run of 256 bytes and two identical bytes (which is not long enough
+//! to be encoded as another run.)
 //!
-//! The RLE1 phase happens before determining what data will be placed into each block. Because of this,
+//! The RLE1 phase happens **before** determining what data will be placed into each block. Because of this,
 //! the RLE1 phase is build as an iterator over the raw data. You must instantiate a RLE1Block struct before
 //! you can use it.
 //!
@@ -17,11 +18,11 @@
 //!
 //! To get a block of data, you must iterate or call .next() on the struct. For example:
 //! ```
-//! let mut block = rle1.next().unwrap();
+//! let (crc, block, last_block) = rle1.next().unwrap();
 //! ```
+//! This returns the crc value for the block, the block of data, and a boolean indicating if the block is the last block.
 //!
-//! The only public element of teh RLE1Block is the crc value for the block.
-//!
+//! 
 
 use super::crc::do_crc;
 

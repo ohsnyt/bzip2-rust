@@ -1,17 +1,14 @@
 # Ignore everything in the target directory
+src/unused/*
 target/
+test_files/
+debug/
 *.txt
 *.bz2
 *.DS_Store
-debug/
 image.*
 *.tiff
 
-src/unused/*
-src/timeseries_export2.csv
-target/.rustc_info.json
 Cargo.lock
 .gitignore
 .vscode/settings.json
-target/.rustc_info.json
-Cargo.lock

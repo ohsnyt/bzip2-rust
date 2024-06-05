@@ -26,11 +26,13 @@ pub enum Verbosity {
 }
 #[derive(Debug)]
 
-/// Zip, Unzip, Test
+/// Zip, Unzip, Test, and testing out Build_Index and Unzip_Blocks
 pub enum Mode {
     Zip,
     Unzip,
     Test,
+    Build_Index,
+    Unzip_Blocks
 }
 impl Display for Mode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -129,6 +131,13 @@ pub fn bzopts_init() -> BzOpts {
                 }
                 "--compress" => {
                     cli.op_mode = Mode::Zip;
+                }
+                "--index" => {
+                    cli.op_mode = Mode::Build_Index;
+                }
+                "--extract" => {
+                    cli.op_mode = Mode::Unzip_Blocks;
+                    // NEED TO IMPLEMENT WAY TO SPECIFY BLOCKS TO EXTRACT
                 }
                 "--keep" => cli.keep_input_files = true,
                 "--force" => cli.force_overwrite = true,

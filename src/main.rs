@@ -30,7 +30,7 @@ fn main() -> Result<(), std::io::Error> {
     let result = match options.op_mode {
         Mode::Zip => compress(&mut options),
         Mode::Unzip => decompress(&options),
-        Mode::Test => Ok(()),
+        Mode::Test => Ok(())
     };
 
     info!("Done.\n");

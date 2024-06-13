@@ -2,7 +2,7 @@
 //!
 //! The compression process is multi-threaded. A thread is spawned first to receive the blocks of 
 //! data that are compressed by the block compression routine. Then the input is broken into blocks and a thread 
-//! is spawned to compress that block.
+//! is spawned to compress each block.
 //! 
 //! When a block is compressed, the compressed data along with a sequence number is passed to the aggregator/receiver. 
 //! If the sequence number is the next block to be written out, the block is added to the output. If it arrived
@@ -10,7 +10,7 @@
 //! 
 //! Once all blocks are written, the stream footer is written and the process is completed.
 //! 
-//! NOTE 1: THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
+//! NOTE 1: THE ROUTINES FOR FILE I/O MAY NOT PROPERLY RESOLVE ALL I/O ERRORS.
 //! 
 //! NOTE 2: BZIP2 should default to deleting the source file (if input comes from a file), and set the creation date
 //! of the compressed file to mirror the original file. This is NOT yet implemented.
@@ -36,14 +36,14 @@ use std::io;
     Again, this will iterate multiple times to get through the input file.
 */
 
-/// Compress the input file defined in opts <BzOpts>. Modified for multi-core processing.
+/// Compress the input file defined in opts `<BzOpts>`. Modified for multi-core processing.
 pub fn compress(opts: &mut BzOpts) -> io::Result<()> {
     /*
       Since this can be parallel, we pass a reference to the u8 data as well as a sequence number.
       We will receive back the compressed data and sequence number. We will then assemble the compressed
       data segments in the correct order and write them out to the output file.
 
-      THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
+      THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND MAY NOT PROPERLY RESOLVE ALL I/O ERRORS.
     */
 
     // Prepare to read the data.

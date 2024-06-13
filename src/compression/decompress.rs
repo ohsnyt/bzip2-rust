@@ -4,7 +4,7 @@
 //! data blocks, decompression does not lend itself to effective multi-threading. 
 //! 
 //! 
-//! NOTE 1: THE ROUTINES FOR FILE I/O ARE RUDEMENTARY, AND DO NOT PROPERLY RESOLVE ALL I/O ERRORS.
+//! NOTE 1: THE ROUTINES FOR FILE I/O MAY NOT PROPERLY RESOLVE ALL I/O ERRORS.
 //! 
 //! NOTE 2: BZIP2 should default to deleting the source file (if input comes from a file), and set the creation date
 //! of the compressed file to mirror the original file. This is **not** yet implemented.

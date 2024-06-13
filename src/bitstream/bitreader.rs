@@ -48,7 +48,7 @@ impl<R: std::io::Read> BitReader<R> {
         true
     }
 
-    /// Return bit as Option<usize> (1 or 0), or None if there is no more data to read
+    /// Return bit as `Option<usize>` (1 or 0), or None if there is no more data to read
     pub fn bit(&mut self) -> Option<usize> {
         // If bit_index is == 0, check if we have a byte to read. Return None if we have no data
         if self.bit_index == 0 && !self.have_data() {
@@ -65,13 +65,13 @@ impl<R: std::io::Read> BitReader<R> {
         Some(bit as usize)
     }
 
-    /// Return Option<Bool> *true* if the next bit is 1, *false* if 0, consuming the bit, 
+    /// Return `Option<Bool>` *true* if the next bit is 1, *false* if 0, consuming the bit, 
     /// or None if there is no more data to read
     pub fn bool_bit(&mut self) -> Option<bool> {
         self.bit().map(|bit| bit == 1)
     }
 
-    /// Return Option<usize> of the next n bits, or None if there is no more data to read. 
+    /// Return `Option<usize>` of the next n bits, or None if there is no more data to read. 
     pub fn bint(&mut self, mut n: usize) -> Option<usize> {
         /*
         This is used primarilyl to return signatures and crc values. For example, if a crc
@@ -137,13 +137,13 @@ impl<R: std::io::Read> BitReader<R> {
         Some(result)
     }
 
-    /// Returns a byte as an Option<u8>, or None if there is no more data to read. This is
+    /// Returns a byte as an `Option<u8>`, or None if there is no more data to read. This is
     /// a convenience function, and calls bint(8).
     pub fn byte(&mut self) -> Option<u8> {
         self.bint(8).map(|byte| byte as u8)
     }
 
-    /// Returns an Option<Vec<u8>> of n bytes, or None if there is no more data to read. This
+    /// Returns an `Option<Vec<u8>>` of n bytes, or None if there is no more data to read. This
     /// is a convenience function, and calls byte n times.
     pub fn bytes(&mut self, mut n: usize) -> Option<Vec<u8>> {
         let mut result: Vec<u8> = Vec::with_capacity(n);

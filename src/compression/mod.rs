@@ -3,7 +3,7 @@
 //! BZIP2 compression happens in the following steps:
 //! - Run Length Encoding 1: Compress all runs of 4-255 identical bytes.
 //! - Burrow Wheeler Transform: Sort the data to increase the probability of runs of identical bytes.
-//! - Move To Front transform: Increase the frequency of lower byte values, and thereby decrease the frequency of other byte values.
+//! - Move To Front transform: Increase the frequency of lower byte values, especially the zero byte.
 //! - Run Length Encoding 2: Compress all runs of the zero byte.
 //! - Huffman coding: Encode frequent byte values using smaller bit codes and less frequent byte values with longer bit codes.
 //! 

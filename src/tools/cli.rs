@@ -31,8 +31,8 @@ pub enum Mode {
     Zip,
     Unzip,
     Test,
-    Build_Index,
-    Unzip_Blocks
+    BuildIndex,
+    UnzipBlocks
 }
 impl Display for Mode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -133,10 +133,10 @@ pub fn bzopts_init() -> BzOpts {
                     cli.op_mode = Mode::Zip;
                 }
                 "--index" => {
-                    cli.op_mode = Mode::Build_Index;
+                    cli.op_mode = Mode::BuildIndex;
                 }
                 "--extract" => {
-                    cli.op_mode = Mode::Unzip_Blocks;
+                    cli.op_mode = Mode::UnzipBlocks;
                     // NEED TO IMPLEMENT WAY TO SPECIFY BLOCKS TO EXTRACT
                 }
                 "--keep" => cli.keep_input_files = true,

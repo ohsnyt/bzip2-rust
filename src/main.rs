@@ -7,9 +7,9 @@
 //! and I am not prepared to implement that yet.
 //!
 //! Given that caveat, this program does
-//! - Provide fast, safe compression and decompression of files using the bzip2 format.
-//! - Utilize multi-core multi-threaded processing. 
-//! - Contain SA-IS sorting to improve compression speeds on repetative data such as genome sequences.
+//! - provide fast, safe compression and decompression of files using the bzip2 format.
+//! - utilize multi-core multi-threaded processing. (This is implemented via the Rayon crate.)
+//! - contain SA-IS sorting to improve compression speeds on repetative data such as genome sequences.
 //!
 //! Basic usage to compress a files is as follows:
 //! 
@@ -28,12 +28,12 @@
 //! `bzip2 --help`
 //! 
 //! NOTES: 
-//! - The C version is very well written in terms of optimization. Julian Seward clearly worked hard on that code. But documentation... well this is much more
-//! documented than the C version.
+//! - The original C version is very well written in terms of optimization. Julian Seward clearly worked hard on that code. 
+//!   But the original documentation... well, this is much more documented than the original C version.
 //! - Developer feedback is welcome. If you have suggestions for improvement, please let me know!
 //! - This version compresses about 25% slower than the C version for tiny files. This is faster on larger files.
 //! - It is particularly faster when using the SA-IS sorting algorithm as the fallback sorting algorithm.
-//! - This version is about 25% slower than the C version for decompression. That said, BZIP2 decompression is pretty fast.
+//! - This version is about 25% slower than thecar C version for decompression. That said, BZIP2 decompression is pretty fast.
 //!
 //Enable more cargo lint tests
 #![warn(rust_2018_idioms)]

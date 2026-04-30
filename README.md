@@ -1,5 +1,5 @@
 # bzip2-rust
-Rust implementation of Bzip2 library. This is late alpha / early beta stage. Use at your own risk. This may be used under either the Apache or MIT license.
+Rust implementation of Bzip2 library. This is late alpha / early beta stage. Use at your own risk. (The code is clean and fast, but always double check dependancies for recently listed vulnerabilities.) This may be used under either the Apache or MIT license.
 
 *Block specific decoding modes are not yet implemented.*
 

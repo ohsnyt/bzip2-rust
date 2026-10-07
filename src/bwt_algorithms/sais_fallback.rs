@@ -777,30 +777,40 @@ fn duval_ds(input: &[u8]) -> usize {
     smallest.1
 } */
 
-/// Compute the Lexicographically Minimal String Rotation. Fails tests, but is verbatim from ribzip2 and seems to work.
+/// Compute the lexicographically minimal string rotation using the Booth/duval variant.
+/// This returns the index of the first byte in the canonical minimal rotation.
 fn duval(input: &[u8]) -> usize {
-    let mut final_start = 0;
     let n = input.len();
+    if n <= 1 {
+        return 0;
+    }
+
     let mut i = 0;
+    let mut j = 1;
+    let mut k = 0;
 
-    while i < n {
-        let mut j = i + 1;
-        let mut k = i;
-        while j < n && input[k] <= input[j] {
-            if input[k] < input[j] {
-                k = i;
-            } else {
-                k += 1;
+    while i < n && j < n && k < n {
+        let a = input[(i + k) % n];
+        let b = input[(j + k) % n];
+
+        if a == b {
+            k += 1;
+        } else if a > b {
+            i = i + k + 1;
+            if i <= j {
+                i = j + 1;
             }
-            j += 1;
-        }
-        while i <= k {
-            final_start = i;
-
-            i += j - k;
+            k = 0;
+        } else {
+            j = j + k + 1;
+            if j <= i {
+                j = i + 1;
+            }
+            k = 0;
         }
     }
-    final_start
+
+    i.min(j) % n
 }
 
 /// Compute lexicographically minimal rotation using the duval algorithm.

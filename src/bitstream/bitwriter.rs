@@ -40,21 +40,22 @@ impl BitWriter {
     /// Create a new Bitwriter with an output buffer of size specified. We need the block size.
     /// to create the header. Use add_block() to add each block to the stream.
     pub fn new(filepath: &str, mut block_size: u8) -> Self {
-        // Abort if the filepath is empty
-        if filepath.is_empty() {
-            panic!("Filepath cannot be empty when compressing a file");
-        }
-        // Ensure that the block size is valid
-        let result = std::fs::File::create(filepath);
         if block_size > 9 {
             block_size = 9;
         }
-        // Open the output device for writing and initialize the struct
+
+        let writer: Box<dyn std::io::Write + std::marker::Sync + std::marker::Send> =
+            if filepath.is_empty() {
+                Box::new(std::io::stdout())
+            } else {
+                match std::fs::File::create(filepath) {
+                    Ok(file) => Box::new(file),
+                    Err(_) => Box::new(std::io::stdout()),
+                }
+            };
+
         Self {
-            writer: match result {
-                Ok(file) => Box::new(file),
-                Err(_) => Box::new(std::io::stdout()),
-            },
+            writer,
             output: Vec::with_capacity(block_size as usize * 100000),
             queue: 0,
             q_bits: 0,

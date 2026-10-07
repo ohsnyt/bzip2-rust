@@ -5,8 +5,10 @@
 //! 
 //! Usage example:
 //! ```
+//! use bzip2_os::tools::cli::BzOpts;
+//!
 //! let mut opts = BzOpts::new();
-//! opts.init();
+//! assert!(opts.files.is_empty());
 //! ```
 //! You can then access the options via the instance you created.
 //! 

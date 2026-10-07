@@ -10,17 +10,20 @@
 //!
 //! Usage is:
 //! ```
-//! let mut rle1 = RLE1Block::new(data, block_size);
+//! use std::io::Cursor;
+//! use bzip2_os::tools::rle1::RLE1Block;
+//!
+//! let data = b"AAAAAA";
+//! let mut rle1 = RLE1Block::new(Cursor::new(data), 64);
+//! let (crc, block, last_block) = rle1.next().unwrap();
+//! assert!(crc > 0 || !block.is_empty());
+//! assert!(last_block || !block.is_empty());
 //! ```
 //! Where:
 //! - data: The data to be run-length encoded.
 //! - block_size: The actual size of each block that will be created.
 //!
 //! To get a block of data, you must iterate or call .next() on the struct. For example:
-//! ```
-//! let (crc, block, last_block) = rle1.next().unwrap();
-//! ```
-//! This returns the crc value for the block, the block of data, and a boolean indicating if the block is the last block.
 //!
 //! 
 
